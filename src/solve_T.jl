@@ -120,6 +120,7 @@ function make_decent_params()
     calc_ρvap(T) = calc_psub(T)/Rw/T # compute density of vapor
     @pack! T_params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf
     return T_params
+end
         
 function make_artificial_params()
             
@@ -144,8 +145,8 @@ function make_artificial_params()
     end
     Rw = 8.3145 / .018 # J/molK * mol/kg
     calc_ρvap(T) = calc_psub(T)/Rw/T
-    @pack! default_params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf
-    return default_params
+    @pack! T_params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf
+    return T_params
 end
 
 default_params = make_artificial_params()

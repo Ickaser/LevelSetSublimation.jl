@@ -164,7 +164,7 @@ function vector_extrap_from_front(phi, Bf, vec_func, dt=1.0, guess=nothing)
     B = findall(Bf)
     front_cells = findall(identify_Γ(phi) .& (phi.>= 0))
     nvec = size(vec_func(Tuple(front_cells[1])...), 1)
-    if guess == nothing
+    if guess === nothing
         v0 = fill(0.0, nr, nz, nvec)
     else
         v0 = copy(guess)

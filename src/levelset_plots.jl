@@ -30,3 +30,13 @@ function markfront(phi; lab="", c=:white)
     zs = map(x-> zgrid[Tuple(x)[2]] , frontcells)
     scatter!(rs, zs, color=c, label=lab)
 end
+
+function arrows(Vf)
+    rmsh = reshape([r for r in rgrid, z in zgrid], :)
+    zmsh = reshape([z for r in rgrid, z in zgrid], :)
+    Vrmsh = reshape(Vf[:,:,1], :)
+    Vzmsh = reshape(Vf[:,:,2], :)
+
+    # freshplot()
+    return quiver!(rmsh, zmsh, velocity=(Vrmsh, Vzmsh))
+end
