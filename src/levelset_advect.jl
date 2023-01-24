@@ -2,15 +2,15 @@
 Upwind difference scheme, in the spirit of Godunov's scheme.
 At the boundaries, if "upwind" goes outside domain, clamp gradients to 0.
 """
-function calc_∇ϕ_2(ϕ, dx, dy)
-    dx1 = 1/dx
-    dy1 = 1/dy
-    i12 = 1/12
-    i23 = 2/3
-    nx, ny = size(ϕ)
+function calc_∇ϕ_2(ϕ, dom)
+    dx1 = dom.dr1
+    dy1 = dom.dz1
+    # nx, ny = size(ϕ)
+    nx = dom.nr
+    ny = dom.nz
     ∇ϕx = similar(ϕ)
     ∇ϕy = similar(ϕ)
-    outside_B = 1
+    # outside_B = 1
     
     for i in 1:nx, j in 1:ny
         # At boundaries, if upwind is outside, clamp gradient to 0
@@ -66,10 +66,12 @@ end
 Upwind difference scheme for N ⋅ ∇ F , for each F ∈ v. Same finite differences for both N=∇ϕ and F.
 At the boundaries, if no upwind direction available, clamp derivatives to 0.
 """
-function calc_Nd∇v(ϕ, v, dx, dy; debug=false)
-    dx1 = 1/dx
-    dy1 = 1/dy
-    nx, ny = size(ϕ)
+function calc_Nd∇v(ϕ, v, dom; debug=false)
+    dx1 = dom.dr1
+    dy1 = dom.dz1
+    # nx, ny = size(ϕ)
+    nx = dom.nr
+    ny = dom.nz
     dϕx = similar(ϕ)
     dϕy = similar(ϕ)
     dvx = similar(v)
@@ -159,10 +161,11 @@ end
 """
 Takes vecfunc, a vector function which takes (ir, iz) and returns desired vector
 """
-function vector_extrap_from_front(phi, Bf, vec_func, dt=1.0, guess=nothing)
-    nr, nz = size(phi)
+function vector_extrap_from_front(phi, Bf, vec_func, dom, dt=1.0, guess=nothing)
+    # nr, nz = size(phi)
+    nr, nz = dom.nr, dom.nz
     B = findall(Bf)
-    front_cells = findall(identify_Γ(phi) .& (phi.>= 0))
+    front_cells = findall(identify_Γ(phi, dom) .& (phi.>= 0))
     nvec = size(vec_func(Tuple(front_cells[1])...), 1)
     if guess === nothing
         v0 = fill(0.0, nr, nz, nvec)
@@ -186,7 +189,7 @@ function vector_extrap_from_front(phi, Bf, vec_func, dt=1.0, guess=nothing)
         cached[B,:] .= reshape(u, :, nvec)
         # cached[B,:] .= u
         # F = reshape(u, nr, nz)
-        ∂tv = - sign.(phi) .* calc_Nd∇v(phi, cached, dr, dz;debug=false) #*scaled
+        ∂tv = - sign.(phi) .* calc_Nd∇v(phi, cached, dom;debug=false) #*scaled
         for cell in front_cells
             ∂tv[cell,:] .= 0 # Don't mess with cells on the front
         end
@@ -209,15 +212,16 @@ end
 
     
 """
-Uses global dr, dz
 Given total speed v0, field ϕ and location (ir, iz), compute normal vector (into Ω⁻) times velocity v0.
 """
-function compute_frontvel_1(v0, ϕ, i, j)
-    dr1 = 1/dr
-    dz1 = 1/dz
-    nx, ny = size(ϕ)
+function compute_frontvel_1(v0, ϕ, i, j, dom)
+    # nx, ny = size(ϕ)
+    nx = dom.nr
+    ny = dom.nz
+    dr1 = dom.dr1
+    dz1 = dom.dz1
     pcell = flipsign(ϕ[i,j], ϕ[i,j])
-    if pcell > 2dr || pcell > 2dz 
+    if pcell > 2dom.dr || pcell > 2dom.dz 
         @warn "Computed front velocity away from front: i=$i, j=$j, ϕ=$(ϕ[i,j])"
     end
     # At boundaries, if upwind not possible, clamp to 0
@@ -246,10 +250,10 @@ function compute_frontvel_1(v0, ϕ, i, j)
             
     if j == 1 # Bottom edge
         pcell = ϕ[i,j]
-        ∇ϕy = flipsign(min(flipsign((ϕ[i,j+1] - ϕ[i,j] )*dz1, pcell), 0),pcell) 
+        ∇ϕy = flipsign(min(flipsign((ϕ[i,j+1] - pcell )*dz1, pcell), 0),pcell) 
     elseif j == ny # Top edge
         pcell = ϕ[i,j]
-        ∇ϕy = flipsign(max(flipsign((ϕ[i,j] - ϕ[i,j-1] )*dz1, pcell), 0),pcell) 
+        ∇ϕy = flipsign(max(flipsign((pcell - ϕ[i,j-1] )*dz1, pcell), 0),pcell) 
     else # Bulk
         pcell = flipsign(ϕ[i,j], ϕ[i,j])
         ncell = flipsign(ϕ[i,j+1],ϕ[i,j])
@@ -274,14 +278,16 @@ Vx and Vy used to determine wind direction.
 At the boundaries, move downwind where necessary, so there is at least an approximation for the gradient.
 There are major performance gains to be had here--both in allocation and parallelization. TODO
 """
-function calc_Vd∇ϕ(ϕ, Vf, dx, dy, )
-    dx1 = 1/dx
-    dy1 = 1/dy
+function calc_Vd∇ϕ(ϕ, Vf, dom ; outside_B = 1)
+    dx1 = dom.dr1
+    dy1 = dom.dz1
     # i12 = 1/12
     # i23 = 2/3
     Vx = Vf[:,:,1]
     Vy = Vf[:,:,2]
-    nx, ny = size(ϕ)
+    # nx, ny = size(ϕ)
+    nx = dom.nr
+    ny = dom.nz
     ∇ϕx = similar(ϕ)
     ∇ϕy = similar(ϕ)
     Vd∇ϕ = similar(ϕ)
@@ -356,12 +362,14 @@ function calc_Vd∇ϕ(ϕ, Vf, dx, dy, )
     return Vd∇ϕ
 end
 
-" Uses global dr, dz"
-function advect_ϕ(ϕ, Vf, dt)
-    nr, nz = size(ϕ)
+function advect_ϕ(ϕ, Vf, dom, dt)
+    # nr, nz = size(ϕ)
+    @unpack nr, nz = dom
+    # nr = dom.nr
+    # nz = dom.nz
     function sub_rhs(u, p, t)
         ϕ = reshape(u, nr, nz)
-        ∂tϕ = -calc_Vd∇ϕ(ϕ, Vf, dr, dz)
+        ∂tϕ = -calc_Vd∇ϕ(ϕ, Vf, dom)
         du = reshape(∂tϕ, :)
         return du
     end
@@ -371,11 +379,11 @@ function advect_ϕ(ϕ, Vf, dt)
     Vr = Vf[:,:,1]
     Vz = Vf[:,:,1]
     if maximum(abs.(Vr)) == 0
-        subdt = CFL * minimum(@. dz / abs(Vz))
+        subdt = CFL * minimum(@. dom.dz / abs(Vz))
     elseif maximum(abs.(Vz)) == 0
-        subdt = CFL * minimum(@. dr / abs(Vr))
+        subdt = CFL * minimum(@. dom.dr / abs(Vr))
     else
-        subdt = CFL * minimum(@. dr / abs(Vr) + dz / abs(Vz))
+        subdt = CFL * minimum(@. dom.dr / abs(Vr) + dom.dz / abs(Vz))
     end
     prob = ODEProblem(sub_rhs, u0, tspan)
     sol = solve(prob, SSPRK43(), dt=subdt)
@@ -383,7 +391,7 @@ function advect_ϕ(ϕ, Vf, dt)
     # display(sol[end] .- u0)
     return reshape(sol[end], nr, nz)
 end
-function advect_ϕ!(ϕ, Vf, dt)
-    ϕ .= advect_ϕ(ϕ, Vf, dt)
+function advect_ϕ!(ϕ, Vf, dom, dt)
+    ϕ .= advect_ϕ(ϕ, Vf, dom. dt)
     return nothing
 end

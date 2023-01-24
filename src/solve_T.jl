@@ -1,5 +1,6 @@
 # Construct sparse array with rows, cols, vals format, then construct sparse matrir
-function solve_T(ϕ, params)
+function solve_T(ϕ, dom, params)
+    @unpack dr, dz, dr1, dz1, dr2, dz2, nr, nz, ntot = dom
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
     if minimum(ϕ) > 0
@@ -50,6 +51,7 @@ function solve_T(ϕ, params)
                 push!(vals, -0.5dr1); push!(cols, imx+2); push!(rows, imx) # E+ cell
 
                 rhs[imx] = 0.0
+                # No z component, to enforce BC
                 continue
             elseif ir == nr
                 # Constant flux BC
@@ -58,6 +60,7 @@ function solve_T(ϕ, params)
                 push!(vals,  1.5dr1); push!(cols, imx  ); push!(rows, imx) # P cell
 
                 rhs[imx] = Q_gl / k
+                # No z component, to enforce BC
                 continue
             end
             # z direction boundaries
@@ -69,6 +72,7 @@ function solve_T(ϕ, params)
 
                 rhs[imx] = -Q_sh / k
 
+                # No r component, to enforce BC
                 continue
             elseif iz == nz
                 # Adiabatic BC
@@ -77,17 +81,18 @@ function solve_T(ϕ, params)
                 push!(vals,  1.5dz1); push!(cols, imx  ); push!(rows, imx) # P cell
 
                 rhs[imx] = 0.0
+                # No r component, to enforce BC
                 continue
             end
 
 
             # Bulk Eq: Cylindrical laplacian, second order finite diffs, d2/dr2 + 1/r d/dr + d2/dz2
             if ir >= 2 && ir <= nr-1 && iz >= 2 && iz <= nr-1
-                push!(vals,         1.0dz2            ); push!(cols, imx-nr); push!(rows, imx) # S cell
-                push!(vals,  1.0dr2        - 0.5dr1*r1); push!(cols, imx- 1); push!(rows, imx) # W cell
-                push!(vals, -2.0dr2-2.0dz2            ); push!(cols, imx   ); push!(rows, imx) # P cell
-                push!(vals,  1.0dr2        + 0.5dr1*r1); push!(cols, imx+ 1); push!(rows, imx) # E cell
-                push!(vals,         1.0dz2            ); push!(cols, imx+nr); push!(rows, imx) # N cell
+                push!(vals,                     1.0dz2); push!(cols, imx-nr); push!(rows, imx) # S cell
+                push!(vals,  1.0dr2 - 0.5dr1*r1       ); push!(cols, imx- 1); push!(rows, imx) # W cell
+                push!(vals, -2.0dr2            -2.0dz2); push!(cols, imx   ); push!(rows, imx) # P cell
+                push!(vals,  1.0dr2 + 0.5dr1*r1       ); push!(cols, imx+ 1); push!(rows, imx) # E cell
+                push!(vals,                     1.0dz2); push!(cols, imx+nr); push!(rows, imx) # N cell
                 rhs[imx] = - Q_ck / k
             end
         end

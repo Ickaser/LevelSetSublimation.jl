@@ -4,22 +4,22 @@ This function is currently not treating the sharp interface carefully.
 Uses global dr, dz, rgrid, zgrid
 TODO
 """
-function compute_Qice(ϕ, params)
+function compute_Qice(ϕ, dom::Domain, params)
     @unpack Q_sh, Q_ic, Q_gl = params
 
     # Heat flux from shelf, at bottom of vial
     botϕ = ϕ[:,1]
-    botr = rgrid[botϕ .<=0]
-    botsurf = 2π * sum(botr) * dr # Should interpolate at edge.
+    botr = dom.rgrid[botϕ .<=0]
+    botsurf = 2π * sum(botr) * dom.dr # Should interpolate at edge.
     Qbot = botsurf * Q_sh
 
     # Heat flux from glass, at outer radius
     outϕ = ϕ[end,:]
-    outsurf = 2π * rmax * dz * sum(outϕ .<=0)
+    outsurf = 2π * dom.rmax * dom.dz * sum(outϕ .<=0)
     Qout = outsurf * Q_gl
 
     # Volumetric heat throughout ice: compute like bottom surface above
-    icevol = sum(reshape(rgrid, :, 1) .* (ϕ .<= 0) ) * dr * dz * 2π
+    icevol = sum(reshape(dom.rgrid, :, 1) .* (ϕ .<= 0) ) * dom.dr * dom.dz * 2π
     Qvol = icevol * Q_ic
     
     # println("Qbot = $Qbot, Qout = $Qout")
@@ -28,9 +28,9 @@ end
 
 
 "Geometric: compute cone-shaped sections of interface."
-function compute_icesurf(ϕ, params)
+function compute_icesurf(ϕ, dom::Domain)
     totsurf = 0.0
-    cl = levels(contours(rgrid,zgrid,ϕ, [0]))[1]
+    cl = levels(contours(dom.rgrid,dom.zgrid,ϕ, [0]))[1]
     for line in lines(cl)
         rs, zs = coordinates(line) # coordinates of this line segment
         for i in 1:length(rs)-1
@@ -69,8 +69,7 @@ end
 
 
 """ 
-Uses global dr, dz, nr, nz
-Takes T field, ϕ field, ir, iz, params (dict)
+Takes T field, ϕ field, ir, iz, dom, params (dict), Q_ice_per_surf=0.0
 Returns vr, vz.
 
 Compute r and z velocity components.
@@ -80,13 +79,16 @@ To get the normal vector, take "upwind" differences (but assume positive ϕ).
 (Since this isn't the RHS of a hyperbolic PDE, it's less important to avoid downwind?)
 First order (downwind/upwind) differences, currently, to simplify reasoning.
 """
-function compute_frontvel_withT(T, ϕ, ir, iz, params, Qice_per_surf=0.0; debug=false)
-    dr1 = 1/dr
-    dz1 = 1/dz
+function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_surf=nothing; debug=false)
+    # dr = dom.dr
+    # dz = dom.dz
+    # nr = dom.nr
+    # nz = dom.nz
+    @unpack dr, dz, nr, nz = dom
         
     # If Qice_surf (heat to ice divided by surface area) not supplied, compute it from shelf
     # This should be outside this function. TODO
-    if Qice_per_surf == 0
+    if Qice_per_surf === nothing
         Qice = compute_Qice(ϕ, params)
         icesurf = compute_icesurf(ϕ, params)
         Qice_per_surf = Qice / icesurf
@@ -184,16 +186,16 @@ function compute_frontvel_withT(T, ϕ, ir, iz, params, Qice_per_surf=0.0; debug=
     return -vtot * dϕr, -vtot * dϕz
 end
 
-function plot_frontvel(ϕ, T)
-    front_cells = findall(identify_Γ(ϕ) .& (ϕ .> 0))
+function plot_frontvel(ϕ, T, dom)
+    front_cells = findall(identify_Γ(ϕ, dom) .& (ϕ .> 0))
     xs = []
     ys = []
     vrs = []
     vzs = []
     for cell in front_cells
-        push!(xs, rgrid[Tuple(cell)[1]])
-        push!(ys, zgrid[Tuple(cell)[2]])
-        vr, vz = compute_frontvel_withT(T, ϕ, Tuple(cell)..., T_params)
+        push!(xs, dom.rgrid[Tuple(cell)[1]])
+        push!(ys, dom.zgrid[Tuple(cell)[2]])
+        vr, vz = compute_frontvel_withT(T, ϕ, Tuple(cell)..., dom, T_params)
         push!(vrs, vr)
         push!(vzs, vz)
         # push!(vrs, get_front_vr(T, ϕ, Tuple(cell)..., T_params) )
