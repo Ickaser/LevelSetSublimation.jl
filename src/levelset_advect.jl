@@ -2,7 +2,7 @@
 Upwind difference scheme, in the spirit of Godunov's scheme.
 At the boundaries, if "upwind" goes outside domain, clamp gradients to 0.
 """
-function calc_∇ϕ_2(ϕ, dom)
+function calc_∇ϕ_2(ϕ, dom::Domain)
     dx1 = dom.dr1
     dy1 = dom.dz1
     # nx, ny = size(ϕ)
@@ -12,7 +12,7 @@ function calc_∇ϕ_2(ϕ, dom)
     ∇ϕy = similar(ϕ)
     # outside_B = 1
     
-    for i in 1:nx, j in 1:ny
+    for j in 1:ny, i in 1:nx
         # At boundaries, if upwind is outside, clamp gradient to 0
         if i == 1  # Left edge
             pcell = ϕ[i,j]
@@ -66,7 +66,7 @@ end
 Upwind difference scheme for N ⋅ ∇ F , for each F ∈ v. Same finite differences for both N=∇ϕ and F.
 At the boundaries, if no upwind direction available, clamp derivatives to 0.
 """
-function calc_Nd∇v(ϕ, v, dom; debug=false)
+function calc_Nd∇v(ϕ, v, dom::Domain; debug=false)
     dx1 = dom.dr1
     dy1 = dom.dz1
     # nx, ny = size(ϕ)
@@ -76,7 +76,7 @@ function calc_Nd∇v(ϕ, v, dom; debug=false)
     dϕy = similar(ϕ)
     dvx = similar(v)
     dvy = similar(v)
-    for i in 1:nx, j in 1:ny
+    for j in 1:ny, i in 1:nx
         # s = sign(ϕ[i,j]) # Use to ensure wind direction points away from contour
         pcell = flipsign(ϕ[i,j], ϕ[i,j])
         # At boundaries, if upwind not possible, clamp to 0
@@ -161,7 +161,7 @@ end
 """
 Takes vecfunc, a vector function which takes (ir, iz) and returns desired vector
 """
-function vector_extrap_from_front(phi, Bf, vec_func, dom, dt=1.0, guess=nothing)
+function vector_extrap_from_front(phi, Bf, vec_func, dom::Domain, dt=1.0, guess=nothing)
     # nr, nz = size(phi)
     nr, nz = dom.nr, dom.nz
     B = findall(Bf)
@@ -214,7 +214,7 @@ end
 """
 Given total speed v0, field ϕ and location (ir, iz), compute normal vector (into Ω⁻) times velocity v0.
 """
-function compute_frontvel_1(v0, ϕ, i, j, dom)
+function compute_frontvel_1(v0, ϕ, i, j, dom::Domain)
     # nx, ny = size(ϕ)
     nx = dom.nr
     ny = dom.nz
@@ -362,7 +362,7 @@ function calc_Vd∇ϕ(ϕ, Vf, dom ; outside_B = 1)
     return Vd∇ϕ
 end
 
-function advect_ϕ(ϕ, Vf, dom, dt)
+function advect_ϕ(ϕ, Vf, dom::Domain, dt)
     # nr, nz = size(ϕ)
     @unpack nr, nz = dom
     # nr = dom.nr
@@ -391,7 +391,7 @@ function advect_ϕ(ϕ, Vf, dom, dt)
     # display(sol[end] .- u0)
     return reshape(sol[end], nr, nz)
 end
-function advect_ϕ!(ϕ, Vf, dom, dt)
-    ϕ .= advect_ϕ(ϕ, Vf, dom. dt)
+function advect_ϕ!(ϕ, Vf, dom::Domain, dt)
+    ϕ .= advect_ϕ(ϕ, Vf, dom, dt)
     return nothing
 end

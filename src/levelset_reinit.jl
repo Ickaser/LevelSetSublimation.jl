@@ -1,6 +1,6 @@
 # ---------------- Drawn from Hartmann, 2008, "Constrained reinitialization"
 
-function identify_Γ(ϕ, dom)
+function identify_Γ(ϕ, dom::Domain)
     locs = similar(ϕ, Bool)
     locs .= false
     sg = sign.(ϕ)
@@ -26,10 +26,12 @@ function identify_Γ(ϕ, dom)
     return locs
 end
 
-Γ_cells(ϕ, dom) = findall(identify_Γ(ϕ, dom))
+Γ_cells(ϕ, dom::Domain) = findall(identify_Γ(ϕ, dom))
 
-"Not used explicitly here, just useful for debugging."
-function calc_curvature(ϕ, dom)
+"""
+Not used explicitly at present, but useful for debugging.
+"""
+function calc_curvature(ϕ, dom::Domain)
     dx2 = dom.dr2
     dy2 = dom.dz2
     # dx2 = 1/dx^2
@@ -61,7 +63,7 @@ end
 Takes full level set field ϕ, list of front cells Γ, and domain.
 Computes curvature (or at least something proportional to it) at all locations Γ, then compares against sign of ϕ to assign to R or C
 """
-function identify_regions_RC(ϕ, Γ, dom)
+function identify_regions_RC(ϕ, Γ, dom::Domain)
     # dx2 = 1/dx^2
     # dy2 = 1/dy^2
     dx2 = dom.dr2
@@ -116,7 +118,7 @@ end
 #     end
 #     heat(arr)
 # end
-function plot_RC(ϕ, dom)
+function plot_RC(ϕ, dom::Domain)
     R, C = identify_regions_RC(ϕ, Γ_cells(ϕ), dom)
     Rr = [rgrid[Tuple(c)[1]] for c in R]
     Rz = [zgrid[Tuple(c)[2]] for c in R]
@@ -131,7 +133,7 @@ end
 Takes a field of bools identifying Γ, bandwidth in x cells, and bandwidth in y cells
 Returns a field of bools identifying B
 """
-function identify_B(Γc::Vector{CartesianIndex{2}}, dom)
+function identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain)
     # nx, ny = size(Γ_field)
     nx = dom.nr
     ny = dom.nz
@@ -146,17 +148,17 @@ function identify_B(Γc::Vector{CartesianIndex{2}}, dom)
     end
     return B
 end
-function identify_B(Γ_field::Matrix{Bool}, dom)
+function identify_B(Γ_field::Matrix{Bool}, dom::Domain)
     return identify_B(findall(Γ_field), dom)
 end
-function identify_B(ϕ::Matrix{Float64}, dom)
+function identify_B(ϕ::Matrix{Float64}, dom::Domain)
     return identify_B(Γ_cells(ϕ, dom), dom)
 end
 
 """
 Take a derivative in 𝑟 inside Γ, for computing signed distance function.
 """
-function calc_dϕdr_sdf(ϕ, Γf, i, j, dom)
+function calc_dϕdr_sdf(ϕ, Γf, i, j, dom::Domain)
     # Fancy conditions for near coalescence: ignored for now
     # TODO: fill these out for real. If A && B is true, jp = j, likewise for jm = j or something
     # A = true
@@ -179,7 +181,7 @@ end
 """
 Take a derivative in 𝑧 inside Γ, for computing signed distance function.
 """
-function calc_dϕdz_sdf(ϕ, Γf, i, j, dom)
+function calc_dϕdz_sdf(ϕ, Γf, i, j, dom::Domain)
     # Fancy conditions for near coalescence: ignored for now
     # TODO: fill these out for real. If A && B is true, jp = j, likewise for jm = j or something
     # A = true
@@ -199,7 +201,7 @@ function calc_dϕdz_sdf(ϕ, Γf, i, j, dom)
     return num/den
 end
 
-function calc_dij_R!(d, ϕ, Γf, R, dom)
+function calc_dij_R!(d, ϕ, Γf, R, dom::Domain)
     # nr, nz = size(ϕ)
     for c in R
         if ϕ[c]==0
@@ -211,7 +213,7 @@ function calc_dij_R!(d, ϕ, Γf, R, dom)
         d[c] = ϕ[c] / den
     end
 end
-function calc_dij!(d, ϕ, Γf, R, dom)
+function calc_dij!(d, ϕ, Γf, R, dom::Domain)
     # nr, nz = size(ϕ)
     for c in R
         if ϕ[c]==0
@@ -223,7 +225,7 @@ function calc_dij!(d, ϕ, Γf, R, dom)
         d[c] = ϕ[c] / den
     end
 end
-function calc_dij_C!(d, ϕ, C, dom)
+function calc_dij_C!(d, ϕ, C, dom::Domain)
     # nr, nz = size(ϕ)
     for c in C
         if(ϕ[c]==0)
@@ -271,7 +273,7 @@ function calc_dij_C!(d, ϕ, C, dom)
         end
     end
 end
-function calc_dtldij(d, ϕ, cell, dom)
+function calc_dtldij(d, ϕ, cell, dom::Domain)
     # nr, nz = size(ϕ)
     if(ϕ[cell]==0)
         return 0
@@ -318,7 +320,7 @@ function calc_dtldij(d, ϕ, cell, dom)
     end
     return ϕ[c] * num / den
 end
-function update_ϕ_in_Γ!(ϕl, dom)
+function update_ϕ_in_Γ!(ϕl, dom::Domain)
     Γfl = identify_Γ(ϕl, dom)
     Γl = findall(Γfl)
     RCl = identify_regions_RC(ϕl, Γl, dom)
@@ -359,7 +361,7 @@ LD(x) = LD(max(x, 0), min(x, 0))
 """
 Godunov's scheme for discretizing the norm of the gradient of ϕ.
 """
-function 𝒢(ϕ, i, j, dom) # p. 6830 of Hartmann, 10th page of PDF
+function 𝒢(ϕ, i, j, dom::Domain) # p. 6830 of Hartmann, 10th page of PDF
     # pcell = ϕ[i,j]
     if i == 1
         a = LD(0)
@@ -388,12 +390,12 @@ function 𝒢(ϕ, i, j, dom) # p. 6830 of Hartmann, 10th page of PDF
     end
 end
 
-function 𝒢_all(ϕ, dom)
+function 𝒢_all(ϕ, dom::Domain)
     return reshape([𝒢(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
 end
 
 
-function reinitialize_ϕ!(ϕ_mat, dom, tf=1.0; alg=BS3(), outside_B = 1)
+function reinitialize_ϕ!(ϕ_mat, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
 
     Γf = identify_Γ(ϕ_mat, dom)
     Γ = findall(Γf)
@@ -438,7 +440,7 @@ function reinitialize_ϕ!(ϕ_mat, dom, tf=1.0; alg=BS3(), outside_B = 1)
     # ϕ_rep = reshape(sol[end], nx, ny)
 end
 
-function reinitialize_ϕ(ϕ, dom, tf=1.0)
+function reinitialize_ϕ(ϕ, dom::Domain, tf=1.0)
     ϕ1 = copy(ϕ)
     reinitialize_ϕ!(ϕ1, dom, tf)
     ϕ1
