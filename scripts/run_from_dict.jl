@@ -126,6 +126,7 @@ list_configs = dict_list(all_configs)
 pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
 
 for conf in list_configs
+    # println(conf["dom"])
     produce_or_load(sim_from_dict, conf, datadir("sims", "testing"); pol_kwargs...)
 end
 # @tagsave

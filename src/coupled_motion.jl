@@ -1,7 +1,9 @@
 
 """
+    function compute_Qice(ϕ, dom::Domain, params)
+Compute the total heat input into frozen domain from vial boundaries
+
 This function is currently not treating the sharp interface carefully.
-Uses global dr, dz, rgrid, zgrid
 TODO
 """
 function compute_Qice(ϕ, dom::Domain, params)
@@ -69,10 +71,9 @@ end
 
 
 """ 
-Takes T field, ϕ field, ir, iz, dom, params (dict), Q_ice_per_surf=0.0
-Returns vr, vz.
+    compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_surf=nothing; debug=false)
+Return (vr, vz) for the corresponding (ir, iz) location
 
-Compute r and z velocity components.
 We must take temperature derivatives into positive ϕ, since in negative ϕ (frozen) we have constant T.
 This means that temperature is computed "downwind" in the level-set-reinitialization sense.
 To get the normal vector, take "upwind" differences (but assume positive ϕ).
@@ -84,7 +85,7 @@ function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_sur
     # dz = dom.dz
     # nr = dom.nr
     # nz = dom.nz
-    @unpack dr, dz, nr, nz = dom
+    @unpack dr, dz, dr1, dz1, nr, nz = dom
         
     # If Qice_surf (heat to ice divided by surface area) not supplied, compute it from shelf
     # This should be outside this function. TODO
@@ -186,7 +187,7 @@ function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_sur
     return -vtot * dϕr, -vtot * dϕz
 end
 
-function plot_frontvel(ϕ, T, dom)
+function plot_frontvel(ϕ, T, dom::Domain)
     front_cells = findall(identify_Γ(ϕ, dom) .& (ϕ .> 0))
     xs = []
     ys = []

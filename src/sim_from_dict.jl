@@ -32,7 +32,7 @@ is maintained.
 function take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
     # Precompute for velocity
     Qice = compute_Qice(ϕi, dom, params)
-    icesurf = compute_icesurf(ϕi, dom, params)
+    icesurf = compute_icesurf(ϕi, dom)
     Qice_surf = Qice / icesurf
     
     prop_t = 1.0 # Time step for reinitialization and similar steps
@@ -41,7 +41,7 @@ function take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
     #     prop_t *= 2
     # end
 
-    Bf = identify_B(ϕ, dom)
+    Bf = identify_B(ϕi, dom)
     
     frontfunc(ir, iz) = compute_frontvel_withT(Ti, ϕi, ir, iz, dom, params, Qice_surf)
     vf = vector_extrap_from_front(ϕi, Bf, frontfunc, dom, prop_t)
@@ -80,7 +80,7 @@ function sim_from_dict(fullconfig)
 
     # ------------------- Get simulation parameters
 
-    @unpack T_params, ϕ0, dom, simdt = fullconfig
+    @unpack T_params, ϕ0, dom, sim_dt = fullconfig
 
     # ---------------------- Set up first step
     reinitialize_ϕ!(ϕ0, dom, 1.0)
@@ -101,7 +101,7 @@ function sim_from_dict(fullconfig)
     # --------------- Run simulation
 
     for i in 1:maxsteps
-        Ti, ϕi = take_time_step(Ti, ϕi, T_params, sim_dt)
+        Ti, ϕi = take_time_step(Ti, ϕi, dom, T_params, sim_dt)
         # @time Ti, ϕi = multistep(3, 10.0, Ti, ϕi)
         
         # Store solutions for later plotting

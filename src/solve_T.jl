@@ -1,6 +1,8 @@
-# Construct sparse array with rows, cols, vals format, then construct sparse matrir
+# Construct sparse array with rows, cols, vals format, then construct sparse matrix
 function solve_T(ϕ, dom, params)
-    @unpack dr, dz, dr1, dz1, dr2, dz2, nr, nz, ntot = dom
+    @unpack dr, dz, dr1, dz1, dr2, dz2, 
+            rgrid, zgrid, nr, nz, ntot = dom
+    @unpack Q_gl, Q_sh, Q_ck, k, Tf = params
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
     if minimum(ϕ) > 0
@@ -9,12 +11,6 @@ function solve_T(ϕ, dom, params)
         ϕ[1,2] = -max(dr, dz)
         ϕ[2,1] = -max(dr, dz)
     end
-    # Q_gl = 10.0
-    # Q_sh = 2.0
-    # Q_ck = 100.0
-    # k = 1.0
-    # Tf = 250.0
-    @unpack Q_gl, Q_sh, Q_ck, k, Tf = params
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
     vals = Vector{Float64}(undef, 0)
