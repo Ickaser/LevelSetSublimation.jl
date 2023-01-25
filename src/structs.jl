@@ -99,3 +99,13 @@ function Domain(nr::I, nz::I, rmin::F, rmax::F, zmin::F, zmax::F,
 end
 
 
+struct LevelSet2DFields{F}
+    ϕ::Matrix{F}
+    outside_B::F
+    Γ::Vector{CartesianIndex{2}}
+    B::Vector{CartesianIndex{2}}
+    BnΓ::Vector{CartesianIndex{2}}
+    ΩnB::Vector{CartesianIndex{2}}
+    R::Vector{CartesianIndex{2}}
+    C::Vector{CartesianIndex{2}}
+end
