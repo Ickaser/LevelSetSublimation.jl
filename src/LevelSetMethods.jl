@@ -5,6 +5,10 @@ using DrWatson, Reexport
 @reexport using DifferentialEquations
 @reexport using Plots
 
+export contour
+
+const contour = Contour.contour
+
 # Export statements belong in each source file below.
 # export sim_from_dict, take_time_step, multistep 
 # export Domain
