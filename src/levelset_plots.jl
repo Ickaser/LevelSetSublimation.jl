@@ -1,3 +1,5 @@
+export heat, plot_contour, freshplot, markfront
+export plot_cylheat, plot_cylcont, arrows
 
 function heat(field, dom::Domain)
     return heatmap(dom.rgrid, dom.zgrid, field'; 

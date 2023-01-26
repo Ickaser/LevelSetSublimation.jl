@@ -1,3 +1,5 @@
+export compute_Qice, compute_icesurf
+export compute_frontvel_withT, plot_frontvel
 
 """
     function compute_Qice(ϕ, dom::Domain, params)
@@ -100,7 +102,7 @@ function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_sur
     pϕ = ϕ[ir, iz]
     
     if pϕ > 2dr || pϕ > 2dz || pϕ < -2dr || pϕ < -2dz
-        @warn "Looks like the checked cell is not close to the front..."
+        @warn "Computing front velocity for cell which may not be at front."
     end
 
     # Enforce BCs explicitly for boundary cells

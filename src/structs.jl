@@ -1,3 +1,4 @@
+export Domain, LevelSet2DFields
 
 struct Domain{I,F}
     nr::I

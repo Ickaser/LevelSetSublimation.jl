@@ -1,3 +1,6 @@
+export take_time_step, multistep
+export sim_from_dict
+
 # using DrWatson
 # @quickactivate
 # using SparseArrays
@@ -66,11 +69,11 @@ Return `Ti` and `ϕi` after `n` timesteps of `dt`.
 
 I anticipate this being useful mostly if the timestep for stability is small and don't need to store every time step.
 """
-function multistep(n, dt, T0, ϕ0, dom::Domain)
+function multistep(n, dt, T0, ϕ0, dom::Domain, T_params)
     Ti = copy(T0)
     ϕi = copy(ϕ0)
     for i in 1:n
-        Ti, ϕi = take_time_step(Ti, ϕi, T_params, dt)
+        Ti, ϕi = take_time_step(Ti, ϕi, dom, T_params, dt)
     end
     return Ti, ϕi
 end
@@ -80,7 +83,10 @@ function sim_from_dict(fullconfig)
 
     # ------------------- Get simulation parameters
 
-    @unpack T_params, ϕ0, dom, sim_dt = fullconfig
+    @unpack T_params, ϕ0type, dom, sim_dt = fullconfig
+
+    # println("Inside: dom.nr = $(dom.nr)")
+    ϕ0 = make_ϕ0(ϕ0type, dom)
 
     # ---------------------- Set up first step
     reinitialize_ϕ!(ϕ0, dom, 1.0)

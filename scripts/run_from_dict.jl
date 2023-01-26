@@ -1,35 +1,19 @@
 using DrWatson
-@quickactivate
-using SparseArrays
+@quickactivate :LevelSetMethods
 
-# using StaticArrays
-# using DomainSets
-using Contour
-# using Interpolations
-using Plots
-using DifferentialEquations
-
-
-include(srcdir("structs.jl"))
-include(srcdir("levelset_plots.jl"))
-include(srcdir("levelset_reinit.jl"))
-include(srcdir("levelset_advect.jl"))
-include(srcdir("solve_T.jl"))
-include(srcdir("coupled_motion.jl"))
-
-include(srcdir("sim_from_dict.jl"))
 
 # ------------------------------- Parameters to control
 
 # casename = "box_all"
+ϕ0type = :flat # Options: :flat, :cyl, :box, :cone, etc. See make_ϕ0
 
 sim_dt = 1.0
 
 # T_params = make_artificial_params()
 
-Q_gl = 1.0
+Q_gl = 0.0
 Q_sh = 1.0
-Q_ic = 1.0
+Q_ic = 0.0
 Q_ck = 0.0
 k = 1.0
 Tf = 250.0
@@ -53,8 +37,8 @@ println("Parameters loaded")
 # ----------------- Domain setup
 
 
-nr = 50
-nz = 45
+nr = 51
+nz = 51
 # rmin = 0.0
 # zmin = 0.0
 rmax = 1.0
@@ -70,35 +54,9 @@ dom = Domain(nr, nz, rmax, zmax)
 # dom = Domain(nr, nz, rmin, rmax, zmin, zmax, bwr, bwz)
 # dom = Domain(nr, nz, rmax, zmax, bwr, bwz)
 
+dom_fine = Domain(2*nr, 2*nz, rmax, zmax)
 
 # --------------------- Set up initial contour ϕ0
-
-# Flat on top
-ϕ0 = [ z - 0.999  for r in dom.rgrid, z in dom.zgrid]
-# initshape = "flat"
-
-# Cylinder
-# ϕ0 = [r - 0.999 for r in dom.rgrid, z in dom.zgrid]
-
-# Box
-# ϕ0 = [max(r,z)-0.999 for r in dom.rgrid, z in dom.zgrid]
-
-# Ellipse
-# ϕ0 = [r^2 + 2z^2 - 1.5 for r in dom.rgrid, z in dom.zgrid]
-# initshape = "ellipse"
-
-# Separated ellipse
-# ϕ0 = [1.5r^2 + 6(z-0.5)^2 - 1.0 for r in dom.rgrid, z in dom.zgrid]
-# initshape = "separated"
-
-# Circle
-# ϕ0 = [1.1r^2 + 1.1z^2 - 1.0 for r in dom.rgrid, z in dom.zgrid]
-# initshape = "circle"
-
-# Line
-# ϕ0 = [0.5r + z - 0.9 + 0.001 for r in dom.rgrid, z in dom.zgrid]
-# ϕ0 = [r + z - 1.5 + 0.001 for r in dom.rgrid, z in dom.zgrid]
-# initshape = "cone"
 
 # ----------------------- COmbine into a dict
 
@@ -112,10 +70,11 @@ dom = Domain(nr, nz, rmax, zmax)
 # To do multiple combinations, include a vector here
 all_configs = Dict(
     "T_params" => T_params,
-    # "sim_dt" => sim_dt,
-    "sim_dt" => [sim_dt*0.5, sim_dt],
-    "dom" => dom,
-    "ϕ0" => ϕ0,
+    "sim_dt" => sim_dt,
+    # "sim_dt" => [sim_dt*0.5, sim_dt],
+    # "dom" => dom,
+    "dom" => [dom, dom_fine],
+    "ϕ0type" => ϕ0type,
 )
 
 
@@ -125,8 +84,10 @@ list_configs = dict_list(all_configs)
 
 pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
 
+println("Starting $(length(list_configs)) simulations")
 for conf in list_configs
-    # println(conf["dom"])
-    produce_or_load(sim_from_dict, conf, datadir("sims", "testing"); pol_kwargs...)
+    # println(conf["dom"].nr)
+    @time produce_or_load(sim_from_dict, conf, datadir("sims", "testing"); pol_kwargs...)
 end
+println("Finished running (or loading) simulations")
 # @tagsave

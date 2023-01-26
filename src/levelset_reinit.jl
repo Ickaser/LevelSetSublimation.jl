@@ -1,3 +1,6 @@
+export identify_Γ, Γ_cells, identify_B, plot_RC, 𝒢_all
+export reinitialize_ϕ, reinitialize_ϕ!
+
 # ---------------- Drawn from Hartmann, 2008, "Constrained reinitialization"
 
 function identify_Γ(ϕ, dom::Domain)

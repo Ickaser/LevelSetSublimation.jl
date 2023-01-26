@@ -1,3 +1,4 @@
+export advect_ϕ, advect_ϕ!
 """
 Upwind difference scheme, in the spirit of Godunov's scheme.
 At the boundaries, if "upwind" goes outside domain, clamp gradients to 0.
@@ -60,7 +61,6 @@ function calc_∇ϕ_2(ϕ, dom::Domain)
     end
     return ∇ϕx, ∇ϕy
 end
-
 
 """
 Upwind difference scheme for N ⋅ ∇ F , for each F ∈ v. Same finite differences for both N=∇ϕ and F.
@@ -159,6 +159,112 @@ function calc_Nd∇v(ϕ, v, dom::Domain; debug=false)
 end
 
 """
+    calc_Nd∇v!(cache, ϕ, v, dom::Domain; debug=false)
+
+    Compute ∇ϕ ⋅ ∇F and store results in `cache`.
+
+Upwind difference scheme for N ⋅ ∇ F , for each F ∈ v. Same finite differences for both N=∇ϕ and F.
+At the boundaries, if no upwind direction available, clamp derivatives to 0.
+"""
+function calc_Nd∇v!(cache, ϕ, v, dom::Domain; debug=false)
+    dx1 = dom.dr1
+    dy1 = dom.dz1
+    # nx, ny = size(ϕ)
+    nx = dom.nr
+    ny = dom.nz
+    nvec = size(v, 3)
+    if size(cache) != size(v)
+        @error "ArgumentError: improper cache size for storing Nd∇v"
+    end
+    # dϕx = similar(ϕ)
+    # dϕy = similar(ϕ)
+    # dvx = similar(v)
+    # dvy = similar(v)
+    for j in 1:ny, i in 1:nx
+        # s = sign(ϕ[i,j]) # Use to ensure wind direction points away from contour
+        pcell = flipsign(ϕ[i,j], ϕ[i,j])
+        # At boundaries, if upwind not possible, clamp to 0
+        if i == 1  # Left edge
+            ecell = flipsign(ϕ[i+1,j],ϕ[i,j])
+            if ecell > pcell# + 0.5dx
+                dϕx = 0.0 # Clamp to 0 if  DOWNWIND
+                dvx = fill(0.0, nvec) # Clamp to 0 if  DOWNWIND
+            else
+                dϕx =   (ϕ[i+1,j]   - ϕ[i,j]   )*dx1 
+                dvx =@. (v[i+1,j,:] - v[i,j,:] )*dx1 
+            end
+        elseif i == nx # Right edge
+            wcell = flipsign(ϕ[i-1,j],ϕ[i,j])
+            if wcell > pcell# + 0.5dx
+                dϕx = 0.0 # Clamp to 0 if  DOWNWIND
+                dvx = fill(0.0, nvec) # Clamp to 0 if  DOWNWIND
+            else
+                dϕx =   (ϕ[i,j]   - ϕ[i-1,j]   )*dx1 
+                dvx =@. (v[i,j,:] - v[i-1,j,:] )*dx1 
+            end
+        else # Bulk
+            ecell = flipsign(ϕ[i+1,j],ϕ[i,j])
+            wcell = flipsign(ϕ[i-1,j],ϕ[i,j])
+            wup = wcell < pcell
+            eup = ecell < pcell
+            if wup && eup
+                dϕx =   (ϕ[i+1,j]   - ϕ[i-1,j]  )*0.5*dx1 # Second order central
+                dvx =@. (v[i+1,j,:] - v[i-1,j,:])*0.5*dx1 # Second order central
+            elseif wup
+                dϕx =   (ϕ[i,j]   - ϕ[i-1,j]   )*dx1 
+                dvx =@. (v[i,j,:] - v[i-1,j,:] )*dx1 
+            elseif eup 
+                dϕx =   (ϕ[i+1,j]   - ϕ[i,j]   )*dx1 
+                dvx =@. (v[i+1,j,:] - v[i,j,:] )*dx1 
+            else # No upwind direction: clamp to 0.
+                dϕx = 0.0
+                dvx = fill(0.0, nvec)
+            end
+        end
+                
+        if j == 1 # Bottom edge
+            ncell = flipsign(ϕ[i,j+1],ϕ[i,j])
+            if ncell > pcell# + 0.5dy
+                dϕy = 0.0 # Clamp to 0 if would be DOWNWIND
+                dvy = fill(0.0, nvec) # Clamp to 0 if would be DOWNWIND
+            else
+                dϕy =   (ϕ[i,j+1]   - ϕ[i,j]  )*dy1
+                dvy =@. (v[i,j+1,:] - v[i,j,:])*dy1
+            end
+        elseif j==ny # Top edge
+            scell = flipsign(ϕ[i,j-1],ϕ[i,j])
+            if scell > pcell# + 0.5dy
+                dϕy = 0.0 # Clamp to 0 if would be DOWNWIND
+                dvy = fill(0.0, nvec) # Clamp to 0 if would be DOWNWIND
+            else
+                dϕy =   (ϕ[i,j]   - ϕ[i,j-1]  )*dy1
+                dvy =@. (v[i,j,:] - v[i,j-1,:])*dy1
+            end
+        else # Bulk
+            ncell = flipsign(ϕ[i,j+1],ϕ[i,j])
+            scell = flipsign(ϕ[i,j-1],ϕ[i,j])
+            if scell < pcell && ncell < pcell 
+                dϕy = (ϕ[i,j+1]   - ϕ[i,j-1  ])*0.5*dy1 # Second order central
+                dvy = (v[i,j+1,:] - v[i,j-1,:])*0.5*dy1 # Second order central
+            elseif scell < pcell 
+                dϕy =   (ϕ[i,j]   - ϕ[i,j-1]  )*dy1 # Upwind downward
+                dvy =@. (v[i,j,:] - v[i,j-1,:])*dy1 # Upwind upward
+            elseif ncell < pcell
+                dϕy =   (ϕ[i,j+1]   - ϕ[i,j]  )*dy1 # Upwind upward
+                dvy =@. (v[i,j+1,:] - v[i,j,:])*dy1 # Upwind upward
+            else # No upwind direction: clamp to 0
+                dϕy = 0.0
+                dvy = fill(0.0, nvec)
+            end
+        end
+        cache[i,j,:] =@.  dϕx * dvx + dϕy * dvy
+    end
+    # Nd∇v = @. dϕx * dvx + dϕy * dvy
+    # return Nd∇v
+    nothing
+end
+
+"""
 Takes vecfunc, a vector function which takes (ir, iz) and returns desired vector
 """
 function vector_extrap_from_front(phi, Bf, vec_func, dom::Domain, dt=1.0, guess=nothing)
@@ -185,11 +291,17 @@ function vector_extrap_from_front(phi, Bf, vec_func, dom::Domain, dt=1.0, guess=
     # v0[ΩnB] .= 0.0
     
     cached = copy(v0)
+    # ndvcache = copy(v0)
     function sub_rhs(du, u, p, t)
         cached[B,:] .= reshape(u, :, nvec)
         # cached[B,:] .= u
         # F = reshape(u, nr, nz)
-        ∂tv = - sign.(phi) .* calc_Nd∇v(phi, cached, dom;debug=false) #*scaled
+
+        # Thought an in-place might be faster, but had *more* allocations.
+        # calc_Nd∇v!(ndvcache, phi, cached, dom;debug=false) #*scaled
+        # ∂tv = - sign.(phi) .* ndvcache
+        ∂tv = - sign.(phi) .* calc_Nd∇v( phi, cached, dom;debug=false) #*scaled
+
         for cell in front_cells
             ∂tv[cell,:] .= 0 # Don't mess with cells on the front
         end
