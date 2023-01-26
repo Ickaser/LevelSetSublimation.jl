@@ -7,7 +7,8 @@ function heat(field, dom::Domain)
                      aspect_ratio=:equal)
 end
 function plot_contour(phi, dom::Domain; lab="", c=:black)
-    cl = levels(contour(dom.rgrid,dom.zgrid,phi, 0.0))
+    # cl = levels(contours(dom.rgrid,dom.zgrid,phi, [0.0]))[1]
+    cl = contour(dom.rgrid,dom.zgrid,phi, 0.0)
     for seg in lines(cl)
         xs, ys = coordinates(seg) # coordinates of this line segment
         plot!(xs, ys, color=c, label=lab) 
@@ -22,7 +23,8 @@ function plot_cylheat(T, dom::Domain)
     plot!(xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
 end
 function plot_cylcont(phi, dom::Domain; lab="", c=:black)
-    cl = levels(contour(dom.rgrid,dom.zgrid,phi, 0.0))
+    # cl = levels(contours(dom.rgrid,dom.zgrid,phi, [0.0]))[1]
+    cl = contour(dom.rgrid,dom.zgrid,phi, 0.0)
     for seg in lines(cl)
         xs, ys = coordinates(seg) # coordinates of this line segment
         plot!(xs, ys, color=c, label=lab) 

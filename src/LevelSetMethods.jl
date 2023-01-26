@@ -22,6 +22,7 @@ include(srcdir("solve_T.jl"))
 include(srcdir("coupled_motion.jl"))
 include(srcdir("sim_setup.jl"))
 include(srcdir("sim_from_dict.jl"))
+include(srcdir("plot_sim_results.jl"))
 
 
 

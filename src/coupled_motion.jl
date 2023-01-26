@@ -34,7 +34,8 @@ end
 "Geometric: compute cone-shaped sections of interface."
 function compute_icesurf(ϕ, dom::Domain)
     totsurf = 0.0
-    cl = levels(contour(dom.rgrid,dom.zgrid,ϕ, 0))[1]
+    # cl = levels(contours(dom.rgrid,dom.zgrid,ϕ, 0))[1]
+    cl = contour(dom.rgrid,dom.zgrid,ϕ, 0)
     for line in lines(cl)
         rs, zs = coordinates(line) # coordinates of this line segment
         for i in 1:length(rs)-1

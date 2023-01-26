@@ -1,5 +1,6 @@
-using DrWatson
-@quickactivate :LevelSetMethods
+"Assume that DrWatson is already imported and the LevelSetMethods project activated"
+# using DrWatson
+# @quickactivate :LevelSetMethods
 
 
 # ------------------------------- Parameters to control
@@ -60,14 +61,7 @@ dom_fine = Domain(2*nr, 2*nz, rmax, zmax)
 
 # ----------------------- COmbine into a dict
 
-# one_config = Dict(
-#     "T_params" => T_params,
-#     "sim_dt" => sim_dt,
-#     "dom" => dom,
-#     "ϕ0" => ϕ0,
-# )
-
-# To do multiple combinations, include a vector here
+# To do multiple combinations, include a vector here, per DrWatson
 all_configs = Dict(
     "T_params" => T_params,
     "sim_dt" => sim_dt,
@@ -87,7 +81,16 @@ pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
 println("Starting $(length(list_configs)) simulations")
 for conf in list_configs
     # println(conf["dom"].nr)
-    @time produce_or_load(sim_from_dict, conf, datadir("sims", "testing"); pol_kwargs...)
+    @time simres, simdatfile = produce_or_load(sim_from_dict, conf, datadir("sims", "testing"); pol_kwargs...)
+
+    # display(simres)
+    casename = "sim_$(hash(conf))"
+    sumplot = summaryplot(simres, conf)
+    savefig(plotsdir("summary_"*casename*".svg"))
+    resultsanim(simres, conf, casename)
+
 end
 println("Finished running (or loading) simulations")
 # @tagsave
+
+# println
