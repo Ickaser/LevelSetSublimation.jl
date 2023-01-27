@@ -93,8 +93,8 @@ function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_sur
     # If Qice_surf (heat to ice divided by surface area) not supplied, compute it from shelf
     # This should be outside this function. TODO
     if Qice_per_surf === nothing
-        Qice = compute_Qice(ϕ, params)
-        icesurf = compute_icesurf(ϕ, params)
+        Qice = compute_Qice(ϕ, dom, params)
+        icesurf = compute_icesurf(ϕ, dom)
         Qice_per_surf = Qice / icesurf
     end
     

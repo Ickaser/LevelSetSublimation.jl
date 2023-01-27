@@ -10,11 +10,11 @@
 
 sim_dt = 1.0
 
-# T_params = make_artificial_params()
+T_params = make_artificial_params()
 
-Q_gl = 0.0
+Q_gl = 2.0
 Q_sh = 1.0
-Q_ic = 0.0
+Q_ic = 1.0
 Q_ck = 0.0
 k = 1.0
 Tf = 250.0
@@ -30,6 +30,7 @@ Tf = 250.0
 # end
 # Rw = 8.3145 / .018 # J/molK * mol/kg
 # calc_ρvap(T) = calc_psub(T)/Rw/T
+
 T_params = Dict{Symbol, Any}()
 @pack! T_params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf
 
@@ -87,6 +88,7 @@ for conf in list_configs
     casename = "sim_$(hash(conf))"
     sumplot = summaryplot(simres, conf)
     savefig(plotsdir("summary_"*casename*".svg"))
+    savefig(plotsdir("summary_"*casename*".png"))
     resultsanim(simres, conf, casename)
 
 end

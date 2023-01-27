@@ -13,7 +13,7 @@ function summaryplot(simresults::Dict, simconfig)
     nt = size(full_T, 1) 
     plots = []
     if nt >= 6
-        frames = round.(Int, range(1, nt, length=6))
+        frames = round.(Int, range(1, nt-1, length=6))
     else
         frames = 1:nt
     end
