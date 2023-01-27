@@ -1,4 +1,5 @@
 export summaryplot, resultsanim
+export get_subf_z, get_subf_r
 
 """
     summaryplot(simresults::Dict)
@@ -70,5 +71,51 @@ function resultsanim(simresults, simconfig, casename)
     gif(anim, plotsdir("$(casename)_evol.gif"), fps=ceil(Int, nt/seconds_length))
 end
 
+"""
+    get_subf_z(ϕ, dom)
+
+Compute the average 𝑧 position of the sublimation front.
+"""
 function get_subf_z(ϕ, dom)
+    cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
+    ls = lines(cl)
+    if length(ls) == 0 # No sublimation front: average z is 0
+        zbar = 0
+    elseif length(ls) > 1
+        @warn "Interface has more than one contiguous component"
+        zbar = 0
+        for line in ls
+            rs, zs = coordinates(line)
+            zbar += sum(zs) / length(zs)
+        end
+    else
+        rs, zs = coordinates(ls[1])
+        zbar = sum(zs) / length(zs)
+    end
+    zbar
 end
+"""
+    get_subf_r(ϕ, dom)
+
+Compute the average 𝓇 position of the sublimation front.
+"""
+function get_subf_r(ϕ, dom)
+    cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
+    ls = lines(cl)
+    if length(ls) == 0 # No sublimation front: average z is 0
+        rbar = 0
+    elseif length(ls) > 1
+        @warn "Interface has more than one contiguous component"
+        rbar = 0
+        for line in ls
+            rs, zs = coordinates(line)
+            rbar += sum(rs) / length(rs)
+        end
+    else
+        line = ls[1]
+        rs, zs = coordinates(line)
+        rbar = sum(rs) / length(rs)
+    end
+    rbar
+end
+
