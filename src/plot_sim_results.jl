@@ -68,7 +68,8 @@ function resultsanim(simresults, simconfig, casename)
 
     # fps = ceil(Int, nt/2)  # nt/x makes x-second long animation
     seconds_length = 3
-    gif(anim, plotsdir("$(casename)_evol.gif"), fps=ceil(Int, nt/seconds_length))
+    fname = "$(casename)_$(hash(simconfig))_evol.gif"
+    gif(anim, plotsdir(fname), fps=ceil(Int, nt/seconds_length))
 end
 
 """
