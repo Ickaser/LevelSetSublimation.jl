@@ -2,7 +2,7 @@ using DrWatson
 @quickactivate
 using SparseArrays
 
-using StaticArrays
+# using StaticArrays
 # using DomainSets
 using Contour
 # using Interpolations
@@ -10,6 +10,7 @@ using Plots
 using DifferentialEquations
 
 
+include(srcdir("structs.jl"))
 include(srcdir("levelset_plots.jl"))
 include(srcdir("levelset_reinit.jl"))
 include(srcdir("levelset_advect.jl"))
@@ -17,30 +18,12 @@ include(srcdir("solve_T.jl"))
 include(srcdir("coupled_motion.jl"))
 
 println("Packages and code loaded")
-# ----------------- Domain setup
-
-nr = 50
-nz = 45
-ntot = nr*nz
-rmin = 0.0
-zmin = 0.0
-rmax = 1.0
-zmax = 1.0
-rgrid = range(rmin, rmax, length=nr)
-zgrid = range(rmin, rmax, length=nz)
-dr = rgrid[2] - rgrid[1]
-dz = zgrid[2] - zgrid[1]
-dr1 = 1/dr
-dz1 = 1/dz
-dr2 = 1/dr/dr
-dz2 = 1/dz/dz
-
-bwr = 5
-bwz = 4
 
 # --------------------- Get thermal parameters
 
 # T_params = make_artificial_params()
+
+casename = "box_all"
 
 Q_gl = 1.0
 Q_sh = 1.0
@@ -67,74 +50,97 @@ T_params = Dict{Symbol, Any}()
 
 println("Parameters loaded")
 
-casename = "box_all"
+# ----------------- Domain setup
 
-# --------------------- Choose ϕ0
 
-# Ellipse
-# ϕ0 = [r^2 + 2z^2 - 1.5 for r in rgrid, z in zgrid]
-# initshape = "ellipse"
+nr = 50
+nz = 45
+# rmin = 0.0
+# zmin = 0.0
+rmax = 1.0
+zmax = 1.0
 
-# Separated ellipse
-# ϕ0 = [1.5r^2 + 6(z-0.5)^2 - 1.0 for r in rgrid, z in zgrid]
-# initshape = "separated"
+# Default "bandwidth" size: 20% of domain size, extending on both sides of front
+# This default is built into Domain constructor
+# bwr = ceil(Int, 0.2*(rmax-rmin)/dr)
+# bwz = ceil(Int, 0.2*(zmax-zmin)/dz)
 
-# Circle
-# ϕ0 = [1.1r^2 + 1.1z^2 - 1.0 for r in rgrid, z in zgrid]
-# initshape = "circle"
+dom = Domain(nr, nz, rmax, zmax)
+# dom = Domain(nr, nz, rmin, rmax, zmin, zmax)
+# dom = Domain(nr, nz, rmin, rmax, zmin, zmax, bwr, bwz)
+# dom = Domain(nr, nz, rmax, zmax, bwr, bwz)
 
-# Box
-# ϕ0 = [-1.0 for r in rgrid, z in zgrid]
-# ϕ0[end,:] .= 1.0
-# ϕ0[:,end] .= 1.0
-# initshape = "box"
 
-# Line
-# ϕ0 = [0.5r + z - 0.9 + 0.001 for r in rgrid, z in zgrid]
-# ϕ0 = [r + z - 1.5 + 0.001 for r in rgrid, z in zgrid]
-# initshape = "cone"
+# --------------------- Set up initial contour ϕ0
 
 # Flat on top
-# ϕ0 = [ z - 0.999  for r in rgrid, z in zgrid]
+# ϕ0 = [ z - 0.999  for r in dom.rgrid, z in dom.zgrid]
 # initshape = "flat"
 
 # Cylinder
-# ϕ0 = [r - 0.999 for r in rgrid, z in zgrid]
+# ϕ0 = [r - 0.999 for r in dom.rgrid, z in dom.zgrid]
 
 # Box
-ϕ0 = [max(r,z)-0.99 for r in rgrid, z in zgrid]
+# ϕ0 = [max(r,z)-0.999 for r in dom.rgrid, z in dom.zgrid]
+
+# Ellipse
+# ϕ0 = [r^2 + 2z^2 - 1.5 for r in dom.rgrid, z in dom.zgrid]
+# initshape = "ellipse"
+
+# Separated ellipse
+# ϕ0 = [1.5r^2 + 6(z-0.5)^2 - 1.0 for r in dom.rgrid, z in dom.zgrid]
+# initshape = "separated"
+
+# Circle
+# ϕ0 = [1.1r^2 + 1.1z^2 - 1.0 for r in dom.rgrid, z in dom.zgrid]
+# initshape = "circle"
+
+# Line
+# ϕ0 = [0.5r + z - 0.9 + 0.001 for r in dom.rgrid, z in dom.zgrid]
+# ϕ0 = [r + z - 1.5 + 0.001 for r in dom.rgrid, z in dom.zgrid]
+# initshape = "cone"
+
 
 # ----------------- Plot ϕ0
 
-p = heat(ϕ0)
-markfront(ϕ0)
-plot_contour(ϕ0, c=:white)
-plot_contour(reinitialize_ϕ(ϕ0, 0.1), c=:black)
+# p = heat(ϕ0, dom)
+# markfront(ϕ0, dom)
+# plot_contour(ϕ0,dom, c=:white)
+# plot_contour(reinitialize_ϕ(ϕ0, dom, 1.0), dom, c=:black)
 # display(p)
 
 println("ϕ0 set up")
 
 # ------------- Set up for simulation
 
-" Stuff everything in a global function. May need to rethink this "
-function take_time_step(Ti, ϕi, params, dt=1.0)
+"""
+    take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
+
+Return ``T_{i+1}, ϕ_{i+1}``, given ``T_i, ϕ_i``.
+
+A fair amount of logic happens inside here. For example, the CFL condition is enforced 
+inside each of the separate time integrations. However, under high heating, it is
+possible to advect the interface past the edge of the band where the level set function 
+is maintained.
+"""
+function take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
     # Precompute for velocity
-    Qice = compute_Qice(ϕi, params)
-    icesurf = compute_icesurf(ϕi, params)
+    Qice = compute_Qice(ϕi, dom, params)
+    icesurf = compute_icesurf(ϕi, dom, params)
     Qice_surf = Qice / icesurf
     
-    prop_t = 1.0
+    prop_t = 1.0 # Time step for reinitialization and similar steps
     # # if minimum(ϕip1) < -min(5dr, 5dz) # When not much ice left, repair function needs more time
     # if minimum(ϕi) < -min(5dr, 5dz) || maximum(ϕi) > max(20dr, 20dz) # When contour is far from some regions, needs more time
     #     prop_t *= 2
     # end
 
-    Bf = identify_B(identify_Γ(ϕi), bwr, bwz)
+    Bf = identify_B(ϕ, dom)
     
-    frontfunc(ir, iz) = compute_frontvel_withT(Ti, ϕi, ir, iz, params, Qice_surf)
-    vf = vector_extrap_from_front(ϕi, Bf, frontfunc, prop_t)
+    frontfunc(ir, iz) = compute_frontvel_withT(Ti, ϕi, ir, iz, dom, params, Qice_surf)
+    vf = vector_extrap_from_front(ϕi, Bf, frontfunc, dom, prop_t)
     
-    ϕip1 = advect_ϕ(ϕi, vf, dt)
+    ϕip1 = advect_ϕ(ϕi, vf, dom, dt)
     
     # repair_t = 1.0
     # # if minimum(ϕip1) < -min(5dr, 5dz) # When not much ice left, repair function needs more time
@@ -142,12 +148,19 @@ function take_time_step(Ti, ϕi, params, dt=1.0)
     #     repair_t *= 2
     # end
     
-    reinitialize_ϕ!(ϕip1, prop_t)
+    reinitialize_ϕ!(ϕip1, dom, prop_t)
     
-    Tip1 = solve_T(ϕip1, params)
+    Tip1 = solve_T(ϕip1, dom, params)
     return Tip1, ϕip1
 end
-function multistep(n, dt, T0, ϕ0)
+"""
+    multistep(n, dt, T0, ϕ0, dom::Domain)
+
+Return `Ti` and `ϕi` after `n` timesteps of `dt`.
+
+I anticipate this being useful mostly if the timestep for stability is small and don't need to store every time step.
+"""
+function multistep(n, dt, T0, ϕ0, dom::Domain)
     Ti = copy(T0)
     ϕi = copy(ϕ0)
     for i in 1:n
@@ -156,13 +169,14 @@ function multistep(n, dt, T0, ϕ0)
     return Ti, ϕi
 end
 
-reinitialize_ϕ!(ϕ0, 1.0)
-T0 = solve_T(ϕ0, T_params)
+# ----------- Actual start of a simulation
+reinitialize_ϕ!(ϕ0, dom, 1.0)
+T0 = solve_T(ϕ0, dom, T_params)
 
 maxsteps = 100
 
-full_T = fill(1.0, (maxsteps+1, nr, nz))
-full_ϕ = fill(1.0, (maxsteps+1, nr, nz))
+full_T = fill(1.0, (maxsteps+1, dom.nr, dom.nz))
+full_ϕ = fill(1.0, (maxsteps+1, dom.nr, dom.nz))
 plots = []
 Ti = copy(T0)
 ϕi = copy(ϕ0)
@@ -193,6 +207,8 @@ for i in 1:maxsteps
     end
 end
 
+println("Simulation finished")
+
 # ------------------- Plot results
 
 nt = size(full_T, 1) 
@@ -206,8 +222,8 @@ end
 for f in frames
     # Default: plot heat
     local p = plot(aspect_ratio=:equal)
-    plot_cylheat(full_T[f,:,:])
-    plot_cylcont(full_ϕ[f,:,:], c=:white)
+    plot_cylheat(full_T[f,:,:], dom)
+    plot_cylcont(full_ϕ[f,:,:], dom, c=:white)
     plot!(title="timestep=$(f-1)")
     
     # Debug: plot heat and level set
@@ -233,6 +249,8 @@ bigplot = plot(plots..., size=(500*2, 200*3), layout=(3,2))
 savefig(plotsdir("$(casename)_evolution.svg"))
 display(bigplot)
 
+println("Summary plot finished")
+
 freshplot()
 plot!(size=(800,500))
 anim = @animate for i ∈ 1:nt
@@ -241,4 +259,9 @@ anim = @animate for i ∈ 1:nt
     plot_cylheat(full_T[i,:,:])
     plot_cylcont(full_ϕ[i,:,:])
 end
+
+fps = ceil(Int, nt/2)  # nt/x makes x-second long animation
+gif(anim, plotsdir("$(casename)_evol.gif"), fps=fps)
+
+println("Animation generated")
 # println(full_T[end,:,:])
