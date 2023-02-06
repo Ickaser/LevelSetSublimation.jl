@@ -1,3 +1,6 @@
+# ----------- Manually excluded files
+/scripts/run_from_dict.jl
+#
 ################################################################################
 #                          DrWatson Project Structure                          #
 ################################################################################
@@ -87,7 +90,7 @@ Backup of *.doc*
 # these rules will exclude image files for figures, et cetera...
 # *.ps
 # *.eps
-# *.pdf
+*.pdf
 
 ## Generated if empty string given at "Please type another file name for output:"
 .pdf
