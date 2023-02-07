@@ -1,4 +1,4 @@
-module LevelSetMethods
+module LevelSetSublimation
 
 using DrWatson, Reexport
 @reexport using SparseArrays, Contour

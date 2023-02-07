@@ -1,5 +1,4 @@
 # ----------- Manually excluded files
-/scripts/run_from_dict.jl
 #
 ################################################################################
 #                          DrWatson Project Structure                          #
@@ -12,6 +11,8 @@ plots
 notebooks
 _research
 .vscode
+
+/scripts/run_from_dict.jl
 
 ################################################################################
 #                                    Julia                                     #
