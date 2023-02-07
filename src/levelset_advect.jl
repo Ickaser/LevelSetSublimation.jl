@@ -154,7 +154,7 @@ function calc_Nd∇v(ϕ, v, dom::Domain; debug=false)
             end
         end
     end
-    Nd∇v = @. dϕx * dvx + dϕy * dvy
+    @. Nd∇v = dϕx * dvx + dϕy * dvy
     return Nd∇v
 end
 

@@ -122,7 +122,7 @@ end
 #     heat(arr)
 # end
 function plot_RC(ϕ, dom::Domain)
-    R, C = identify_regions_RC(ϕ, Γ_cells(ϕ), dom)
+    R, C = identify_regions_RC(ϕ, Γ_cells(ϕ, dom), dom)
     Rr = [rgrid[Tuple(c)[1]] for c in R]
     Rz = [zgrid[Tuple(c)[2]] for c in R]
     Cr = [rgrid[Tuple(c)[1]] for c in C]
