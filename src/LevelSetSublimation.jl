@@ -1,4 +1,4 @@
-module LevelSetMethods
+module LevelSetSublimation
 
 using DrWatson, Reexport
 @reexport using SparseArrays, Contour
@@ -26,4 +26,4 @@ include(srcdir("plot_sim_results.jl"))
 
 
 
-end # module LevelSetMethods
+end # module LevelSetSublimation

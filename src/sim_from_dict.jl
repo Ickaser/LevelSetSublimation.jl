@@ -79,6 +79,22 @@ function multistep(n, dt, T0, ϕ0, dom::Domain, T_params)
 end
 
 # ----------- Actual start of a simulation
+"""
+    sim_from_dict(fullconfig)
+
+Run a simulation from `fullconfig`, returning T and ϕ at each time step.
+
+Implicitly, have maximum number of time steps of 1000.
+`fullconfig` should have the following fields:
+- `ϕ0type`, types listed for [`make_ϕ0`](@ref)
+- `dom`, an instance of [`Domain`](@ref)
+- `sim_dt`, simulation time step (used in advection only)
+- `T_params`, which in turn has fields
+    - `Tf`: ice temperature
+    - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
+    - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
+    - `k`: thermal conductivity of cake
+"""
 function sim_from_dict(fullconfig)
 
     # ------------------- Get simulation parameters
