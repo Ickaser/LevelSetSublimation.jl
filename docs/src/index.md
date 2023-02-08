@@ -1,9 +1,22 @@
 # LevelSetSublimation Documentation
 
-```@meta
-CurrentModule = LevelSetSublimation
 
+# Overall Simulation
+```@docs
+take_time_step
+multistep
+sim_from_dict
+```
+
+# Heat Equation Solution
 ```@docs
 solve_T
-take_time_step
+make_decent_params
+make_artificial_params
+```
+
+# Domain Setup
+```@docs
+Domain
+make_ϕ0
 ```

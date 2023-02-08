@@ -1,5 +1,5 @@
 using DrWatson, Test
-@quickactivate "LevelSetMethods"
+@quickactivate "LevelSetSublimation"
 
 # Here you include files using `srcdir`
 # include(srcdir("file.jl"))
@@ -9,7 +9,7 @@ include(srcdir())
 println("Starting tests")
 ti = time()
 
-@testset "LevelSetMethods tests" begin
+@testset "LevelSetSublimation tests" begin
     @test 1 == 1
 end
 

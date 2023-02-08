@@ -1,9 +1,9 @@
-# LevelSetMethods
+# LevelSetSublimation
 
 This code base is using the [Julia Language](https://julialang.org/) and
 [DrWatson](https://juliadynamics.github.io/DrWatson.jl/stable/)
 to make a reproducible scientific project named
-> LevelSetMethods
+> LevelSetSublimation
 
 To (locally) reproduce this project, do the following:
 
@@ -23,6 +23,15 @@ everything should work out of the box, including correctly finding local paths.
 You may notice that most scripts start with the commands:
 ```julia
 using DrWatson
-@quickactivate "LevelSetMethods"
+@quickactivate :LevelSetSublimation
 ```
-which auto-activate the project and enable local path handling from DrWatson.
+which auto-activates the project and enables local path handling from DrWatson.
+
+# Documentation
+The documentation is set up to run with Documenter.jl , which is where you can find more extensive instructions on how to navigate it...
+
+but a nice way to set up a website-like interface (running from your computer) is to follow these steps: 
+1. navigate to `LevelSetSublimation/docs`, 
+2. run `$ julia make.jl` in your terminal,
+3. navigate to `LevelSetSublimation/docs/build`,
+4. run `$ python3 -m http.server --bind localhost`

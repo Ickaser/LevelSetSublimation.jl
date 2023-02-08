@@ -1,5 +1,5 @@
 using DrWatson
-@quickactivate "LevelSetMethods"
+@quickactivate :LevelSetSublimation
 using Documenter
 
 makedocs(

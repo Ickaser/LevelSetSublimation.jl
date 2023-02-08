@@ -2,7 +2,10 @@ export solve_T
 
 
 # Construct sparse array with rows, cols, vals format, then construct sparse matrix
-function solve_T(ϕ, dom, params)
+"""
+    solve_T(ϕ, dom::Domain, params)
+"""
+function solve_T(ϕ, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
     @unpack Q_gl, Q_sh, Q_ck, k, Tf = params

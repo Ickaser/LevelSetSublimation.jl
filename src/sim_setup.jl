@@ -8,14 +8,13 @@ Return a ϕ0 with appropriate size for the passed Domain.
 
 Parameter ϵ is added to ensure that interface is within domain.
 Currently allowed setups:
-:top, :flat -- interface at zmax - ϵ
-:rad, :cyl  -- interface at rmax - ϵ
-:box        -- interface at both zmax-ϵ and rmax-ϵ
-
-:cone       -- interface a line decreasing in r
-:ell_bub    -- ellipse in center of vial, separated from boundaries
-:circ       -- circle at r=0, z=0 
-:circ_bub   -- circle at r=0, z=0.5zmax, very small radius
+- `:top`, `:flat` -- interface at zmax - ϵ
+- `:rad`, `:cyl`  -- interface at rmax - ϵ
+- `:box`          -- interface at both zmax-ϵ and rmax-ϵ
+- `:cone`         -- interface a line decreasing in r
+- `:ell_bub `     -- ellipse in center of vial, separated from boundaries
+- `:circ `        -- circle at r=0, z=0 
+- `:circ_bub `    -- circle at r=0, z=0.5zmax, very small radius
 """
 function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     if ϕtype == :top || ϕtype == :flat
@@ -26,7 +25,6 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
         ϕ0 = [max(r-dom.rmax, z-dom.zmax) + ϵ 
                 for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :ell_bub
-# Separated ellipse
         @unpack rmax, zmax = dom
         ϕ0 = [1.5rmax * r^2 + 6zmax*(z-0.5zmax)^2 - 1.0 
                 for r in dom.rgrid, z in dom.zgrid]
@@ -42,6 +40,13 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     return ϕ0
 end
 
+"""
+    make_decent_params()
+
+Return a dictionary of `T_params`, with values corresponding to SI units
+
+In theory, gives physical values of parameters. Haven't actually done that, though.
+"""
 function make_decent_params()
     Q_gl = 2.0  # heat flux from glass
     Q_sh = 1.0  # heat flux from shelf
@@ -51,6 +56,7 @@ function make_decent_params()
     Tf = 250.0  # constant ice temperature
     ΔH = 10.0   # heat of sublimation
     # ΔHsub = 678.0 # u"cal/g"
+    # ΔHsub = 2.837e9 # u"J/kg"
     ρf = 920    # density of ice
     T_params = Dict{Symbol, Any}()
     " Takes T as Kelvin, returns P in Pa"
@@ -67,6 +73,13 @@ function make_decent_params()
     return T_params
 end
         
+"""
+    make_artificial_params()
+
+Return a dictionary of `T_params`, with artificially chosen values.
+
+For convenience in testing code.
+"""
 function make_artificial_params()
             
     # Very artificial parameters
