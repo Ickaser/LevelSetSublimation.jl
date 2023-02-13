@@ -1,7 +1,5 @@
 # LevelSetSublimation Documentation
 
-```@contents
-```
 
 # Overall Simulation
 
