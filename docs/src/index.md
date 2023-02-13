@@ -1,12 +1,11 @@
 # LevelSetSublimation Documentation
 
+```@contents
+```
 
 # Overall Simulation
-```@docs
-take_time_step
-multistep
-sim_from_dict
-```
+
+See section at left.
 
 # Heat Equation Solution
 ```@docs
@@ -20,3 +19,25 @@ make_artificial_params
 Domain
 make_ϕ0
 ```
+
+
+# Plotting Functions
+```@docs
+plot_cylheat
+plot_cylcont
+freshplot
+heat
+plot_contour
+arrows
+markfront
+```
+
+# Coupling T solutions to level set motion
+
+```@docs
+compute_frontvel_withT
+plot_frontvel
+compute_Qice
+compute_icesurf
+```
+
