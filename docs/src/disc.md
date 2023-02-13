@@ -32,6 +32,6 @@
 - [`calc_dϕdr_sdf`](@ref) and [`calc_dϕdz_sdf`](@ref)
     - Used inside [`update_ϕ_in_Γ!`](@ref), which is in turn inside [`reinitialize_ϕ!`](@ref)
     - Finite differences within interface region `Γ`; either first or second order, depending on availability
-    - Implementation of Hartmann 2008 eq. 21, ignoring conditions which aid in coalescence
+    - Implementation of [hartmannDifferentialEquationBased2008](@cite) eq. 21, ignoring conditions which aid in coalescence
 - [`identify_regions_RC`](@ref)
     - Second order finite differences, used inside [`update_ϕ_in_Γ!`](@ref) to estimate local curvature and identify cells which have more/less neighbors in interface
