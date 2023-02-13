@@ -3,6 +3,7 @@ export compute_frontvel_withT, plot_frontvel
 
 """
     function compute_Qice(ϕ, dom::Domain, params)
+
 Compute the total heat input into frozen domain from vial boundaries
 
 This function is currently not treating the sharp interface carefully.
@@ -31,7 +32,7 @@ function compute_Qice(ϕ, dom::Domain, params)
 end
 
 
-"Geometric: compute cone-shaped sections of interface."
+"Geometric: compute area of cone-shaped sections of interface."
 function compute_icesurf(ϕ, dom::Domain)
     totsurf = 0.0
     # cl = levels(contours(dom.rgrid,dom.zgrid,ϕ, 0))[1]
@@ -75,6 +76,7 @@ end
 
 """ 
     compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_surf=nothing; debug=false)
+
 Return (vr, vz) for the corresponding (ir, iz) location
 
 We must take temperature derivatives into positive ϕ, since in negative ϕ (frozen) we have constant T.
@@ -190,6 +192,14 @@ function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_sur
     return -vtot * dϕr, -vtot * dϕz
 end
 
+"""
+    function plot_frontvel(ϕ, T, dom::Domain)
+
+Calculate, then plot the front velocity given `ϕ` and `T`.
+
+Meant for debugging, mostly. Scales all velocity arrows to have length 0.5.
+Generates a freshplot().
+"""
 function plot_frontvel(ϕ, T, dom::Domain)
     front_cells = findall(identify_Γ(ϕ, dom) .& (ϕ .> 0))
     xs = []
@@ -210,7 +220,7 @@ function plot_frontvel(ϕ, T, dom::Domain)
     vrs ./= maxv * 2
     vzs ./= maxv * 2
 
-    freshplot()
+    freshplot(dom)
     quiver!(xs, ys, quiver=(vrs, vzs))
 end
 # frontpos = findall(identify_Γ(fixed_ϕ) .& (fixed_ϕ .> 0))

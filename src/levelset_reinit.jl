@@ -1,8 +1,17 @@
 export identify_Γ, Γ_cells, identify_B, plot_RC, 𝒢_all
 export reinitialize_ϕ, reinitialize_ϕ!
 
+# Functions exported just for the sake of making documentation work
+export update_ϕ_in_Γ!, 𝒢
+export calc_dϕdr_sdf, calc_dϕdz_sdf, identify_regions_RC
+
 # ---------------- Drawn from Hartmann, 2008, "Constrained reinitialization"
 
+"""
+    function identify_Γ(ϕ, dom::Domain)
+
+Identify cells on the sublimation front (interface), returning as a `Matrix::Bool`.
+"""
 function identify_Γ(ϕ, dom::Domain)
     locs = similar(ϕ, Bool)
     locs .= false
@@ -29,9 +38,16 @@ function identify_Γ(ϕ, dom::Domain)
     return locs
 end
 
+"""
+    Γ_cells(ϕ, dom::Domain) 
+    
+Compute `findall(identify_Γ(ϕ, dom))`. (That's the whole implementation.)
+"""
 Γ_cells(ϕ, dom::Domain) = findall(identify_Γ(ϕ, dom))
 
 """
+    function calc_curvature(ϕ, dom::Domain)
+
 Not used explicitly at present, but useful for debugging.
 """
 function calc_curvature(ϕ, dom::Domain)
@@ -63,6 +79,8 @@ function calc_curvature(ϕ, dom::Domain)
 end
 
 """
+    function identify_regions_RC(ϕ, Γ, dom::Domain)
+
 Takes full level set field ϕ, list of front cells Γ, and domain.
 Computes curvature (or at least something proportional to it) at all locations Γ, then compares against sign of ϕ to assign to R or C
 """
@@ -121,6 +139,11 @@ end
 #     end
 #     heat(arr)
 # end
+"""
+    function plot_RC(ϕ, dom::Domain)
+
+Mark cells in ℛ with black, cells in 𝒞 with white, in mutating fashion.
+"""
 function plot_RC(ϕ, dom::Domain)
     R, C = identify_regions_RC(ϕ, Γ_cells(ϕ, dom), dom)
     Rr = [rgrid[Tuple(c)[1]] for c in R]
@@ -133,8 +156,14 @@ function plot_RC(ϕ, dom::Domain)
 end
 
 """
-Takes a field of bools identifying Γ, bandwidth in x cells, and bandwidth in y cells
-Returns a field of bools identifying B
+    identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain)
+    identify_B(Γ_field::Matrix{Bool}, dom::Domain)
+    identify_B(ϕ::Matrix{Float64}, dom::Domain)
+
+Return a field of bools identifying the band around the interface.
+
+The width in the band around Γ is specified by the fields `bwr` and `bwz`, 
+which represent number of cells in the 𝑟 and 𝑧 directions respectively.
 """
 function identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain)
     # nx, ny = size(Γ_field)
@@ -159,7 +188,11 @@ function identify_B(ϕ::Matrix{Float64}, dom::Domain)
 end
 
 """
+    calc_dϕdr_sdf(ϕ, Γf, i, j, dom::Domain)
+
 Take a derivative in 𝑟 inside Γ, for computing signed distance function.
+
+This is equivalent to part of Eq. 21 in Hartmann 2008.
 """
 function calc_dϕdr_sdf(ϕ, Γf, i, j, dom::Domain)
     # Fancy conditions for near coalescence: ignored for now
@@ -182,7 +215,11 @@ function calc_dϕdr_sdf(ϕ, Γf, i, j, dom::Domain)
 end
 
 """
+    calc_dϕdr_sdf(ϕ, Γf, i, j, dom::Domain)
+
 Take a derivative in 𝑧 inside Γ, for computing signed distance function.
+
+This is equivalent to part of Eq. 21 in Hartmann 2008.
 """
 function calc_dϕdz_sdf(ϕ, Γf, i, j, dom::Domain)
     # Fancy conditions for near coalescence: ignored for now
@@ -323,46 +360,45 @@ function calc_dtldij(d, ϕ, cell, dom::Domain)
     end
     return ϕ[c] * num / den
 end
-function update_ϕ_in_Γ!(ϕl, dom::Domain)
-    Γfl = identify_Γ(ϕl, dom)
-    Γl = findall(Γfl)
-    RCl = identify_regions_RC(ϕl, Γl, dom)
-    # nr, nz = size(ϕl)
+
+"""
+    update_ϕ_in_Γ!(ϕ, dom::Domain)
+
+Reinitialize the interface cells of `ϕ`.
+
+This is the scheme CR-2 in Hartmann 2008 (note the published erratum to that article, which amends ℛ and 𝒞).
+"""
+function update_ϕ_in_Γ!(ϕ, dom::Domain)
+    Γf = identify_Γ(ϕ, dom)
+    Γc = findall(Γf)
+    RC = identify_regions_RC(ϕ, Γc, dom)
     dl = fill(0.0, dom.nr, dom.nz)
-    calc_dij_R!(dl, ϕl, Γfl, Γl, dom)
-    # dl2 = copy(dl)
-    calc_dij_C!(dl, ϕl, RCl[2], dom)
-    calc_dij_C!(dl, ϕl, RCl[2], dom)
-    # calc_dij!(dl, ϕl, Γfl, Γl, dom)
-    # dtld = calc_dtldij(dl, ϕl, RCl[2], dom)
-    for c in Γl
-        ϕl[c] = dl[c]
-        # if c ∈ RCl[2]
-        #     @show(calc_dtldij(dl2,ϕl,Γfl,c) - dl[c])
-        # end
-        #     ϕl[c] = calc_dtldij(dl, ϕl, Γfl, c)
-        # else
-        #     ϕl[c] = dl[c]
-        # end
+    calc_dij_R!(dl, ϕ, Γf, Γc, dom)
+    calc_dij_C!(dl, ϕ, RC[2], dom)
+    for c in Γc
+        ϕ[c] = dl[c]
     end
-    # for i in 1:nr, j in 1:nz
-    #     if Γf[i,j]
-    #         ϕ[i,j] = d[i,j]
-    #     end
-    # end
-    # arr = fill(0.0, nr, nz)
-    # arr[Γ] .= du
-    # display(heat(d))
-    # return dl
 end
 
+"""
+    LD{T}
+
+    A "little difference", to make Godunov's scheme in [𝒢](@ref) easier to read.
+For a = LD(x::T), 
+- a.p = max(x, 0)
+- a.m = min(x, 0)
+"""
 struct LD{T} # LD short for Little Difference
     p::T
     m::T
 end
 LD(x) = LD(max(x, 0), min(x, 0))
 """
-Godunov's scheme for discretizing the norm of the gradient of ϕ.
+    𝒢(ϕ, i, j, dom::Domain) 
+    
+Compute the norm of the gradient of `ϕ` at point `i, j` by Godunov's scheme to first-order accuracy.
+
+p. 6830 of Hartmann 2008, 10th page of PDF
 """
 function 𝒢(ϕ, i, j, dom::Domain) # p. 6830 of Hartmann, 10th page of PDF
     # pcell = ϕ[i,j]
@@ -393,28 +429,46 @@ function 𝒢(ϕ, i, j, dom::Domain) # p. 6830 of Hartmann, 10th page of PDF
     end
 end
 
+"""
+    𝒢_all(ϕ, dom::Domain)
+
+Compute the norm of the gradient of `ϕ` at point `i, j` by Godunov's scheme to first-order accuracy.
+
+Internally, calls [𝒢](@ref) on all computational cells.
+"""
 function 𝒢_all(ϕ, dom::Domain)
     return reshape([𝒢(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
 end
 
 
-function reinitialize_ϕ!(ϕ_mat, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
+"""
+    reinitialize_ϕ!(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
 
-    Γf = identify_Γ(ϕ_mat, dom)
+Reinitialize the signed distance function `ϕ`.
+
+Carried out in place.  
+
+This relies on `update_ϕ_in_Γ`, which implements CR-2 from Hartmann 2008,
+then in a band ℬ around the interface, solves a reinitialization PDE
+to first order in space with time integration given by `alg`.
+"""
+function reinitialize_ϕ!(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
+
+    Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
     Bf = identify_B(Γ, dom)
     BnΓ = findall(Bf .⊻ Γf)
     ΩnB = findall(fill(true, dom.nr, dom.nz) .⊻ Bf)
 
-    update_ϕ_in_Γ!(ϕ_mat, dom)
+    update_ϕ_in_Γ!(ϕ, dom)
 
-    sarr = sign.(ϕ_mat)
-    Γ = Γ_cells(ϕ_mat, dom)
+    sarr = sign.(ϕ)
+    Γ = Γ_cells(ϕ, dom)
 
     
     # ϕ_ode = reshape(ϕ_mat, :)
-    ϕ_ode = ϕ_mat[BnΓ]
-    cached = copy(ϕ_mat)
+    ϕ_ode = ϕ[BnΓ]
+    cached = copy(ϕ)
     function sub_rhs(du, u, p, t) 
         cached[BnΓ] .= u
         # dϕ = sarr .* (1 .- 𝒢_all(cached))
@@ -433,16 +487,23 @@ function reinitialize_ϕ!(ϕ_mat, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
     prob = ODEProblem(sub_rhs, ϕ_ode, tspan)
     sol = solve(prob, alg, dt = 1.0; callback=TerminateSteadyState(1e-4, 1e-4))
     # ϕ_sol[BnΓ] .= sol[end]
-    ϕ_mat[BnΓ] .= sol[end]
+    ϕ[BnΓ] .= sol[end]
 
     # ϕ_sol[ΩnB] .= sarr[ΩnB]
-    ϕ_mat[ΩnB] .= sarr[ΩnB] .* outside_B
+    ϕ[ΩnB] .= sarr[ΩnB] .* outside_B
 
     # ϕ_sol
     nothing
     # ϕ_rep = reshape(sol[end], nx, ny)
 end
 
+"""
+    reinitialize_ϕ(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
+
+Reinitialize the signed distance function `ϕ`, returning a new array.
+
+Simply makes a copy of `ϕ` and calls `reinitialize_ϕ!`.
+"""
 function reinitialize_ϕ(ϕ, dom::Domain, tf=1.0)
     ϕ1 = copy(ϕ)
     reinitialize_ϕ!(ϕ1, dom, tf)
