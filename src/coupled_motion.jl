@@ -77,13 +77,10 @@ end
 """ 
     compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_surf=nothing; debug=false)
 
-Return (vr, vz) for the corresponding (ir, iz) location
+Return `(vr, vz)` for the corresponding `(ir, iz)` location, based on temperature profile and z.
 
-We must take temperature derivatives into positive ϕ, since in negative ϕ (frozen) we have constant T.
-This means that temperature is computed "downwind" in the level-set-reinitialization sense.
-To get the normal vector, take "upwind" differences (but assume positive ϕ).
-(Since this isn't the RHS of a hyperbolic PDE, it's less important to avoid downwind?)
-First order (downwind/upwind) differences, currently, to simplify reasoning.
+Quadratic ghost cell extrapolation (into frozen domain), second order finite differences, for T.
+For ϕ derivatives, simple second order finite differences (one-sided at boundaries).
 """
 function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_surf=nothing; debug=false)
     # dr = dom.dr
@@ -100,75 +97,93 @@ function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_sur
         Qice_per_surf = Qice / icesurf
     end
     
-    @unpack k, ΔH, ρf, Q_sh, Q_gl = params
+    @unpack k, ΔH, ρf, Q_sh, Q_gl, Tf = params
     pT = T[ir, iz]
     pϕ = ϕ[ir, iz]
     
     if pϕ > 2dr || pϕ > 2dz || pϕ < -2dr || pϕ < -2dz
-        @warn "Computing front velocity for cell which may not be at front."
+        @warn "Computing front velocity for cell which may not be at front." ir iz
     end
 
     # Enforce BCs explicitly for boundary cells
     if ir == 1 
-        dϕr = (ϕ[ir+1, iz] - pϕ) * dr1 # Possibly downwind
+        # dϕr = (ϕ[ir+1, iz] - pϕ) * dr1 # 1st order
+        dϕr = (-0.5ϕ[ir+2, iz] +2ϕ[ir+1, iz] - 1.5pϕ) * dr1 # 2nd order 
         # dTr = (T[ir+1, iz] - pT) * dr1
         # dϕr = min(0, (ϕ[ir+1,iz] - pϕ)) * dr1 # Clamp to 0
         dTr = 0
     elseif ir == nr
-        dϕr = (pϕ - ϕ[ir-1, iz]) * dr1 # Possibly downwind
+        # dϕr = (pϕ - ϕ[ir-1, iz]) * dr1 # 1st order
+        dϕr = (1.5pϕ - 2ϕ[ir-1, iz] + 0.5ϕ[ir-2,iz]) * dr1 # 2nd order
         # dTr = (pT - T[ir-1, iz]) * dr1
         # dϕr = min(0, (pϕ - ϕ[ir-1,iz])) * dr1 # Clamp to 0
         dTr = Q_gl / k
     else 
-        # In the bulk, take difference towards positive ϕ
+        # Bulk
         eϕ = ϕ[ir+1, iz]
         wϕ = ϕ[ir-1, iz]
-        if eϕ > pϕ && wϕ > pϕ
+        dϕr = (eϕ - wϕ) * 0.5dr1
+
+        eT = T[ir+1, iz]
+        wT = T[ir-1, iz]
+        # West and east ghost cell: weird kink? Set to 0 and procrastinate
+        if wϕ <= 0 && eϕ <= 0
+            @warn "Ghost cell on east *and* west: do the math, this is currently not implemented"
             dϕr = (eϕ - wϕ) * 0.5*dr1 # Centered difference
-            dTr = (T[ir+1,iz] - T[ir-1,iz]) * 0.5*dr1 # Centered difference
-        elseif eϕ > pϕ
-            dϕr = (pϕ         - wϕ)*dr1
-            dTr = (T[ir+1,iz] - pT)*dr1
-        elseif wϕ > pϕ
-            dϕr = (eϕ -         pϕ)*dr1
-            dTr = (pT - T[ir-1,iz])*dr1
-        else
-            dϕr = (eϕ - wϕ) * 0.5*dr1 # Centered difference
-            dTr = (T[ir+1,iz] - T[ir-1,iz]) * 0.5*dr1 # Centered difference
-            # dϕr = 0
-            # dTr = 0 # Technically would take a central difference, but is irrelevant
+            dTr = 0
+        elseif wϕ <= 0 # West ghost cell
+            θr = pϕ /(pϕ - wϕ)
+            if θr > dr
+                dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+            else 
+                dTr = (eT - Tf)/(θr+1)*dr1 # Linear extrapolation from east
+                dTr = (eT - pT)       *dr1 # Linear extrapolation from east
+                # @show pT-Tf θr+1
+            end
+        elseif eϕ <= 0 # East ghost cell
+            θr = pϕ /(pϕ - eϕ)
+            if θr > dr
+                dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*(3θr+1)/(θr+1)*0.25) * dr1 # Quadratic extrapolation
+            else
+                # eTg = (2Tf + (th-1)wT )/(th+1)
+                dTr = (Tf - wT)/(θr+1)*dr1 # Linear extrapolation from west
+            end
+        else # No ghost cells
+            dTr = (eT - wT) * 0.5*dr1 # Centered difference
         end
     end
             
     # Enforce BCs explicitly for boundary cells
     if iz == 1 
-        # dϕz = (ϕ[ir, iz+1] - pϕ) * dz1
-        # dTz = (T[ir, iz+1] - pT) * dz1
-        dϕz = min(0, (ϕ[ir, iz+1] - pϕ)) * dz1 # Clamp to 0 if downwind
-        dTz = - Q_sh / k
+        # dϕz = (ϕ[ir, iz+1] - pϕ) * dr1 # 1st order
+        dϕz = (-0.5ϕ[ir, iz+2] +2ϕ[ir, iz+1] - 1.5pϕ) * dz1 # 2nd order 
+        dTz = Q_sh / k
     elseif iz == nz
-        # dϕz = (pϕ - ϕ[ir, iz-1]) * dz1
-        # dTz = (pT - T[ir, iz-1]) * dz1
-        dϕz = max(0, (pϕ - ϕ[ir, iz-1])) * dz1 # Clamp to 0 if downwind
+        # dϕz = (pϕ - ϕ[ir, iz-1]) * dz1 # 1st order
+        dϕz = (1.5pϕ - 2ϕ[ir, iz-1] + 0.5ϕ[ir,iz-2]) * dz1 # 2nd order
+        # dϕz = min(0, (pϕ - ϕ[ir,iz-1])) * dz1 # Clamp to 0
         dTz = 0
     else 
-        # In the bulk, take difference towards positive ϕ
+        # Bulk
         nϕ = ϕ[ir, iz+1]
         sϕ = ϕ[ir, iz-1]
-        if nϕ > pϕ && sϕ > pϕ
-            dϕz = (nϕ         - sϕ)*dz1 # Centered
-            dTz = (T[ir,iz+1] - T[ir,iz-1])*0.5*dz1 # Centered
-        elseif nϕ > pϕ
-            dϕz = (pϕ -         sϕ)*dz1 # Downward
-            dTz = (T[ir,iz+1] - pT)*dz1 # Upward
-        elseif sϕ > pϕ
-            dϕz = (nϕ -         pϕ)*dz1 # Upward
-            dTz = (pT - T[ir,iz-1])*dz1 # Downward
-        else
-            # dϕz = 0
-            # dTz = 0 # Technically would take a central difference, but is irrelevant
-            dϕz = (nϕ - sϕ)*0.5*dz1 # Centered
-            dTz = (T[ir,iz+1] - T[ir,iz-1])*0.5*dz1 # Centered
+        dϕz = (nϕ - sϕ) * 0.5dz1
+
+        nT = T[ir, iz+1]
+        sT = T[ir, iz-1]
+        # North and west ghost cell: weird kink? Set to 0 and procrastinate
+        if sϕ <= 0 && nϕ <= 0
+            @warn "Ghost cell on north *and* south: do the math, this is currently not implemented"
+            dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
+            dTz = 0
+        elseif sϕ <= 0 # West ghost cell
+            θz = pϕ /(pϕ - sϕ)
+            dTz = (-Tf/(θz+1)/θz + pT*(1-θz)/θz + nT*(3θz+1)/(θz+1)*0.25) * dz1 # Quadratic extrapolation
+        elseif nϕ <= 0 # East ghost cell
+            θz = pϕ /(pϕ - nϕ)
+            dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*(3θz+1)/(θz+1)*0.25) * dz1 # Quadratic extrapolation
+        else # No ghost cells
+            dTz = (nT - sT) * 0.5*dz1 # Centered difference
         end
     end
     
