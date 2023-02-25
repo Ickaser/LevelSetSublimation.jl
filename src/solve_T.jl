@@ -180,7 +180,7 @@ function solve_T(ϕ, dom::Domain, params)
         # Currently, boundaries are not checking for interface crossing.
 
 
-        # stefan_debug = false
+        stefan_debug = false
 
 
         # R direction boundaries
@@ -211,7 +211,6 @@ function solve_T(ϕ, dom::Domain, params)
             BC2 = Q_gl
             wϕ = ϕ[ir-1, iz]
             if wϕ < 0 # Front is within a cell of boundary
-                # stefan_debug = true
                 # p. 65 of project notes
                 θr = pϕ/(pϕ-wϕ)
                 # Have an exact value given by BC + front
@@ -233,18 +232,18 @@ function solve_T(ϕ, dom::Domain, params)
             eϕ = ϕ[ir+1, iz]
             wϕ = ϕ[ir-1, iz]
             if eϕ <= 0 # East ghost cell, across front
-                # stefan_debug = true
                 θr = pϕ / (pϕ - eϕ)
                 if θr >= dr
                     pc += -2k*dr2 # Regular 
-                    pc += k*(θr-1)*(0.5dr1*r1+ dr2)/θr # Due to ghost cell extrapolation
+                    pc += k*(θr-1)/θr*(0.5dr1*r1+ dr2) # Due to ghost cell extrapolation
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
                     rhs[imx] -= Tf*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
+                    stefan_debug = true
+                    println("east θ<dr, ir=$ir, iz=$iz")
                     pc += -2k*dr2 # Regular
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
                     wc += k*(dr+2r)*(θr-1)*0.5dr2*r1/(θr+1) # Due to ghost cell extrapolation 
-                    rhs[imx] -= Tf*k*(0.5*dr+r) *dr2 *r1/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 # stefan_debug = true
@@ -327,7 +326,7 @@ function solve_T(ϕ, dom::Domain, params)
                     rhs[imx] -= Tf*k*dz2/θz
                 else
                     pc += -2k*dz2
-                    sc += 2*k*dz2*θz/(θz+1)
+                    sc += 2*k*θz*dz2/(θz+1)
                     rhs[imx] -= 2Tf*k*dz2/(θz+1)
                 end
             elseif sϕ <= 0
@@ -340,7 +339,7 @@ function solve_T(ϕ, dom::Domain, params)
                     rhs[imx] -= Tf*k*dz2/θz
                 else
                     pc += -2k*dz2
-                    nc += 2*k*dz2*(2*θz)/(θz+1)
+                    nc += 2*k*θz*dz2/(θz+1)
                     rhs[imx] -= 2Tf*k*dz2/(θz+1)
                 end
 
