@@ -75,19 +75,18 @@ end
 
 
 """ 
-    compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_surf=nothing; debug=false)
+    compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
 
 Return `(vr, vz)` for the corresponding `(ir, iz)` location, based on temperature profile and z.
 
 Quadratic ghost cell extrapolation (into frozen domain), second order finite differences, for T.
 For ϕ derivatives, simple second order finite differences (one-sided at boundaries).
 """
-function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_surf=nothing; debug=false)
+function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
     # dr = dom.dr
     # dz = dom.dz
     # nr = dom.nr
     # nz = dom.nz
-    @unpack dr, dz, dr1, dz1, nr, nz = dom
         
     # If Qice_surf (heat to ice divided by surface area) not supplied, compute it from shelf
     # This should be outside this function. TODO
@@ -97,12 +96,13 @@ function compute_frontvel_withT(T, ϕ, ir, iz, dom::Domain, params, Qice_per_sur
         Qice_per_surf = Qice / icesurf
     end
     
+    @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack k, ΔH, ρf, Q_sh, Q_gl, Tf = params
     pT = T[ir, iz]
     pϕ = ϕ[ir, iz]
     
     if pϕ > 2dr || pϕ > 2dz || pϕ < -2dr || pϕ < -2dz
-        @warn "Computing front velocity for cell which may not be at front." ir iz
+        @warn "Computing front velocity for cell which may not be at front." ir iz pϕ
     end
 
     # Enforce BCs explicitly for boundary cells
