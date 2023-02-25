@@ -137,7 +137,7 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
                 dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
             else 
                 dTr = (eT - Tf)/(θr+1)*dr1 # Linear extrapolation from east
-                dTr = (eT - pT)       *dr1 # Linear extrapolation from east
+                # dTr = (eT - pT)       *dr1 # Linear extrapolation from east
                 # @show pT-Tf θr+1
             end
         elseif eϕ <= 0 # East ghost cell
@@ -171,17 +171,26 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
 
         nT = T[ir, iz+1]
         sT = T[ir, iz-1]
-        # North and west ghost cell: weird kink? Set to 0 and procrastinate
+        # North and south ghost cell: weird kink? Set to 0 and procrastinate
         if sϕ <= 0 && nϕ <= 0
             @warn "Ghost cell on north *and* south: do the math, this is currently not implemented"
             dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
             dTz = 0
-        elseif sϕ <= 0 # West ghost cell
+        elseif sϕ <= 0 # South ghost cell
             θz = pϕ /(pϕ - sϕ)
-            dTz = (-Tf/(θz+1)/θz + pT*(1-θz)/θz + nT*(3θz+1)/(θz+1)*0.25) * dz1 # Quadratic extrapolation
-        elseif nϕ <= 0 # East ghost cell
+            if θz > dz
+                dTz = (-Tf/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
+            else
+                dTz = (nT - Tf)/(θz+1)*dz1
+            end
+        elseif nϕ <= 0 # North ghost cell
             θz = pϕ /(pϕ - nϕ)
-            dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*(3θz+1)/(θz+1)*0.25) * dz1 # Quadratic extrapolation
+            if θz > dz
+                # dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*(3θz+1)/(θz+1)*0.25) * dz1 # Quadratic extrapolation
+                dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
+            else
+                dTz = (Tf - sT )/(θz+1)*dz1
+            end
         else # No ghost cells
             dTz = (nT - sT) * 0.5*dz1 # Centered difference
         end
