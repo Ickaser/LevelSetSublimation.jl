@@ -39,8 +39,12 @@ freshplot(dom::Domain) = plot(aspect_ratio=:equal, xlim=(dom.rmin,dom.rmax), yli
 In a mutating fashion, add a "cylindrical" heatmap of `T` to the current plot.
 ("Cylindrical" meaning reflected across x=0 axis.)
 """
-function plot_cylheat(T, dom::Domain)
-    heatmap!(dom.rgrid, dom.zgrid, T', c=:thermal)
+function plot_cylheat(T, dom::Domain; maxT=nothing)
+    if maxT === nothing
+        maxT = maximum(T)
+    end
+    minT = minimum(T)
+    heatmap!(dom.rgrid, dom.zgrid, T', c=:thermal, clims=(minT, maxT))
     heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, T[end:-1:begin, :]', c=:thermal) # plot reflected
     plot!(xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
 end

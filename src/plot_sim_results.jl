@@ -1,11 +1,11 @@
 export summaryplot, resultsanim, plotframe
 export get_subf_z, get_subf_r
 
-function plotframe(f::Int, simresults::Dict, simconfig::Dict)
+function plotframe(f::Int, simresults::Dict, simconfig::Dict; maxT=nothing)
     @unpack full_ϕ, full_T = simresults
     @unpack dom = simconfig
     local p = plot(aspect_ratio=:equal)
-    plot_cylheat(full_T[f,:,:], dom)
+    plot_cylheat(full_T[f,:,:], dom; maxT=maxT)
     plot_cylcont(full_ϕ[f,:,:], dom, c=:white)
     plot!(title="timestep=$(f-1)")
     return p
@@ -28,9 +28,11 @@ function summaryplot(simresults::Dict, simconfig)
         frames = 1:nt
     end
 
+    maxT = maximum(full_T[1:end-1,:,:])
+
     for f in frames
         # Default: plot heat
-        p = plotframe(f, simresults, simconfig)
+        p = plotframe(f, simresults, simconfig, maxT=maxT)
         
         # Debug: plot heat and level set
         # p1 = heat(full_T[f,:,:])
