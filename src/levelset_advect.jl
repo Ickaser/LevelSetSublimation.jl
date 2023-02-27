@@ -1,5 +1,6 @@
 export advect_ϕ, advect_ϕ!
 export vector_extrap_from_front
+export fastmarch_v!, extrap_v_fastmarch, extrap_v_pde
 
 # FUnctions exported for Documenter.jl sake
 export calc_Vd∇ϕ
@@ -637,4 +638,209 @@ Thin wrapper on advect_ϕ--this is not necessarily better for performance.
 function advect_ϕ!(ϕ, Vf, dom::Domain, dt)
     ϕ = advect_ϕ(ϕ, Vf, dom, dt)
     return nothing
+end
+
+
+function ddx_fastmarch_2nd!(num, den, ϕ, vf, c, sdir, dersign, dx1)
+    dϕdx = dersign*(-1.5ϕ[c] + 2ϕ[c+sdir] - 0.5ϕ[c+2sdir])*dx1
+    px = -1.5*dersign*dx1 
+    dv_x = dersign*(        2vf[c+sdir, :] .-0.5vf[c+2sdir,:]).*dx1
+
+    @. num += dϕdx*dv_x
+    den .+= dϕdx * px
+end
+function ddx_fastmarch_1st!(num, den, ϕ, vf, c, sdir, dersign, dx1)
+    dϕdx = dersign*(-ϕ[c] + ϕ[c+sdir])*dx1
+    px = -dersign*dx1 
+    dv_x = dersign*(        vf[c+sdir, :]).*dx1
+
+    @. num += dϕdx*dv_x
+    den .+= dϕdx * px
+end
+
+"""
+    fastmarch_v!(vf, acc, locs, ϕ, dom)
+
+Mutate `vf` and `acc` to extrapolate `vf` from interface by fast marching.
+
+Cells are calculated in order of increasing |ϕ|.
+Uses matrix of bools `acc` (denoting accepted cells) to determine cells to use in extrapolation,
+so if you determine one side first, will get used in the derivatives for the other side.
+"""
+function fastmarch_v!(vf, acc, locs::Vector{CartesianIndex{2}}, ϕ, dom::Domain)
+
+    # Set up stencil checking tools
+
+    usecell(acc, c) = checkbounds(Bool, acc, c) && acc[c]
+
+    eci  = CartesianIndex( 1, 0)
+    wci  = CartesianIndex(-1, 0)
+    nci  = CartesianIndex( 0, 1)
+    sci  = CartesianIndex( 0,-1)
+
+    sort!(locs , by=(x->abs(ϕ[x])))
+
+    for c in locs
+
+        num = fill(0.0, 2)
+        den = [0.0]
+
+        # R direction
+        if usecell(acc, c+eci) # Use east
+            if usecell(acc, c+2eci) # Second order east
+                # dϕdr = (-1.5ϕ[c] + 2ϕ[c+eci] - 0.5ϕ[c+e⁺ci])*dom.dr1
+                # pr = -1.5dom.dr1 
+                # dv_r = (        2vf[c+eci, :] .-0.5vf[c+e⁺ci,:]).*dom.dr1
+
+                # @. num += dϕdr*dv_r
+                # den += dϕdr * pr
+                ddx_fastmarch_2nd!(num, den, ϕ, vf, c, eci, 1, dom.dr1)
+                # println("East, 2nd order, c=$c")
+            else
+                # dϕdr = (-ϕ[c] + ϕ[c+eci])*dom.dr1
+                # pr = -dom.dr1
+                # dv_r =        vf[c+eci, :] .*dom.dr1
+
+                # @. num += dϕdr*dv_r
+                # den += dϕdr * pr
+                ddx_fastmarch_1st!(num, den, ϕ, vf, c, eci, 1, dom.dr1)
+                # println("East, 1st order, c=$c")
+            end
+        elseif usecell(acc, c+wci)
+            if usecell(acc, c+2wci) # Second order west
+                # dϕdr = ( 1.5ϕ[c] - 2ϕ[c+wci] + 0.5ϕ[c+w⁻ci])*dom.dr1
+                # pr =  1.5dom.dr1 
+                # dv_r =       (-2vf[c+wci, :] .+0.5vf[c+w⁻ci,:]).*dom.dr1
+
+                # @. num += dϕdr*dv_r
+                # den += dϕdr * pr
+                ddx_fastmarch_2nd!(num, den, ϕ, vf, c, wci, -1, dom.dr1)
+                # println("West, 2nd order, c=$c")
+            else
+                # dϕdr = ( ϕ[c] - ϕ[c+wci])*dom.dr1
+                # dv_r = -vf[c+wci, :] .*dom.dr1
+                # pr =  dom.dr1
+
+                # @. num += dϕdr*dv_r
+                # den += dϕdr * pr
+                ddx_fastmarch_1st!(num, den, ϕ, vf, c, wci, -1, dom.dr1)
+                # println("West, 1st order, c=$c")
+            end
+        # else
+        #     println("No r stencil, c=$c")
+        end
+        
+        # Z direction
+        if usecell(acc, c+nci) # Use east
+            if usecell(acc, c+2nci) # Second order north
+                # dϕdz = (-1.5ϕ[c] + 2ϕ[c+nci] - 0.5ϕ[c+n⁺ci])*dom.dz1
+                # pz = -1.5dom.dz1 
+                # dv_z = (2vf[c+nci, :] .-0.5vf[c+n⁺ci,:]) .*dom.dz1
+
+                # @. num += dϕdz*dv_z
+                # den += dϕdz * pz
+                ddx_fastmarch_2nd!(num, den, ϕ, vf, c, nci, 1, dom.dz1)
+            else
+                # dϕdz = (-ϕ[c] + ϕ[c+nci])*dom.dz1
+                # pz = -dom.dz1
+                # dv_z = vf[c+nci, :] .*dom.dz1
+
+                # @. num += dϕdz*dv_z
+                # den += dϕdz * pz
+                ddx_fastmarch_1st!(num, den, ϕ, vf, c, nci, 1, dom.dz1)
+            end
+        elseif usecell(acc, c+sci)
+            if usecell(acc, c+2sci) # Second order south
+                # dϕdz = ( 1.5ϕ[c] - 2ϕ[c+sci] + 0.5ϕ[c+s⁻ci])*dom.dz1
+                # pz =     1.5dom.dz1 
+                # dv_z = (          -2vf[c+sci, :] .+0.5vf[c+s⁻ci,:]).*dom.dz1
+
+                # @. num += dϕdz*dv_z
+                # den += dϕdz * pz
+                ddx_fastmarch_2nd!(num, den, ϕ, vf, c, sci, -1, dom.dz1)
+            else
+                # dϕdz = ( ϕ[c] - ϕ[c+sci])*dom.dz1
+                # pz =  dom.dz1
+                # dv_z = -vf[c+sci, :] .*dom.dz1
+
+                # @. num += dϕdz*dv_z
+                # den += dϕdz * pz
+                # println("c=$c")
+                ddx_fastmarch_1st!(num, den, ϕ, vf, c, sci, -1, dom.dz1)
+            end
+        end
+
+        if den == 0
+            @warn "No identified stencil"
+            # println("ϕ = $(ϕ[c]), e=$(usecell(acc, ))")
+        else
+            @. vf[c, :] = -num / den
+        end
+
+        # Add cell to accepted list
+        acc[c] = true
+        # println("Accepted: $(sum(acc))")
+
+    end
+end
+
+"""
+    extrap_v_fastmarch(ϕ, T, dom::Domain, T_params)
+
+Compute an extrapolated velocity field from T and ϕ.
+
+Internally calls `compute_frontvel_withT` on positive half of Γ.
+Using fast marching, instead of the PDE-based approach, to get second order accuracy more easily.
+
+TODO: improve performance. Currently makes a lot of allocations, I think.
+"""
+function extrap_v_fastmarch(ϕ, T, dom::Domain, params)
+    Γf = identify_Γ(ϕ, dom)
+    Γ = findall(Γf)
+    Bf = identify_B(Γ, dom)
+    Γ⁺ = [c for c in Γ if ϕ[c]>0]
+    ϕ⁻ = ϕ .<= 0
+    B⁻ = findall(Bf .& ϕ⁻)
+    B⁺ = findall((ϕ⁻ .⊽ Γf) .& Bf) # Exclude Γ⁺
+
+    vf = fill(0.0, dom.nr, dom.nz, 2)
+
+    Qice = compute_Qice(ϕ, dom, params)
+    icesurf = compute_icesurf(ϕ, dom)
+    Qice_per_surf = Qice / icesurf
+
+    # Accepted set
+    acc = fill(false, dom.nr, dom.nz)
+
+
+    # First, compute velocity on Γ⁺
+    for c in Γ⁺
+        vf[c, :] .= compute_frontvel_withT(T, ϕ, Tuple(c)..., dom, params, Qice_per_surf)
+        acc[c] = true
+    end
+
+    # Second, fastmarch in positive half of B
+
+    fastmarch_v!(vf, acc, B⁺, ϕ, dom)
+
+    # Finally, fastmarch in negative half of B
+    fastmarch_v!(vf, acc, B⁻, ϕ, dom)
+
+    vf
+end
+
+
+"""
+"""
+function extrap_v_pde(ϕi, Ti, dom, params)
+    prop_t = 1.0
+    # Precompute for velocity
+    Qice = compute_Qice(ϕi, dom, params)
+    icesurf = compute_icesurf(ϕi, dom)
+    Qice_surf = Qice / icesurf
+    
+    Bf = identify_B(ϕi, dom)
+    frontfunc(ir, iz) = compute_frontvel_withT(Ti, ϕi, ir, iz, dom, params, Qice_surf)
+    vf = vector_extrap_from_front(ϕi, Bf, frontfunc, dom, prop_t)
+    return vf
 end

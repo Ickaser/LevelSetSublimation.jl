@@ -2,8 +2,10 @@ export identify_Γ, Γ_cells, identify_B, plot_RC, 𝒢_all
 export reinitialize_ϕ, reinitialize_ϕ!
 
 # Functions exported just for the sake of making documentation work
-export update_ϕ_in_Γ!, 𝒢
+export update_ϕ_in_Γ!
 export calc_dϕdr_sdf, calc_dϕdz_sdf, identify_regions_RC
+export 𝒢_1st, 𝒢_weno, 𝒢_1st_all, 𝒢_weno_all
+
 
 # ---------------- Drawn from Hartmann, 2008, "Constrained reinitialization"
 
@@ -128,17 +130,6 @@ function identify_regions_RC(ϕ, Γ, dom::Domain)
 
 end
 
-# function plot_RC(RC, nx, ny)
-#     R, C = RC
-#     arr = fill(0, nx, ny)
-#     for c in R
-#         arr[c] += 1
-#     end
-#     for c in C
-#         arr[c] -= 1
-#     end
-#     heat(arr)
-# end
 """
     function plot_RC(ϕ, dom::Domain)
 
@@ -253,18 +244,6 @@ function calc_dij_R!(d, ϕ, Γf, R, dom::Domain)
         d[c] = ϕ[c] / den
     end
 end
-function calc_dij!(d, ϕ, Γf, R, dom::Domain)
-    # nr, nz = size(ϕ)
-    for c in R
-        if ϕ[c]==0
-            d[c] = 0
-            continue
-        end
-        i, j = Tuple(c)
-        den = hypot(calc_dϕdr_sdf(ϕ, Γf, i, j, dom), calc_dϕdz_sdf(ϕ, Γf, i, j, dom))
-        d[c] = ϕ[c] / den
-    end
-end
 function calc_dij_C!(d, ϕ, C, dom::Domain)
     # nr, nz = size(ϕ)
     for c in C
@@ -272,93 +251,51 @@ function calc_dij_C!(d, ϕ, C, dom::Domain)
             d[c] = 0
             continue
         end
-        i, j = Tuple(c)
-        neighbors = Vector{Tuple}()
-        if i == 1
-            push!(neighbors, (i+1,j))
-        elseif i == dom.nr
-            push!(neighbors, (i-1,j))
-        else
-            push!(neighbors, (i+1,j))
-            push!(neighbors, (i-1,j))
-        end
-        if j == 1
-            push!(neighbors, (i,j+1))
-        elseif j == dom.nz
-            push!(neighbors, (i,j-1))
-        else
-            push!(neighbors, (i,j+1))
-            push!(neighbors, (i,j-1))
-        end
+        # i, j = Tuple(c)
+        # neighbors = Vector{Tuple}()
+        # if i == 1
+        #     push!(neighbors, (i+1,j))
+        # elseif i == dom.nr
+        #     push!(neighbors, (i-1,j))
+        # else
+        #     push!(neighbors, (i+1,j))
+        #     push!(neighbors, (i-1,j))
+        # end
+        # if j == 1
+        #     push!(neighbors, (i,j+1))
+        # elseif j == dom.nz
+        #     push!(neighbors, (i,j-1))
+        # else
+        #     push!(neighbors, (i,j+1))
+        #     push!(neighbors, (i,j-1))
+        # end
+        pos_neighbors = [CI(1, 0), CI(-1,0), CI(0,1), CI(0,-1)]
+        neighbors = [nb for nb in [c].+pos_neighbors if checkbounds(Bool, ϕ, nb)]
 
-        Sij = [nb for nb in neighbors if ϕ[nb...]*ϕ[c] < 0]
+        Sij = [nb for nb in neighbors if ϕ[nb]*ϕ[c] <= 0]
         if length(Sij) > 0
-            num = sum([d[nb...] for nb in Sij])
-            den = sum([ϕ[nb...] for nb in Sij])
+            num = sum([d[nb] for nb in Sij])
+            den = sum([ϕ[nb] for nb in Sij])
             d[c] =  ϕ[c] * num / den
         else
-            # Happens because a cell is exactly 0, so Γ is three cells wide.
+            # Happens when cell isn't actually in Γ? 
+
+            # exactly 0, so Γ is three cells wide.
+
             # Identify the 0 neighbor, set distance to neighbor
             # println("Watch for this case! ")
-            println("Length of Sij is $(length(Sij))")
-            Sij = [nb for nb in neighbors if ϕ[nb...] == 0]
-            if (i + 1,j) ∈ Sij || (i-1,j) ∈ Sij
-                mindx = dom.dr
-            end
-            if (i,j+1) ∈ Sij || (i,j-1) ∈ Sij
-                mindx = dom.dz
-            end
-            d[c] = sign(ϕ[c]) * mindx
+            @warn "Length of Sij is $(length(Sij))! Not updating value."
+            d[c] = ϕ[c]
+            # Sij = [nb for nb in neighbors if ϕ[nb...] == 0]
+            # if (i + 1,j) ∈ Sij || (i-1,j) ∈ Sij
+            #     mindx = dom.dr
+            # elseif (i,j+1) ∈ Sij || (i,j-1) ∈ Sij
+            #     mindx = dom.dz
+            # end
+            # d[c] = sign(ϕ[c]) * mindx
             continue
         end
     end
-end
-function calc_dtldij(d, ϕ, cell, dom::Domain)
-    # nr, nz = size(ϕ)
-    if(ϕ[cell]==0)
-        return 0
-    end
-    i, j = Tuple(cell)
-    neighbors = Vector{Tuple}()
-    if i == 1
-        push!(neighbors, (i+1,j))
-    elseif i == dom.nr
-        push!(neighbors, (i-1,j))
-    else
-        push!(neighbors, (i+1,j))
-        push!(neighbors, (i-1,j))
-    end
-    if j == 1
-        push!(neighbors, (i,j+1))
-    elseif j == dom.nz
-        push!(neighbors, (i,j-1))
-    else
-        push!(neighbors, (i,j+1))
-        push!(neighbors, (i,j-1))
-    end
-
-    Sij = [nb for nb in neighbors if ϕ[nb...]*ϕ[cell] < 0]
-    if length(Sij) > 0
-        num = sum([d[nb...] for nb in Sij])
-        den = sum([ϕ[nb...] for nb in Sij])
-    else
-        # Happens because a cell is exactly 0, so Γ is three cells wide.
-        # Identify the 0 neighbor, set distance to neighbor
-        # println("Watch for this case! ")
-        println("Length of Sij is $(length(Sij))")
-        Sij = [nb for nb in neighbors if ϕ[nb...] == 0]
-        if (i + 1,j) ∈ Sij || (i-1,j) ∈ Sij
-            mindx = dom.dr
-        end
-        if (i,j+1) ∈ Sij || (i,j-1) ∈ Sij
-            mindx = dom.dz
-        end
-        return sign(ϕ[cell]) * mindx
-        # num = den = 1 #?
-        
-        # println(ϕ[c])
-    end
-    return ϕ[c] * num / den
 end
 
 """
@@ -394,13 +331,13 @@ struct LD{T} # LD short for Little Difference
 end
 LD(x) = LD(max(x, 0), min(x, 0))
 """
-    𝒢(ϕ, i, j, dom::Domain) 
+    𝒢_1st(ϕ, i, j, dom::Domain) 
     
 Compute the norm of the gradient of `ϕ` at point `i, j` by Godunov's scheme to first-order accuracy.
 
 p. 6830 of Hartmann 2008, 10th page of PDF
 """
-function 𝒢(ϕ, i, j, dom::Domain) # p. 6830 of Hartmann, 10th page of PDF
+function 𝒢_1st(ϕ, i, j, dom::Domain) # p. 6830 of Hartmann, 10th page of PDF
     # pcell = ϕ[i,j]
     if i == 1
         a = LD(0)
@@ -430,15 +367,16 @@ function 𝒢(ϕ, i, j, dom::Domain) # p. 6830 of Hartmann, 10th page of PDF
 end
 
 """
-    𝒢_all(ϕ, dom::Domain)
+    𝒢_1st_all(ϕ, dom::Domain)
 
-Compute the norm of the gradient of `ϕ` at point `i, j` by Godunov's scheme to first-order accuracy.
+Compute the norm of the gradient of `ϕ` throughout domain by Godunov's scheme to first-order accuracy.
 
-Internally, calls [𝒢](@ref) on all computational cells.
+Internally, calls [𝒢_1st](@ref) on all computational cells.
 """
-function 𝒢_all(ϕ, dom::Domain)
-    return reshape([𝒢(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
+function 𝒢_1st_all(ϕ, dom::Domain)
+    return reshape([𝒢_1st(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
 end
+
 
 
 """
@@ -450,9 +388,9 @@ Carried out in place.
 
 This relies on `update_ϕ_in_Γ`, which implements CR-2 from Hartmann 2008,
 then in a band ℬ around the interface, solves a reinitialization PDE
-to first order in space with time integration given by `alg`.
+using a first-order or WENO spatial scheme with time integration given by `alg`.
 """
-function reinitialize_ϕ!(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
+function reinitialize_ϕ!(ϕ, dom::Domain, tf=5.0; alg=AutoTsit5(Rosenbrock23()))
 
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
@@ -460,7 +398,11 @@ function reinitialize_ϕ!(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
     BnΓ = findall(Bf .⊻ Γf)
     ΩnB = findall(fill(true, dom.nr, dom.nz) .⊻ Bf)
 
+    outside_B = 0.3*max(dom.rmax, dom.zmax)
+    # println("start")
     update_ϕ_in_Γ!(ϕ, dom)
+    # println("2nd")
+    # display(ϕ)
 
     sarr = sign.(ϕ)
     Γ = Γ_cells(ϕ, dom)
@@ -470,12 +412,14 @@ function reinitialize_ϕ!(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
     ϕ_ode = ϕ[BnΓ]
     cached = copy(ϕ)
     function sub_rhs(du, u, p, t) 
+        # println("pseudot=$t")
         cached[BnΓ] .= u
         # dϕ = sarr .* (1 .- 𝒢_all(cached))
         # return dϕ[BnΓ]
         # du = zeros(length(BnΓ))
         for (i, c) in enumerate(BnΓ)
-            du[i] = sarr[c] * (1-𝒢(cached, Tuple(c)..., dom))
+            # du[i] = sarr[c] * (1-𝒢_1st(cached, Tuple(c)..., dom))
+            du[i] = sarr[c] * (1-𝒢_weno(cached, Tuple(c)..., dom))
         end
         return du
         # dϕ = sarr .* (1 .- 𝒢_all(reshape(u, nx, ny)))
@@ -485,6 +429,7 @@ function reinitialize_ϕ!(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
     end
     tspan = (0.0, tf)
     prob = ODEProblem(sub_rhs, ϕ_ode, tspan)
+    # println("setup")
     sol = solve(prob, alg, dt = 1.0; callback=TerminateSteadyState(1e-4, 1e-4))
     # ϕ_sol[BnΓ] .= sol[end]
     ϕ[BnΓ] .= sol[end]
@@ -504,8 +449,93 @@ Reinitialize the signed distance function `ϕ`, returning a new array.
 
 Simply makes a copy of `ϕ` and calls `reinitialize_ϕ!`.
 """
-function reinitialize_ϕ(ϕ, dom::Domain, tf=1.0)
+function reinitialize_ϕ(ϕ, dom::Domain, tf=1.0; alg = BS3())
     ϕ1 = copy(ϕ)
-    reinitialize_ϕ!(ϕ1, dom, tf)
+    reinitialize_ϕ!(ϕ1, dom, tf; alg=alg)
     ϕ1
+end
+
+"""
+    weno_Φ(c, d, e, f)
+
+Return a weighted sum of finite differences for a WENO approximation. 
+Defined in §3.2 of [hartmannAccuracyEfficiencyConstrained2009](@cite) .
+"""
+function weno_Φ(c, d, e, f; ϵ=1e-6)
+    s0 = 13*(c-d)^2 + 3*(c-3d)^2
+    s1 = 13*(d-e)^2 + 3*(d+e)^2
+    s2 = 13*(e-f)^2 + 3*(3*e-f)^2
+    α0 = 1/(ϵ+s0)^2
+    α1 = 6/(ϵ+s1)^2
+    α2 = 3/(ϵ+s2)^2
+    ω0 = α0 / (α0 + α1 + α2)
+    ω2 = α2 / (α0 + α1 + α2)
+    return ω0/3*(c-2*d+e) + (ω2-0.5)/6*(d-2*e + f)
+end
+"""
+    wenodiffs_local(u_m3, u_m2, u_m1, u_0, u_p1, u_p2, u_p3, dx)
+
+Compute one-sided finite differences, using Jiang and Peng's WENO approximation [jiangWeightedENOSchemes2000](@cite).
+
+A relatively easy-to-read reference is §3.2 of [hartmannAccuracyEfficiencyConstrained2009](@cite) .
+"""
+function wenodiffs_local(u_m3, u_m2, u_m1, u_0, u_p1, u_p2, u_p3, dx)
+
+    dx1 = 1/dx
+    dx2 = dx1*dx1
+
+    central_part = ( u_m2 - 8u_m1 + 8u_p1 - u_p2) * dx1 / 12
+
+    dd_m2 = (u_m3 -2u_m2 + u_m1) *dx2
+    dd_m1 = (u_m2 -2u_m1 + u_0 ) *dx2
+    dd_0  = (u_m1 -2u_0  + u_p1) *dx2
+    dd_p1 = (u_0  -2u_p1 + u_p2) *dx2
+    dd_p2 = (u_p1 -2u_p2 + u_p3) *dx2
+
+
+    du_l = central_part - dx*weno_Φ(dd_m2, dd_m1, dd_0, dd_p1)
+    du_r = central_part + dx*weno_Φ(dd_p2, dd_p1, dd_0, dd_m1)
+    
+    return du_l, du_r
+end
+"""
+    𝒢_weno(ϕ, ir, iz, dom::Domain)
+
+Compute the norm of the gradient by Godunov's scheme with WENO differences ([wenodiffs_local](@ref)).
+
+Described in [hartmannAccuracyEfficiencyConstrained2009](@cite), eq. 6 to eq. 9.
+Let all ghost cells equal the function value at boundary; I think this is equivalent to using homogeneous Neumann boundaries.
+"""
+function 𝒢_weno(ϕ, ir, iz, dom::Domain)
+    irs = max.(1, min.(dom.nr, ir-3:ir+3)) # Pad with boundary values
+    izs = max.(1, min.(dom.nz, iz-3:iz+3))
+
+    ar, br = wenodiffs_local(ϕ[irs, iz]..., dom.dr)
+    az, bz = wenodiffs_local(ϕ[ir, izs]..., dom.dz)
+
+    # println("ir=$ir, iz=$iz, ar=$ar, br=$br")
+
+    ar = LD(ar)
+    br = LD(br)
+    az = LD(az)
+    bz = LD(bz)
+
+
+    if ϕ[ir,iz] >= 0
+        return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
+    else
+        return sqrt(max(ar.m^2, br.p^2) + max(az.m^2, bz.p^2))
+    end
+    
+end
+
+"""
+    𝒢_weno_all(ϕ, dom::Domain)
+
+Compute the norm of the gradient of `ϕ` throughout domain by Godunov's scheme to first-order accuracy.
+
+Internally, calls [𝒢_weno](@ref) on all computational cells.
+"""
+function 𝒢_weno_all(ϕ, dom::Domain)
+    return reshape([𝒢_weno(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
 end

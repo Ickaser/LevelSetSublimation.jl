@@ -239,8 +239,8 @@ function solve_T(ϕ, dom::Domain, params)
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
                     rhs[imx] -= Tf*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
-                    stefan_debug = true
-                    println("east θ<dr, ir=$ir, iz=$iz")
+                    # stefan_debug = true
+                    # println("east θ<dr, ir=$ir, iz=$iz")
                     pc += -2k*dr2 # Regular
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
                     wc += k*(dr+2r)*(θr-1)*0.5dr2*r1/(θr+1) # Due to ghost cell extrapolation 
@@ -282,7 +282,7 @@ function solve_T(ϕ, dom::Domain, params)
                 θz = pϕ/(pϕ-nϕ)
                 # Have an exact value given by BC + front
                 add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = Tf - θz*BC3*dz
+                rhs[imx] = Tf + θz*BC3*dz
                 continue
                 # No way to treat other equations, so cut it here
             else

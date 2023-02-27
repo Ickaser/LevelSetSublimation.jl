@@ -33,29 +33,28 @@ possible to advect the interface past the edge of the band where the level set f
 is maintained.
 """
 function take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
-    # Precompute for velocity
-    Qice = compute_Qice(ϕi, dom, params)
-    icesurf = compute_icesurf(ϕi, dom)
-    Qice_surf = Qice / icesurf
     
     prop_t = 1.0 # Time step for reinitialization and similar steps
-    # # if minimum(ϕip1) < -min(5dr, 5dz) # When not much ice left, repair function needs more time
-    # if minimum(ϕi) < -min(5dr, 5dz) || maximum(ϕi) > max(20dr, 20dz) # When contour is far from some regions, needs more time
-    #     prop_t *= 2
-    # end
 
-    Bf = identify_B(ϕi, dom)
-    
-    frontfunc(ir, iz) = compute_frontvel_withT(Ti, ϕi, ir, iz, dom, params, Qice_surf)
-    vf = vector_extrap_from_front(ϕi, Bf, frontfunc, dom, prop_t)
+    # --------- Extrapolation by PDE
+    # vf = extrap_v_pde(ϕi, Ti, dom, params)
+
+    # ---------- Extrapolation by fast marching (more recent)
+    vf = extrap_v_fastmarch(ϕi, Ti, dom, params)
+
+    # ----------
     
     ϕip1 = advect_ϕ(ϕi, vf, dom, dt)
     
-    # repair_t = 1.0
-    # # if minimum(ϕip1) < -min(5dr, 5dz) # When not much ice left, repair function needs more time
-    # if minimum(ϕip1) < -min(5dr, 5dz) || maximum(ϕip1) > max(20dr, 20dz) # When contour is far from some regions, needs more time
-    #     repair_t *= 2
-    # end
+    
+    if sum(ϕip1 .<= 0) == 0 # No ice cells left
+        # ϕip1[1,1] = 0 # Artifically add a tiny amount of ice
+        Tip1 = solve_T(ϕip1, dom, params)
+        return Tip1, ϕip1
+    end
+
+
+
     
     reinitialize_ϕ!(ϕip1, dom, prop_t)
     
@@ -63,7 +62,7 @@ function take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
     return Tip1, ϕip1
 end
 """
-    multistep(n, dt, T0, ϕ0, dom::Domain)
+    multistep(n, dt, T0, ϕ0, dom::Domain, T_params)
 
 Return `Ti` and `ϕi` after `n` timesteps of `dt`.
 
@@ -80,7 +79,7 @@ end
 
 # ----------- Actual start of a simulation
 """
-    sim_from_dict(fullconfig)
+    sim_from_dict(fullconfig; maxsteps=1000)
 
 Run a simulation from `fullconfig`, returning T and ϕ at each time step.
 
@@ -95,7 +94,7 @@ Implicitly, have maximum number of time steps of 1000.
     - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
     - `k`: thermal conductivity of cake
 """
-function sim_from_dict(fullconfig)
+function sim_from_dict(fullconfig; maxsteps=1000)
 
     # ------------------- Get simulation parameters
 
@@ -108,7 +107,7 @@ function sim_from_dict(fullconfig)
     reinitialize_ϕ!(ϕ0, dom, 1.0)
     T0 = solve_T(ϕ0, dom, T_params)
 
-    maxsteps = 1000
+    # maxsteps = 1000
 
     full_T = fill(1.0, (maxsteps+1, dom.nr, dom.nz))
     full_ϕ = fill(1.0, (maxsteps+1, dom.nr, dom.nz))

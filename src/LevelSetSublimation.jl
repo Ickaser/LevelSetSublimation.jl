@@ -8,6 +8,7 @@ using DrWatson, Reexport
 export contour
 
 const contour = Contour.contour
+const CI = CartesianIndex
 
 # Export statements belong in each source file below.
 # export sim_from_dict, take_time_step, multistep 
