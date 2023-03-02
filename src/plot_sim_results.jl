@@ -12,18 +12,19 @@ function plotframe(f::Int, simresults::Dict, simconfig::Dict; maxT=nothing)
 end
 
 """
-    summaryplot(simresults::Dict, simconfig)
+    summaryplot(simresults::Dict, simconfig; layout=(3,2))
 
 Return a 2x3 plot of simulation results from start to finish.
 """
-function summaryplot(simresults::Dict, simconfig)
+function summaryplot(simresults::Dict, simconfig; layout=(3,2))
     @unpack full_ϕ, full_T = simresults
     @unpack dom = simconfig
 
     nt = size(full_T, 1) 
     plots = []
-    if nt >= 6
-        frames = round.(Int, range(1, nt-1, length=6))
+    nplots = prod(layout)
+    if nt >= nplots
+        frames = round.(Int, range(1, nt-1, length=nplots))
     else
         frames = 1:nt
     end
@@ -52,9 +53,42 @@ function summaryplot(simresults::Dict, simconfig)
         push!(plots, p)
     end
 
-    bigplot = plot(plots..., size=(500*2, 200*3), layout=(3,2))
+    bigplot = plot(plots..., size=(500*layout[2], 200*layout[1]), layout=layout)
 end
 
+"""
+    summaryplot(sol::ODESolution, simconfig; layout=(3,2))
+
+Return a plot of simulation results (number from `layout`) from start to finish.
+"""
+function summaryplot(sol::ODESolution, simconfig; layout=(3,2))
+    
+    tf=sol.t[end]
+
+    @unpack dom, T_params = simconfig
+
+    plots = []
+    nplots = prod(layout)
+    frames = range(0.0, tf, length=nplots)
+
+    maxT = maximum(solve_T(reshape(sol(frames[end-1]), dom.nr, dom.nz), dom, T_params))
+    minT = T_params[:Tf]
+    for ti in frames
+        # Default: plot heat
+        ϕ = reshape(sol(ti), dom.nr, dom.nz)
+        T = solve_T(ϕ, dom, T_params)
+
+        p = freshplot(dom)
+        plot_cylheat(T, dom,maxT= maxT)
+        # plot_cylheat(ϕ, dom)
+        plot_cylcont(ϕ, dom, c=:white)
+        plot!(title="t=$ti")
+
+        push!(plots, p)
+    end
+
+    bigplot = plot(plots..., size=(500*layout[2], 200*layout[1]), layout=layout)
+end
 """
     resultsanim(simresults, casename)
 

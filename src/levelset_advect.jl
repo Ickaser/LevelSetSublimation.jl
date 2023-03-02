@@ -680,7 +680,7 @@ function fastmarch_v!(vf, acc, locs::Vector{CartesianIndex{2}}, ϕ, dom::Domain)
 
     sort!(locs , by=(x->abs(ϕ[x])))
 
-    for c in locs
+    for c in locs # This needs to be done in order.
 
         num = fill(0.0, 2)
         den = [0.0]
@@ -770,9 +770,14 @@ function fastmarch_v!(vf, acc, locs::Vector{CartesianIndex{2}}, ϕ, dom::Domain)
             end
         end
 
-        if den == 0
-            @warn "No identified stencil"
-            # println("ϕ = $(ϕ[c]), e=$(usecell(acc, ))")
+        if den[1] == 0
+            # pϕ= ϕ[c]
+            # eϕ = checkbounds(Bool, acc, c+eci) ? ϕ[c+eci] : nothing
+            # nϕ = checkbounds(Bool, acc, c+nci) ? ϕ[c+nci] : nothing
+            # wϕ = checkbounds(Bool, acc, c+wci) ? ϕ[c+wci] : nothing
+            # sϕ = checkbounds(Bool, acc, c+sci) ? ϕ[c+sci] : nothing
+            # @warn "No identified stencil" c  pϕ eϕ nϕ wϕ sϕ
+            # @debug "No identified stencil in fastmarch" c  
         else
             @. vf[c, :] = -num / den
         end
@@ -782,6 +787,7 @@ function fastmarch_v!(vf, acc, locs::Vector{CartesianIndex{2}}, ϕ, dom::Domain)
         # println("Accepted: $(sum(acc))")
 
     end
+    # debug
 end
 
 """
@@ -820,11 +826,20 @@ function extrap_v_fastmarch(ϕ, T, dom::Domain, params)
     end
 
     # Second, fastmarch in positive half of B
+    if isnan(sum(vf))
+        println("Before fastmarch")
+    end
 
     fastmarch_v!(vf, acc, B⁺, ϕ, dom)
+    if isnan(sum(vf))
+        println("Middle of fastmarch")
+    end
 
     # Finally, fastmarch in negative half of B
     fastmarch_v!(vf, acc, B⁻, ϕ, dom)
+    if isnan(sum(vf))
+        println("After fastmarch")
+    end
 
     vf
 end

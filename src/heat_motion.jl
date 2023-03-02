@@ -128,9 +128,10 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
         wT = T[ir-1, iz]
         # West and east ghost cell: weird kink? Set to 0 and procrastinate
         if wϕ <= 0 && eϕ <= 0
-            @warn "Ghost cell on east *and* west: do the math, this is currently not implemented"
             dϕr = (eϕ - wϕ) * 0.5*dr1 # Centered difference
-            dTr = 0
+            θr1 = pϕ/(pϕ - eϕ)
+            θr2 = pϕ/(pϕ - wϕ)
+            dTr = (Tf - pT)*(θr1 - θr2)/(θr2 * (2θr2-θr1))
         elseif wϕ <= 0 # West ghost cell
             θr = pϕ /(pϕ - wϕ)
             if θr > dr
@@ -173,9 +174,12 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
         sT = T[ir, iz-1]
         # North and south ghost cell: weird kink? Set to 0 and procrastinate
         if sϕ <= 0 && nϕ <= 0
-            @warn "Ghost cell on north *and* south: do the math, this is currently not implemented"
+            # @warn "Ghost cell on north *and* south: do the math, this is currently not implemented" ir iz pϕ nϕ sϕ
             dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
-            dTz = 0
+            # dTz = 0
+            θz1 = pϕ/(pϕ - nϕ)
+            θz2 = pϕ/(pϕ - sϕ)
+            dTz = (Tf - pT)*(θz1 - θz2)/(θz2 * (2θz2-θz1))
         elseif sϕ <= 0 # South ghost cell
             θz = pϕ /(pϕ - sϕ)
             if θz > dz
@@ -213,7 +217,11 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
     md = qtot / ΔH
     vtot = md / ρf
     
+    if isnan(vtot)
+        println("NaN problem! dTr = $dTr, dTz = $dTz, Qice = $Qice_per_surf, c=$((ir,iz))")
+    end
     return -vtot * dϕr, -vtot * dϕz
+
 end
 
 """
