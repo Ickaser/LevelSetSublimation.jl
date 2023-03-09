@@ -1,19 +1,18 @@
 module LevelSetSublimation
 
 using DrWatson, Reexport
-@reexport using SparseArrays, Contour
+@reexport using SparseArrays
 @reexport using DifferentialEquations
+@reexport using Contour  
 @reexport using Plots
 
 export contour
-
-const contour = Contour.contour
+if !isdefined(LevelSetSublimation, :contour)
+    const contour = Contour.contour # This used to be necessary...
+end
 const CI = CartesianIndex
 
 # Export statements belong in each source file below.
-# export sim_from_dict, take_time_step, multistep 
-# export Domain
-# export reinitialize_ϕ, reinitialize_ϕ! 
 
 include(srcdir("structs.jl"))
 include(srcdir("levelset_plots.jl"))
@@ -24,7 +23,5 @@ include(srcdir("heat_motion.jl"))
 include(srcdir("sim_setup.jl"))
 include(srcdir("sim_from_dict.jl"))
 include(srcdir("plot_sim_results.jl"))
-
-
 
 end # module LevelSetSublimation
