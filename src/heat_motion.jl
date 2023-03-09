@@ -102,7 +102,7 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
     pϕ = ϕ[ir, iz]
     
     if pϕ > 2dr || pϕ > 2dz || pϕ < -2dr || pϕ < -2dz
-        @warn "Computing front velocity for cell which may not be at front." ir iz pϕ
+        @debug "Computing front velocity for cell which may not be at front." ir iz pϕ
     end
 
     # Enforce BCs explicitly for boundary cells

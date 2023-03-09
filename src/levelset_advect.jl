@@ -803,11 +803,13 @@ TODO: improve performance. Currently makes a lot of allocations, I think.
 function extrap_v_fastmarch(ϕ, T, dom::Domain, params)
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
-    Bf = identify_B(Γ, dom)
     Γ⁺ = [c for c in Γ if ϕ[c]>0]
     ϕ⁻ = ϕ .<= 0
-    B⁻ = findall(Bf .& ϕ⁻)
-    B⁺ = findall((ϕ⁻ .⊽ Γf) .& Bf) # Exclude Γ⁺
+    # Bf = identify_B(Γ, dom)
+    # B⁻ = findall(Bf .& ϕ⁻)
+    # B⁺ = findall((ϕ⁻ .⊽ Γf) .& Bf) # Exclude Γ⁺
+    Ω⁻ = findall(ϕ⁻)
+    Ω⁺ = findall(ϕ⁻ .⊽ Γf ) # Exclude Γ⁺
 
     vf = fill(0.0, dom.nr, dom.nz, 2)
 
@@ -826,20 +828,13 @@ function extrap_v_fastmarch(ϕ, T, dom::Domain, params)
     end
 
     # Second, fastmarch in positive half of B
-    if isnan(sum(vf))
-        println("Before fastmarch")
-    end
 
-    fastmarch_v!(vf, acc, B⁺, ϕ, dom)
-    if isnan(sum(vf))
-        println("Middle of fastmarch")
-    end
+    fastmarch_v!(vf, acc, Ω⁺, ϕ, dom)
+    # fastmarch_v!(vf, acc, B⁺, ϕ, dom)
 
     # Finally, fastmarch in negative half of B
-    fastmarch_v!(vf, acc, B⁻, ϕ, dom)
-    if isnan(sum(vf))
-        println("After fastmarch")
-    end
+    fastmarch_v!(vf, acc, Ω⁻, ϕ, dom)
+    # fastmarch_v!(vf, acc, B⁻, ϕ, dom)
 
     vf
 end

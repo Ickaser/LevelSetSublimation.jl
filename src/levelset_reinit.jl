@@ -1,5 +1,5 @@
 export identify_Γ, Γ_cells, identify_B, plot_RC, 𝒢_all
-export reinitialize_ϕ, reinitialize_ϕ!
+export reinitialize_ϕ, reinitialize_ϕ!, reinitialize_ϕ_all!
 
 # Functions exported just for the sake of making documentation work
 export update_ϕ_in_Γ!
@@ -390,7 +390,7 @@ This relies on `update_ϕ_in_Γ`, which implements CR-2 from Hartmann 2008,
 then in a band ℬ around the interface, solves a reinitialization PDE
 using a first-order or WENO spatial scheme with time integration given by `alg`.
 """
-function reinitialize_ϕ!(ϕ, dom::Domain, tf=5.0; alg=AutoTsit5(Rosenbrock23()))
+function reinitialize_ϕ!(ϕ, dom::Domain, tf=100.0; alg=BS3())
 
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
@@ -398,48 +398,33 @@ function reinitialize_ϕ!(ϕ, dom::Domain, tf=5.0; alg=AutoTsit5(Rosenbrock23())
     BnΓ = findall(Bf .⊻ Γf)
     ΩnB = findall(fill(true, dom.nr, dom.nz) .⊻ Bf)
 
-    outside_B = 0.3*max(dom.rmax, dom.zmax)
-    # println("start")
+    outside_B = 1.5*dom.bwfrac*max(dom.rmax, dom.zmax)
     update_ϕ_in_Γ!(ϕ, dom)
-    # println("2nd")
-    # display(ϕ)
 
     sarr = sign.(ϕ)
     Γ = Γ_cells(ϕ, dom)
 
     
-    # ϕ_ode = reshape(ϕ_mat, :)
     ϕ_ode = ϕ[BnΓ]
     cached = copy(ϕ)
     function sub_rhs(du, u, p, t) 
-        # println("pseudot=$t")
         cached[BnΓ] .= u
-        # dϕ = sarr .* (1 .- 𝒢_all(cached))
-        # return dϕ[BnΓ]
-        # du = zeros(length(BnΓ))
         for (i, c) in enumerate(BnΓ)
             # du[i] = sarr[c] * (1-𝒢_1st(cached, Tuple(c)..., dom))
             du[i] = sarr[c] * (1-𝒢_weno(cached, Tuple(c)..., dom))
         end
         return du
-        # dϕ = sarr .* (1 .- 𝒢_all(reshape(u, nx, ny)))
-        # dϕ[Γ] .= 0.0
-        # dϕ[ΩnB] .= 0.0
-        # return reshape(dϕ, :)
     end
     tspan = (0.0, tf)
     prob = ODEProblem(sub_rhs, ϕ_ode, tspan)
-    # println("setup")
     sol = solve(prob, alg, dt = 1.0; callback=TerminateSteadyState(1e-4, 1e-4))
-    # ϕ_sol[BnΓ] .= sol[end]
     ϕ[BnΓ] .= sol[end]
 
-    # ϕ_sol[ΩnB] .= sarr[ΩnB]
+    # @info "Reinitialization time" sol.t[end]
+
     ϕ[ΩnB] .= sarr[ΩnB] .* outside_B
 
-    # ϕ_sol
     nothing
-    # ϕ_rep = reshape(sol[end], nx, ny)
 end
 
 """
@@ -454,6 +439,44 @@ function reinitialize_ϕ(ϕ, dom::Domain, tf=1.0; alg = BS3())
     reinitialize_ϕ!(ϕ1, dom, tf; alg=alg)
     ϕ1
 end
+
+
+"""
+    reinitialize_ϕ_all!(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
+
+Reinitialize the signed distance function `ϕ`.
+
+Carried out in place.  
+
+This relies on `update_ϕ_in_Γ`, which implements CR-2 from Hartmann 2008,
+then everywhere else, solves a reinitialization PDE
+using a WENO spatial scheme with time integration given by `alg`.
+"""
+function reinitialize_ϕ_all!(ϕ, dom::Domain, tf=100.0; alg=BS3())
+    Γf = identify_Γ(ϕ, dom)
+    Γ = findall(Γf)
+    sarr = sign.(ϕ)
+
+    update_ϕ_in_Γ!(ϕ, dom)
+
+    function sub_rhs(du, u, p, t) 
+        ϕl = reshape(u, dom.nr, dom.nz)
+        dϕ = sarr .* (1 .- 𝒢_weno_all(ϕl, dom))
+        dϕ[Γ] .= 0.0
+        du .= reshape(dϕ, :)
+        return du
+    end
+    tspan = (0.0, tf)
+    ϕ_flat = reshape(ϕ, :)
+    prob = ODEProblem(sub_rhs, ϕ_flat, tspan)
+    sol = solve(prob, alg, dt = 1.0; callback=TerminateSteadyState(1e-4, 1e-4))
+    ϕ .= reshape(sol[end], dom.nr, dom.nz)
+
+    # @info "Reinitialization time" sol.t[end]
+
+    nothing
+end
+
 
 """
     weno_Φ(c, d, e, f)
@@ -499,27 +522,25 @@ function wenodiffs_local(u_m3, u_m2, u_m1, u_0, u_p1, u_p2, u_p3, dx)
     return du_l, du_r
 end
 """
-    𝒢_weno(ϕ, ir, iz, dom::Domain)
+    𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
+    𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
 
 Compute the norm of the gradient by Godunov's scheme with WENO differences ([wenodiffs_local](@ref)).
 
 Described in [hartmannAccuracyEfficiencyConstrained2009](@cite), eq. 6 to eq. 9.
 Let all ghost cells equal the function value at boundary; I think this is equivalent to using homogeneous Neumann boundaries.
 """
-function 𝒢_weno(ϕ, ir, iz, dom::Domain)
+function 𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
     irs = max.(1, min.(dom.nr, ir-3:ir+3)) # Pad with boundary values
     izs = max.(1, min.(dom.nz, iz-3:iz+3))
 
     ar, br = wenodiffs_local(ϕ[irs, iz]..., dom.dr)
     az, bz = wenodiffs_local(ϕ[ir, izs]..., dom.dz)
 
-    # println("ir=$ir, iz=$iz, ar=$ar, br=$br")
-
     ar = LD(ar)
     br = LD(br)
     az = LD(az)
     bz = LD(bz)
-
 
     if ϕ[ir,iz] >= 0
         return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
@@ -529,10 +550,34 @@ function 𝒢_weno(ϕ, ir, iz, dom::Domain)
     
 end
 
+
+function 𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
+    indmin = CI(1, 1)
+    indmax = CI(dom.nr, dom.nz)
+    rshift = [CI(ir, 0) for ir in -3:3]
+    zshift = [CI( 0,iz) for iz in -3:3]
+    rst = max.([indmin], min.([indmax], [ind].+rshift)) # If stencil falls partly outside domain,  
+    zst = max.([indmin], min.([indmax], [ind].+zshift)) # repeat the boundary cell
+
+    ar_, br_ = wenodiffs_local(ϕ[rst]..., dom.dr)
+    az_, bz_ = wenodiffs_local(ϕ[zst]..., dom.dz)
+
+    ar = LD(ar_)
+    br = LD(br_)
+    az = LD(az_)
+    bz = LD(bz_)
+
+    if ϕ[ir,iz] >= 0
+        return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
+    else
+        return sqrt(max(ar.m^2, br.p^2) + max(az.m^2, bz.p^2))
+    end
+end
+
 """
     𝒢_weno_all(ϕ, dom::Domain)
 
-Compute the norm of the gradient of `ϕ` throughout domain by Godunov's scheme to first-order accuracy.
+Compute the norm of the gradient of `ϕ` throughout domain by Godunov's scheme with WENO derivatives.
 
 Internally, calls [𝒢_weno](@ref) on all computational cells.
 """
