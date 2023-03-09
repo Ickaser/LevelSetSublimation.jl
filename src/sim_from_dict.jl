@@ -8,6 +8,11 @@ export ϕevol_RHS
 
 """
     ϕevol_RHS!(dϕ_flat, ϕ_flat, p, t)
+
+Evaluate local time rate of change for `ϕ` (passed in flattened form as `ϕ_flat`), and put results in `dϕ_flat`.
+
+Parameters `p` assumed to be `(dom::Domain, T_params)`
+This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing a temperature profilef
 """
 function ϕevol_RHS!(dϕ_flat, ϕ_flat, p, t)
     dom = p[1]
@@ -69,11 +74,13 @@ end
 
 
 """
-    ϕevol_RHS(ϕ, dom, T_params)
+    ϕevol_RHS(ϕ, dom::Domain, T_params)
     
-Wraps a call on `ϕevol_RHS!`, for convenience in debugging
+Compute the time derivative of `ϕ` using
+
+Wraps a call on `ϕevol_RHS!`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function ϕevol_RHS(ϕ, dom, T_params)
+function ϕevol_RHS(ϕ, dom::Domain, T_params)
     p = (dom, T_params)
     dϕ = zeros(dom.nr, dom.nz)
     dϕ_flat = reshape(dϕ, :)
@@ -82,57 +89,79 @@ function ϕevol_RHS(ϕ, dom, T_params)
     return dϕ
 end
 
+"""
+    reinit_wrap(integ)
+
+Thin wrapper to reinitialize the state of the level set function.
+
+Calls `reinitialize_ϕ!(ϕ, dom)`, so uses the default reinitialization setup.
+Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
+"""
 function reinit_wrap(integ)
     dom = integ.p[1]
     ϕ = reshape(integ.u, dom.nr, dom.nz)
-    # r_pre = get_subf_r(ϕ, dom)
-    # z_pre = get_subf_z(ϕ, dom)
-    # vol_pre = sum(reshape(dom.rgrid, :, 1) .* (ϕ .<= 0) ) * dom.dr * dom.dz * 2π
-    reinitialize_ϕ!(ϕ, dom, alg=BS3()) 
-    # r_post = get_subf_r(ϕ, dom)
-    # z_post = get_subf_z(ϕ, dom)
-    # rmove = r_post - r_pre
-    # zmove = z_post - z_pre
-    # vol_post = sum(reshape(dom.rgrid, :, 1) .* (ϕ .<= 0) ) * dom.dr * dom.dz * 2π
-    # volchange = vol_post - vol_pre
-    # @info "Reinit at t=$(integ.t), "
-    # @debug "com of interface moved:" rmove, zmove
-    # @debug "vol change:" volchange
+    reinitialize_ϕ!(ϕ, dom) 
 end
 
+"""
+    next_reinit_time(integ)
+
+Compute the next time reinitialization should be necessary, given the current integrator state.
+Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
+"""
 function next_reinit_time(integ)
     dom = integ.p[1]
     dϕ_flat = similar(integ.u)
     ϕevol_RHS!(dϕ_flat, integ.u, integ.p, integ.t)
 
-    B = identify_B(reshape(integ.u, dom.nr, dom.nz), dom)
+    # B = identify_B(reshape(integ.u, dom.nr, dom.nz), dom)
+    # dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
+    # max_dϕdt = maximum(abs.(dϕ[B]))
+
+    # The main region of concern is the frozen region near interface
+    # Find the largest value of dϕdt in that region
+    ϕ = reshape(integ.u, dom.nr, dom.nz)
     dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
-    max_dϕdt = maximum(abs.(dϕ[B]))
+    B = identify_B(ϕ, dom)
+    B⁻ = B .& (ϕ .<= 0)
+    max_dϕdt = maximum(abs.(dϕ[B⁻]))
 
     # max_dϕdt = maximum(abs.(dϕ_flat))
 
     # Reinit next when interface should have moved across half of band around interface 
     domfrac = min(0.6 * dom.bwfrac, 0.1) # Minimum of 0.6 of the band, or 0.25 of domain size.
-    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax,) 
+    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax, integ.t*max_dϕdt + dom.dz)  # Also: at early times, do more often
     dt = minlen / max_dϕdt 
-    @info "Reinit at t=$(integ.t)"#, next at t=$(integ.t+dt)" 
+    @info "Reinit at t=$(integ.t), dt=$dt"#, next at t=$(integ.t+dt)" 
     return integ.t + dt
 end
 
-function sim_from_dict(fullconfig;tf = 100)
+"""
+    sim_from_dict(fullconfig; tf=100)
+
+Given a simulation configuration `fullconfig`, run a simulation
+
+Maximum simulation time is specified by `tf`.
+`fullconfig` should have the following fields:
+- `ϕ0type`, types listed for [`make_ϕ0`](@ref)
+- `dom`, an instance of [`Domain`](@ref)
+- `T_params`, which in turn has fields
+    - `Tf`: ice temperature
+    - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
+    - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
+    - `k`: thermal conductivity of cake
+"""
+function sim_from_dict(fullconfig; tf=100)
 
     # ------------------- Get simulation parameters
 
-    @unpack T_params, ϕ0type, dom, sim_dt = fullconfig
+    @unpack T_params, ϕ0type, dom = fullconfig
 
-    # println("Inside: dom.nr = $(dom.nr)")
     ϕ0 = make_ϕ0(ϕ0type, dom)
-
-    reinitialize_ϕ!(ϕ0, dom, 100.0) # Don't reinit because callback handles this
-
+    # reinitialize_ϕ!(ϕ0, dom, 100.0) # Don't reinit because callback handles this
     ϕ0_flat = reshape(ϕ0, :)
 
-    # ---- Set up for ODEProblem
+    # ---- Set up ODEProblem
     prob_p = (dom, T_params)
     tspan = (0, tf)
     prob = ODEProblem(ϕevol_RHS!, ϕ0_flat, tspan, prob_p)
@@ -140,19 +169,20 @@ function sim_from_dict(fullconfig;tf = 100)
     # --- Set up reinitialization callback
 
     # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
-    # cb1 = PeriodicCallback(x->println("called back"), reinit_time, initial_affect=true)
     cb1 = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
 
     # --- Set up simulation end callback
 
-    cond(u, t, integ) = minimum(u)
+    # When the minimum value of ϕ is 0, front has disappeared
+    cond(u, t, integ) = minimum(u) 
+    # ContinuousCallback gets thrown when `cond` evaluates to 0
+    # `terminate!` ends the solve there
     cb2 = ContinuousCallback(cond, terminate!)
 
+    # --- Put callbacks together
     cbs = CallbackSet(cb1, cb2)
 
     # --- Solve
-
-
     # sol = solve(prob, SSPRK43(), callback=cbs; )
     sol = solve(prob, Tsit5(), callback=cbs; )
     # sol = solve(prob, Tsit5(), callback=cb2; ) # No reinit
@@ -161,7 +191,7 @@ end
 
 
 
-# ------------ Semi-manual time stepping
+# ------------ Semi-manual time stepping. Obsolete, I think  -------------------------
 """
     take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
 
