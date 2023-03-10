@@ -1,5 +1,6 @@
 export identify_Γ, Γ_cells, identify_B, plot_RC, 𝒢_all
 export reinitialize_ϕ, reinitialize_ϕ!, reinitialize_ϕ_all!
+export reinitialize_ϕ_HCR!, reinitialize_ϕ_HCR
 
 # Functions exported just for the sake of making documentation work
 export update_ϕ_in_Γ!
@@ -251,52 +252,121 @@ function calc_dij_C!(d, ϕ, C, dom::Domain)
             d[c] = 0
             continue
         end
-        # i, j = Tuple(c)
-        # neighbors = Vector{Tuple}()
-        # if i == 1
-        #     push!(neighbors, (i+1,j))
-        # elseif i == dom.nr
-        #     push!(neighbors, (i-1,j))
-        # else
-        #     push!(neighbors, (i+1,j))
-        #     push!(neighbors, (i-1,j))
-        # end
-        # if j == 1
-        #     push!(neighbors, (i,j+1))
-        # elseif j == dom.nz
-        #     push!(neighbors, (i,j-1))
-        # else
-        #     push!(neighbors, (i,j+1))
-        #     push!(neighbors, (i,j-1))
-        # end
         pos_neighbors = [CI(1, 0), CI(-1,0), CI(0,1), CI(0,-1)]
         neighbors = [nb for nb in [c].+pos_neighbors if checkbounds(Bool, ϕ, nb)]
 
-        Sij = [nb for nb in neighbors if ϕ[nb]*ϕ[c] <= 0]
         if length(Sij) > 0
             num = sum([d[nb] for nb in Sij])
             den = sum([ϕ[nb] for nb in Sij])
             d[c] =  ϕ[c] * num / den
         else
-            # Happens when cell isn't actually in Γ? 
-
-            # exactly 0, so Γ is three cells wide.
-
-            # Identify the 0 neighbor, set distance to neighbor
-            # println("Watch for this case! ")
             @warn "Length of Sij is $(length(Sij))! Not updating value."
             d[c] = ϕ[c]
-            # Sij = [nb for nb in neighbors if ϕ[nb...] == 0]
-            # if (i + 1,j) ∈ Sij || (i-1,j) ∈ Sij
-            #     mindx = dom.dr
-            # elseif (i,j+1) ∈ Sij || (i,j-1) ∈ Sij
-            #     mindx = dom.dz
-            # end
-            # d[c] = sign(ϕ[c]) * mindx
             continue
         end
     end
 end
+
+"""
+    calc_rij_Sij(ϕ, Γ, C, dom::Domain)
+
+Compute rij, neighbors Sij for each cell in `Γ`.
+
+Implementation of eq. 19b from Hartmann 2010, scheme HCR-2
+"""
+function calc_rij_Sij(ϕ, Γ)
+    rij_list = []
+    Sij_list = []
+    for c in Γ
+        pos_neighbors = [CI(1, 0), CI(-1,0), CI(0,1), CI(0,-1)]
+        neighbors = [nb for nb in [c].+pos_neighbors if checkbounds(Bool, ϕ, nb)]
+        Sij = [nb for nb in neighbors if ϕ[nb]*ϕ[c] <= 0]
+        push!(Sij_list, Sij)
+        rij = ϕ[c] / sum(ϕ[Sij])
+        push!(rij_list, rij)
+    end
+    return rij_list, Sij_list
+end
+
+"""
+    reinitialize_ϕ_HCR(ϕ, dom::Domain)
+
+Thin wrapper on `reinitialize_ϕ_HCR!` to avoid mutating.
+"""
+function reinitialize_ϕ_HCR(ϕ, dom::Domain)
+    ϕa = copy(ϕ)
+    reinitialize_ϕ_HCR!(ϕa, dom)
+    return ϕa
+end
+
+function sdf_err_L1(ϕ, dom)
+    Bf = identify_B(ϕ, dom)
+    B = findall(Bf)
+    𝒢 = 𝒢_weno.([ϕ], B, [dom])
+    err = sum(abs.(𝒢 .-1)) / length(B)
+end
+function sdf_err_L∞(ϕ, dom)
+    Bf = identify_B(ϕ, dom)
+    B = findall(Bf)
+    𝒢 = 𝒢_weno.([ϕ], B, [dom])
+    err = maximum(abs.(𝒢 .-1)) 
+end
+
+"""
+    reinitialize_ϕ_HCR2!(ϕ, dom::Domain; maxsteps = 20)
+
+Reinitialize `ϕ` throughout the domain.
+
+Implementation of Eq. 22 in Hartmann 2010, scheme HCR-2.
+
+TODO: switch to Eq. 23 to minimize allocations? Can eliminate F, rhs that way
+
+"""
+function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 20, tol=1e-4)
+    Γ = Γ_cells(ϕ, dom)
+    dx = sqrt(dom.dr*dom.dz) # Geometric mean grid spacing
+    Cv = Γ
+    F = zeros(size(dom))
+    rhs = zeros(size(dom))
+    S = @. ϕ/sqrt(ϕ^2 + dx^2)
+    # Time levels
+    dτ = 0.25*dx # Pseudo-time step
+    rij_list, Sij_list = calc_rij_Sij(ϕ, Γ)
+    # sdf_err_L1 = 
+    for v in 1:maxsteps
+        if sdf_err_L1(ϕ, dom) < tol
+            @info "End reinit early" sdf_err_L1(ϕ, dom) v
+            break
+        end
+
+        F .= 0
+        rhs .= 0
+        for (i,c) in enumerate(Cv)
+            # Check for neighbor sign changes, per comment pre Eq. 18
+            Sij = Sij_list[i]
+            signs_Sij = (ϕ[c] .* ϕ[Sij]) .<= 0
+
+            # If a neighbor no longer has opposite sign, skip this cell
+            if sum(signs_Sij) < length(Sij) 
+                continue
+            end
+            # Eq. 21b
+            F[c] = (rij_list[i] * sum(ϕ[Sij]) - ϕ[c]) / dx
+            # @info "F" c F[c] rij_list[i]*sum(ϕ[Sij])
+        end
+        # for c in CartesianIndices(ϕ)
+        #     𝒢 = 𝒢_weno(ϕ, c, dom)
+        #     rhs[c] = dτ * (S[c]*(𝒢 - 1) - 0.5F[c])
+        # end
+        # 𝒢 = 𝒢_weno.([ϕ], CartesianIndices(ϕ), [dom]) .- 1
+        # rhs .= S .* 𝒢 .- 0.5F
+        rhs .= S .* (𝒢_weno.([ϕ], CartesianIndices(ϕ), [dom]) .- 1) .- 0.5F
+        # @info "step" S F 𝒢 rhs 
+        # @info "Timestep" v F
+        ϕ .-= rhs .* dτ
+    end
+end
+
 
 """
     update_ϕ_in_Γ!(ϕ, dom::Domain)
@@ -567,7 +637,7 @@ function 𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
     az = LD(az_)
     bz = LD(bz_)
 
-    if ϕ[ir,iz] >= 0
+    if ϕ[ind] >= 0
         return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
     else
         return sqrt(max(ar.m^2, br.p^2) + max(az.m^2, bz.p^2))

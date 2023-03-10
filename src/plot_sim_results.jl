@@ -101,7 +101,7 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5)
         tr = round(ti, sigdigits=3)
         plot!(title="timestep=$tr")
         plot_cylheat(T, dom, maxT=maxT)
-        plot_cylcont(ϕ, dom)
+        plot_cylcont(ϕ, dom, c=:white)
     end
 
     # fps = ceil(Int, nt/2)  # nt/x makes x-second long animation

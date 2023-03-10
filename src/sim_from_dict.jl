@@ -75,8 +75,9 @@ end
 
 """
     ϕevol_RHS(ϕ, dom::Domain, T_params)
+    ϕevol_RHS(ϕ, config)
     
-Compute the time derivative of `ϕ` using
+Compute the time derivative of `ϕ` with given parameters.
 
 Wraps a call on `ϕevol_RHS!`, for convenience in debugging and elsewhere that efficiency is less important
 """
@@ -88,6 +89,9 @@ function ϕevol_RHS(ϕ, dom::Domain, T_params)
     ϕevol_RHS!(dϕ_flat, ϕ_flat, p, 0.0)
     return dϕ
 end
+function ϕevol_RHS(ϕ, config)
+    ϕevol_RHS(ϕ, config[:dom], config[:T_params])
+end
 
 """
     reinit_wrap(integ)
@@ -98,9 +102,11 @@ Calls `reinitialize_ϕ!(ϕ, dom)`, so uses the default reinitialization setup.
 Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 """
 function reinit_wrap(integ)
+    @info "Reinit at t=$(integ.t)"
     dom = integ.p[1]
     ϕ = reshape(integ.u, dom.nr, dom.nz)
-    reinitialize_ϕ!(ϕ, dom) 
+    # reinitialize_ϕ!(ϕ, dom) 
+    reinitialize_ϕ_HCR!(ϕ, dom, tol=1e-6) 
 end
 
 """
@@ -129,11 +135,21 @@ function next_reinit_time(integ)
     # max_dϕdt = maximum(abs.(dϕ_flat))
 
     # Reinit next when interface should have moved across half of band around interface 
-    domfrac = min(0.6 * dom.bwfrac, 0.1) # Minimum of 0.6 of the band, or 0.25 of domain size.
+    domfrac = min(0.5 * dom.bwfrac, 0.1) # Minimum of 0.5 of the band, or 0.1 of domain size.
     minlen = min(domfrac*dom.rmax , domfrac*dom.zmax, integ.t*max_dϕdt + dom.dz)  # Also: at early times, do more often
     dt = minlen / max_dϕdt 
-    @info "Reinit at t=$(integ.t), dt=$dt"#, next at t=$(integ.t+dt)" 
+    # dt = 0.5 * minlen / max_dϕdt 
+    # @info "Reinit at t=$(integ.t), dt=$dt"#, next at t=$(integ.t+dt)" 
     return integ.t + dt
+end
+
+function cond_reinit(u, t, integ)
+    dom = integ.p[1]
+    ϕ = reshape(u, size(dom))
+    err = sdf_err_L1(ϕ, dom)
+    tol = 1e-5 # Roughly dx^4
+    @info "error from sdf" err-tol
+    return err-tol
 end
 
 """
@@ -150,6 +166,9 @@ Maximum simulation time is specified by `tf`.
     - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
     - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
     - `k`: thermal conductivity of cake
+
+If you are getting a warning about instability, it can often be fixed by tinkering with the reinitialization behavior.
+That shouldn't be true but it seems like it is.
 """
 function sim_from_dict(fullconfig; tf=100)
 
@@ -158,7 +177,7 @@ function sim_from_dict(fullconfig; tf=100)
     @unpack T_params, ϕ0type, dom = fullconfig
 
     ϕ0 = make_ϕ0(ϕ0type, dom)
-    # reinitialize_ϕ!(ϕ0, dom, 100.0) # Don't reinit because callback handles this
+    reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000) # Don't reinit if using IterativeCallback
     ϕ0_flat = reshape(ϕ0, :)
 
     # ---- Set up ODEProblem
@@ -170,21 +189,22 @@ function sim_from_dict(fullconfig; tf=100)
 
     # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
     cb1 = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
+    # cb1 = ContinuousCallback(cond_reinit, reinit_wrap)
 
     # --- Set up simulation end callback
 
     # When the minimum value of ϕ is 0, front has disappeared
-    cond(u, t, integ) = minimum(u) 
+    cond_end(u, t, integ) = minimum(u) 
     # ContinuousCallback gets thrown when `cond` evaluates to 0
     # `terminate!` ends the solve there
-    cb2 = ContinuousCallback(cond, terminate!)
+    cb2 = ContinuousCallback(cond_end, terminate!)
 
     # --- Put callbacks together
     cbs = CallbackSet(cb1, cb2)
 
     # --- Solve
-    # sol = solve(prob, SSPRK43(), callback=cbs; )
-    sol = solve(prob, Tsit5(), callback=cbs; )
+    sol = solve(prob, SSPRK43(), callback=cbs; )
+    # sol = solve(prob, Tsit5(), callback=cbs; )
     # sol = solve(prob, Tsit5(), callback=cb2; ) # No reinit
     return Dict("ϕsol"=>sol)
 end
