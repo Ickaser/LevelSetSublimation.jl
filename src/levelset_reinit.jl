@@ -335,7 +335,7 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 20, tol=1e-4)
     # sdf_err_L1 = 
     for v in 1:maxsteps
         if sdf_err_L1(ϕ, dom) < tol
-            @info "End reinit early" sdf_err_L1(ϕ, dom) v
+            # @info "End reinit early" sdf_err_L1(ϕ, dom) v
             break
         end
 
