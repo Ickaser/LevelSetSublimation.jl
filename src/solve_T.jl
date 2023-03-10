@@ -139,8 +139,9 @@ function solve_T(ϕ, dom::Domain, params)
     if minimum(ϕ) > 0
         @info "Solving heat equation without any ice, artificially introducing some"
         ϕ = copy(ϕ)
-        ϕ[1,2] = -max(dr, dz)
-        ϕ[2,1] = -max(dr, dz)
+        ϕ[argmin(ϕ)] = - max(dr, dz)
+        # ϕ[1,2] = -max(dr, dz)
+        # ϕ[2,1] = -max(dr, dz)
     end
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
