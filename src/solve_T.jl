@@ -137,11 +137,9 @@ function solve_T(ϕ, dom::Domain, params)
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
     if minimum(ϕ) > 0
-        @info "Solving heat equation without any ice, artificially introducing some"
+        # @info "Solving heat equation without any ice, artificially introducing some"
         ϕ = copy(ϕ)
         ϕ[argmin(ϕ)] = - max(dr, dz)
-        # ϕ[1,2] = -max(dr, dz)
-        # ϕ[2,1] = -max(dr, dz)
     end
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
