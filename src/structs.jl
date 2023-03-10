@@ -60,6 +60,12 @@ function Base.show(io::IO, d::Domain)
     end
 end
 
+# For convenience, extend `size` for Domains
+function Base.size(d::Domain)
+    (d.nr, d.nz)
+end
+
+
 function Domain(nr::I, nz::I, rmax::F, zmax::F) where {I,F}
 
     rmin = 0.0
