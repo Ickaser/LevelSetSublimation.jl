@@ -101,8 +101,10 @@ Thin wrapper to reinitialize the state of the level set function.
 Calls `reinitialize_ϕ!(ϕ, dom)`, so uses the default reinitialization setup.
 Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 """
-function reinit_wrap(integ)
-    @info "Reinit at t=$(integ.t)"
+function reinit_wrap(integ; verbose=false)
+    if verbose
+        @info "Reinit at t=$(integ.t)"
+    end
     dom = integ.p[1]
     ϕ = reshape(integ.u, dom.nr, dom.nz)
     # reinitialize_ϕ!(ϕ, dom) 
@@ -153,11 +155,13 @@ function cond_reinit(u, t, integ)
 end
 
 """
-    sim_from_dict(fullconfig; tf=100)
+    sim_from_dict(fullconfig; tf=100, verbose=false)
 
 Given a simulation configuration `fullconfig`, run a simulation
 
 Maximum simulation time is specified by `tf`.
+`verbose=true` will put out some info messages about simulation progress, i.e. at each reinitialization.
+
 `fullconfig` should have the following fields:
 - `ϕ0type`, types listed for [`make_ϕ0`](@ref)
 - `dom`, an instance of [`Domain`](@ref)
@@ -169,8 +173,10 @@ Maximum simulation time is specified by `tf`.
 
 If you are getting a warning about instability, it can often be fixed by tinkering with the reinitialization behavior.
 That shouldn't be true but it seems like it is.
+
+
 """
-function sim_from_dict(fullconfig; tf=100)
+function sim_from_dict(fullconfig; tf=100, verbose=false)
 
     # ------------------- Get simulation parameters
 
@@ -188,7 +194,12 @@ function sim_from_dict(fullconfig; tf=100)
     # --- Set up reinitialization callback
 
     # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
-    cb1 = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
+    if verbose
+        cb1 = IterativeCallback(next_reinit_time, x->reinit_wrap(x, verbose=false),  initial_affect = true)
+    else
+        cb1 = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
+    end
+
     # cb1 = ContinuousCallback(cond_reinit, reinit_wrap)
 
     # --- Set up simulation end callback
