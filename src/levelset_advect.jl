@@ -1,5 +1,6 @@
 export advect_ϕ, advect_ϕ!
 export vector_extrap_from_front
+export fastmarch_v!, extrap_v_fastmarch, extrap_v_pde
 
 # FUnctions exported for Documenter.jl sake
 export calc_Vd∇ϕ
@@ -170,8 +171,8 @@ function calc_Nd∇v(ϕ, v, dom::Domain; debug=false)
             end
         end
     end
-    Nd∇v = @. dϕx * dvx + dϕy * dvy
-    return Nd∇v
+    # Nd∇v = @. dϕx * dvx + dϕy * dvy
+    return @. dϕx * dvx + dϕy * dvy
 end
 
 """
@@ -183,12 +184,9 @@ Stores all results in `cache`; tries to avoid allocation.
 1st order Upwind difference scheme for N ⋅ ∇ F , for each F ∈ v. Same finite differences for both N=∇ϕ and F.
 At the boundaries, if no upwind direction available, clamp derivatives to 0.
 """
-function calc_Nd∇v!(cache, ϕ, v, dom::Domain; debug=false)
+function calc_Nd∇v!(cache, ϕ, v, dom::Domain)
     dx1 = dom.dr1
     dy1 = dom.dz1
-    # nx, ny = size(ϕ)
-    nx = dom.nr
-    ny = dom.nz
     nvec = size(v, 3)
     if size(cache) != size(v)
         @error "ArgumentError: improper cache size for storing Nd∇v"
@@ -202,7 +200,7 @@ function calc_Nd∇v!(cache, ϕ, v, dom::Domain; debug=false)
     dϕy = 0.0
     dvx = fill(0.0, nvec)
     dvy = fill(0.0, nvec)
-    for j in 1:ny, i in 1:nx
+    for j in 1:dom.nz, i in 1:dom.nr
 
         # s = sign(ϕ[i,j]) # Use to ensure wind direction points away from contour
         pcell = flipsign(ϕ[i,j], ϕ[i,j])
@@ -216,7 +214,7 @@ function calc_Nd∇v!(cache, ϕ, v, dom::Domain; debug=false)
                    dϕx = (ϕ[i+1,j]   - ϕ[i,j]   )*dx1 
                 @. dvx = (v[i+1,j,:] - v[i,j,:] )*dx1 
             end
-        elseif i == nx # Right edge
+        elseif i == dom.nr # Right edge
             wcell = flipsign(ϕ[i-1,j],ϕ[i,j])
             if wcell > pcell# + 0.5dx
                    dϕx = 0.0 # Clamp to 0 if  DOWNWIND
@@ -254,7 +252,7 @@ function calc_Nd∇v!(cache, ϕ, v, dom::Domain; debug=false)
                    dϕy = (ϕ[i,j+1]   - ϕ[i,j]  )*dy1
                 @. dvy = (v[i,j+1,:] - v[i,j,:])*dy1
             end
-        elseif j==ny # Top edge
+        elseif j==dom.nz # Top edge
             scell = flipsign(ϕ[i,j-1],ϕ[i,j])
             if scell > pcell# + 0.5dy
                    dϕy = 0.0 # Clamp to 0 if would be DOWNWIND
@@ -288,6 +286,113 @@ function calc_Nd∇v!(cache, ϕ, v, dom::Domain; debug=false)
 end
 
 """
+    calc_Nd∇v_noalloc(ir, iz, ϕ, v, dom::Domain, cache)
+
+Compute ∇ϕ ⋅ ∇F at `ir` and `iz`, using `cache` to store all intermediate values.
+
+1st order Upwind difference scheme for N ⋅ ∇ F , for each F ∈ v. Same finite differences for both N=∇ϕ and F.
+At the boundaries, if no upwind direction available, clamp derivatives to 0.
+"""
+function calc_Nd∇v_noalloc!(ndvcache, ϕ, v, dom::Domain, intermcache)
+    dx1 = dom.dr1
+    dy1 = dom.dz1
+    nvec = size(v, 3)
+    if size(intermcache, 1) < 7+2nvec
+        @error "ArgumentError: too-small cache size for holding Nd∇v intermediates" 
+    end
+    # Cached variables for saving on memory
+    pc, ec, wc, sc, nc = @view intermcache[1:5]
+    dϕx = @view intermcache[6]
+    dϕy = @view intermcache[7]
+    dvx = @view intermcache[8:7+nvec]
+    dvy = @view intermcache[8+nvec:7+2nvec]
+
+
+    for iz in 1:dom.nz, ir in 1:dom.nr
+        # s = sign(ϕ[ir,iz]) # Use to ensure wind direction points away from contour
+        pc = flipsign(ϕ[ir,iz], ϕ[ir,iz])
+        # At boundaries, if upwind not possible, clamp to 0
+        if ir == 1  # Left edge
+            ec = flipsign(ϕ[ir+1,iz],ϕ[ir,iz])
+            if ec > pc# + 0.5dx
+                dϕx .= 0.0 # Clamp to 0 if  DOWNWIND
+                dvx .= 0.0 # Clamp to 0 if  DOWNWIND
+            else
+                dϕx .= (ϕ[ir+1,iz]   - ϕ[ir,iz]   )*dx1 
+                dvx .= (v[ir+1,iz,:] - v[ir,iz,:] )*dx1 
+            end
+        elseif ir == dom.nr # Right edge
+            wc = flipsign(ϕ[ir-1,iz],ϕ[ir,iz])
+            if wc > pc# + 0.5dx
+                dϕx .= 0.0 # Clamp to 0 if  DOWNWIND
+                dvx .= 0.0 # Clamp to 0 if  DOWNWIND
+            else
+                dϕx .= (ϕ[ir,iz]   - ϕ[ir-1,iz]   )*dx1 
+                dvx .= (v[ir,iz,:] - v[ir-1,iz,:] )*dx1 
+            end
+        else # Bulk
+            ec = flipsign(ϕ[ir+1,iz],ϕ[ir,iz])
+            wc = flipsign(ϕ[ir-1,iz],ϕ[ir,iz])
+            if ec<pc && wc<pc
+                dϕx .= (ϕ[ir+1,iz]   - ϕ[ir-1,iz]  )*0.5*dx1 # Second order central
+                dvx .= (v[ir+1,iz,:] - v[ir-1,iz,:])*0.5*dx1 # Second order central
+            elseif wc<pc
+                dϕx .= (ϕ[ir,iz]   - ϕ[ir-1,iz]   )*dx1 
+                dvx .= (v[ir,iz,:] - v[ir-1,iz,:] )*dx1 
+            elseif ec<pc 
+                dϕx .= (ϕ[ir+1,iz]   - ϕ[ir,iz]   )*dx1 
+                dvx .= (v[ir+1,iz,:] - v[ir,iz,:] )*dx1 
+            else # No upwind direction: clamp to 0.
+                dϕx .= 0.0
+                dvx .= 0.0
+            end
+        end
+                
+        if iz == 1 # Bottom edge
+            nc = flipsign(ϕ[ir,iz+1],ϕ[ir,iz])
+            if nc > pc# + 0.5dy
+                dϕy .= 0.0 # Clamp to 0 if would be DOWNWIND
+                dvy .= 0.0 # Clamp to 0 if would be DOWNWIND
+            else
+                dϕy .= (ϕ[ir,iz+1]   - ϕ[ir,iz]  )*dy1
+                dvy .= (v[ir,iz+1,:] - v[ir,iz,:])*dy1
+            end
+        elseif iz==dom.nz # Top edge
+            sc = flipsign(ϕ[ir,iz-1],ϕ[ir,iz])
+            if sc > pc# + 0.5dy
+                dϕy .= 0.0 # Clamp to 0 if would be DOWNWIND
+                dvy .= 0.0 # Clamp to 0 if would be DOWNWIND
+            else
+                dϕy .= (ϕ[ir,iz]   - ϕ[ir,iz-1]  )*dy1
+                dvy .= (v[ir,iz,:] - v[ir,iz-1,:])*dy1
+            end
+        else # Bulk
+            nc = flipsign(ϕ[ir,iz+1],ϕ[ir,iz])
+            sc = flipsign(ϕ[ir,iz-1],ϕ[ir,iz])
+            if sc < pc && nc < pc 
+                dϕy .= (ϕ[ir,iz+1]   - ϕ[ir,iz-1  ])*0.5*dy1 # Second order central
+                dvy .= (v[ir,iz+1,:] - v[ir,iz-1,:])*0.5*dy1 # Second order central
+            elseif sc < pc 
+                dϕy .= (ϕ[ir,iz]   - ϕ[ir,iz-1]  )*dy1 # Upwind downward
+                dvy .= (v[ir,iz,:] - v[ir,iz-1,:])*dy1 # Upwind upward
+            elseif nc < pc
+                dϕy .= (ϕ[ir,iz+1]   - ϕ[ir,iz]  )*dy1 # Upwind upward
+                dvy .= (v[ir,iz+1,:] - v[ir,iz,:])*dy1 # Upwind upward
+            else # No upwind direction: clamp to 0
+                dϕy .= 0.0
+                dvy .= 0.0
+            end
+        end
+        # return dϕx * dvx + dϕy * dvy
+        @. ndvcache[ir,iz,:] = dϕx * dvx + dϕy * dvy
+    end
+
+    # Nd∇v = @. dϕx * dvx + dϕy * dvy
+    # return Nd∇v
+    nothing
+end
+
+"""
 Takes vecfunc, a vector function which takes (ir, iz) and returns desired vector
 """
 function vector_extrap_from_front(phi, Bf, vec_func, dom::Domain, dt=1.0, guess=nothing)
@@ -303,8 +408,7 @@ function vector_extrap_from_front(phi, Bf, vec_func, dom::Domain, dt=1.0, guess=
     # Include front cell values in initial condition, then leave them alone
     # maxval = 0
     for cell in front_cells
-        val = vec_func(Tuple(cell)...)
-        v0[cell,:] .= val
+        v0[cell,:] .= vec_func(Tuple(cell)...)
         # maxval = max(maxval, abs(val))
     end
     # scaled = sqrt(1/maxval)
@@ -312,17 +416,18 @@ function vector_extrap_from_front(phi, Bf, vec_func, dom::Domain, dt=1.0, guess=
     # ΩnB = findall(fill(true, nr, nz) .⊻ Bf)
     # v0[ΩnB] .= 0.0
     
-    cached = copy(v0)
-    # ndvcache = copy(v0)
+    vcache = copy(v0)
+    ndvcache = copy(v0)
+    intermcache = fill(0.0, 7 + 2*2) # nvec = 2
     function sub_rhs(du, u, p, t)
-        cached[B,:] .= reshape(u, :, nvec)
-        # cached[B,:] .= u
+        vcache[B,:] .= reshape(u, :, nvec)
+        # vcache[B,:] .= u
         # F = reshape(u, nr, nz)
 
         # Thought an in-place might be faster, but had *more* allocations.
-        # calc_Nd∇v!(ndvcache, phi, cached, dom;debug=false) #*scaled
-        # ∂tv = - sign.(phi) .* ndvcache
-        ∂tv = - sign.(phi) .* calc_Nd∇v( phi, cached, dom;debug=false) #*scaled
+        calc_Nd∇v_noalloc!(ndvcache, phi, vcache, dom, intermcache) #*scaled
+        ∂tv = - sign.(phi) .* ndvcache
+        # ∂tv = - sign.(phi) .* calc_Nd∇v( phi, cached, dom;debug=false) #*scaled
 
         for cell in front_cells
             ∂tv[cell,:] .= 0 # Don't mess with cells on the front
@@ -339,7 +444,7 @@ function vector_extrap_from_front(phi, Bf, vec_func, dom::Domain, dt=1.0, guess=
     prob = ODEProblem(sub_rhs, u0, tspan)
     # sol = solve(prob, BS3(), dt=subdt; callback=TerminateSteadyState(1e-4, 1e-4))
     sol = solve(prob, BS3(); callback=TerminateSteadyState(1e-4, 1e-4))
-    ret = cached
+    ret = vcache
     ret[B,:] .= reshape(sol[end],:,nvec)
     return ret
 end
@@ -533,4 +638,219 @@ Thin wrapper on advect_ϕ--this is not necessarily better for performance.
 function advect_ϕ!(ϕ, Vf, dom::Domain, dt)
     ϕ = advect_ϕ(ϕ, Vf, dom, dt)
     return nothing
+end
+
+
+function ddx_fastmarch_2nd!(num, den, ϕ, vf, c, sdir, dersign, dx1)
+    dϕdx = dersign*(-1.5ϕ[c] + 2ϕ[c+sdir] - 0.5ϕ[c+2sdir])*dx1
+    px = -1.5*dersign*dx1 
+    dv_x = dersign*(        2vf[c+sdir, :] .-0.5vf[c+2sdir,:]).*dx1
+
+    @. num += dϕdx*dv_x
+    den .+= dϕdx * px
+end
+function ddx_fastmarch_1st!(num, den, ϕ, vf, c, sdir, dersign, dx1)
+    dϕdx = dersign*(-ϕ[c] + ϕ[c+sdir])*dx1
+    px = -dersign*dx1 
+    dv_x = dersign*(        vf[c+sdir, :]).*dx1
+
+    @. num += dϕdx*dv_x
+    den .+= dϕdx * px
+end
+
+"""
+    fastmarch_v!(vf, acc, locs, ϕ, dom)
+
+Mutate `vf` and `acc` to extrapolate `vf` from interface by fast marching.
+
+Cells are calculated in order of increasing |ϕ|.
+Uses matrix of bools `acc` (denoting accepted cells) to determine cells to use in extrapolation,
+so if you determine one side first, will get used in the derivatives for the other side.
+"""
+function fastmarch_v!(vf, acc, locs::Vector{CartesianIndex{2}}, ϕ, dom::Domain)
+
+    # Set up stencil checking tools
+
+    usecell(acc, c) = checkbounds(Bool, acc, c) && acc[c]
+
+    eci  = CartesianIndex( 1, 0)
+    wci  = CartesianIndex(-1, 0)
+    nci  = CartesianIndex( 0, 1)
+    sci  = CartesianIndex( 0,-1)
+
+    sort!(locs , by=(x->abs(ϕ[x])))
+
+    for c in locs # This needs to be done in order.
+
+        num = fill(0.0, 2)
+        den = [0.0]
+
+        # R direction
+        if usecell(acc, c+eci) # Use east
+            if usecell(acc, c+2eci) # Second order east
+                # dϕdr = (-1.5ϕ[c] + 2ϕ[c+eci] - 0.5ϕ[c+e⁺ci])*dom.dr1
+                # pr = -1.5dom.dr1 
+                # dv_r = (        2vf[c+eci, :] .-0.5vf[c+e⁺ci,:]).*dom.dr1
+
+                # @. num += dϕdr*dv_r
+                # den += dϕdr * pr
+                ddx_fastmarch_2nd!(num, den, ϕ, vf, c, eci, 1, dom.dr1)
+                # println("East, 2nd order, c=$c")
+            else
+                # dϕdr = (-ϕ[c] + ϕ[c+eci])*dom.dr1
+                # pr = -dom.dr1
+                # dv_r =        vf[c+eci, :] .*dom.dr1
+
+                # @. num += dϕdr*dv_r
+                # den += dϕdr * pr
+                ddx_fastmarch_1st!(num, den, ϕ, vf, c, eci, 1, dom.dr1)
+                # println("East, 1st order, c=$c")
+            end
+        elseif usecell(acc, c+wci)
+            if usecell(acc, c+2wci) # Second order west
+                # dϕdr = ( 1.5ϕ[c] - 2ϕ[c+wci] + 0.5ϕ[c+w⁻ci])*dom.dr1
+                # pr =  1.5dom.dr1 
+                # dv_r =       (-2vf[c+wci, :] .+0.5vf[c+w⁻ci,:]).*dom.dr1
+
+                # @. num += dϕdr*dv_r
+                # den += dϕdr * pr
+                ddx_fastmarch_2nd!(num, den, ϕ, vf, c, wci, -1, dom.dr1)
+                # println("West, 2nd order, c=$c")
+            else
+                # dϕdr = ( ϕ[c] - ϕ[c+wci])*dom.dr1
+                # dv_r = -vf[c+wci, :] .*dom.dr1
+                # pr =  dom.dr1
+
+                # @. num += dϕdr*dv_r
+                # den += dϕdr * pr
+                ddx_fastmarch_1st!(num, den, ϕ, vf, c, wci, -1, dom.dr1)
+                # println("West, 1st order, c=$c")
+            end
+        # else
+        #     println("No r stencil, c=$c")
+        end
+        
+        # Z direction
+        if usecell(acc, c+nci) # Use east
+            if usecell(acc, c+2nci) # Second order north
+                # dϕdz = (-1.5ϕ[c] + 2ϕ[c+nci] - 0.5ϕ[c+n⁺ci])*dom.dz1
+                # pz = -1.5dom.dz1 
+                # dv_z = (2vf[c+nci, :] .-0.5vf[c+n⁺ci,:]) .*dom.dz1
+
+                # @. num += dϕdz*dv_z
+                # den += dϕdz * pz
+                ddx_fastmarch_2nd!(num, den, ϕ, vf, c, nci, 1, dom.dz1)
+            else
+                # dϕdz = (-ϕ[c] + ϕ[c+nci])*dom.dz1
+                # pz = -dom.dz1
+                # dv_z = vf[c+nci, :] .*dom.dz1
+
+                # @. num += dϕdz*dv_z
+                # den += dϕdz * pz
+                ddx_fastmarch_1st!(num, den, ϕ, vf, c, nci, 1, dom.dz1)
+            end
+        elseif usecell(acc, c+sci)
+            if usecell(acc, c+2sci) # Second order south
+                # dϕdz = ( 1.5ϕ[c] - 2ϕ[c+sci] + 0.5ϕ[c+s⁻ci])*dom.dz1
+                # pz =     1.5dom.dz1 
+                # dv_z = (          -2vf[c+sci, :] .+0.5vf[c+s⁻ci,:]).*dom.dz1
+
+                # @. num += dϕdz*dv_z
+                # den += dϕdz * pz
+                ddx_fastmarch_2nd!(num, den, ϕ, vf, c, sci, -1, dom.dz1)
+            else
+                # dϕdz = ( ϕ[c] - ϕ[c+sci])*dom.dz1
+                # pz =  dom.dz1
+                # dv_z = -vf[c+sci, :] .*dom.dz1
+
+                # @. num += dϕdz*dv_z
+                # den += dϕdz * pz
+                # println("c=$c")
+                ddx_fastmarch_1st!(num, den, ϕ, vf, c, sci, -1, dom.dz1)
+            end
+        end
+
+        if den[1] == 0
+            # pϕ= ϕ[c]
+            # eϕ = checkbounds(Bool, acc, c+eci) ? ϕ[c+eci] : nothing
+            # nϕ = checkbounds(Bool, acc, c+nci) ? ϕ[c+nci] : nothing
+            # wϕ = checkbounds(Bool, acc, c+wci) ? ϕ[c+wci] : nothing
+            # sϕ = checkbounds(Bool, acc, c+sci) ? ϕ[c+sci] : nothing
+            # @warn "No identified stencil" c  pϕ eϕ nϕ wϕ sϕ
+            # @debug "No identified stencil in fastmarch" c  
+        else
+            @. vf[c, :] = -num / den
+        end
+
+        # Add cell to accepted list
+        acc[c] = true
+        # println("Accepted: $(sum(acc))")
+
+    end
+    # debug
+end
+
+"""
+    extrap_v_fastmarch(ϕ, T, dom::Domain, T_params)
+
+Compute an extrapolated velocity field from T and ϕ.
+
+Internally calls `compute_frontvel_withT` on positive half of Γ.
+Using fast marching, instead of the PDE-based approach, to get second order accuracy more easily.
+
+TODO: improve performance. Currently makes a lot of allocations, I think.
+"""
+function extrap_v_fastmarch(ϕ, T, dom::Domain, params)
+    Γf = identify_Γ(ϕ, dom)
+    Γ = findall(Γf)
+    Γ⁺ = [c for c in Γ if ϕ[c]>0]
+    ϕ⁻ = ϕ .<= 0
+    # Bf = identify_B(Γ, dom)
+    # B⁻ = findall(Bf .& ϕ⁻)
+    # B⁺ = findall((ϕ⁻ .⊽ Γf) .& Bf) # Exclude Γ⁺
+    Ω⁻ = findall(ϕ⁻)
+    Ω⁺ = findall(ϕ⁻ .⊽ Γf ) # Exclude Γ⁺
+
+    vf = fill(0.0, dom.nr, dom.nz, 2)
+
+    Qice = compute_Qice(ϕ, dom, params)
+    icesurf = compute_icesurf(ϕ, dom)
+    Qice_per_surf = Qice / icesurf
+
+    # Accepted set
+    acc = fill(false, dom.nr, dom.nz)
+
+
+    # First, compute velocity on Γ⁺
+    for c in Γ⁺
+        vf[c, :] .= compute_frontvel_withT(T, ϕ, Tuple(c)..., dom, params, Qice_per_surf)
+        acc[c] = true
+    end
+
+    # Second, fastmarch in positive half of B
+
+    fastmarch_v!(vf, acc, Ω⁺, ϕ, dom)
+    # fastmarch_v!(vf, acc, B⁺, ϕ, dom)
+
+    # Finally, fastmarch in negative half of B
+    fastmarch_v!(vf, acc, Ω⁻, ϕ, dom)
+    # fastmarch_v!(vf, acc, B⁻, ϕ, dom)
+
+    vf
+end
+
+
+"""
+"""
+function extrap_v_pde(ϕi, Ti, dom, params)
+    prop_t = 1.0
+    # Precompute for velocity
+    Qice = compute_Qice(ϕi, dom, params)
+    icesurf = compute_icesurf(ϕi, dom)
+    Qice_surf = Qice / icesurf
+    
+    Bf = identify_B(ϕi, dom)
+    frontfunc(ir, iz) = compute_frontvel_withT(Ti, ϕi, ir, iz, dom, params, Qice_surf)
+    vf = vector_extrap_from_front(ϕi, Bf, frontfunc, dom, prop_t)
+    return vf
 end
