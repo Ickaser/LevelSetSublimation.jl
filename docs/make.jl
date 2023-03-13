@@ -7,10 +7,12 @@ makedocs(
         pages = [
             "Table of Contents" => "index.md",
             "Running a Simulation" => "sim.md",
-            "Implementation and Details" => [
+            "Visualizing Simulation Results" => "plots.md",
+            "Implementation and Numerical Details" => [
+                "Solved Equations" => "eqs.md",
                 "Level Set" => "levelset.md",
                 "Heat Equation" => "heat.md",
-                "Discretizations" => "disc.md"
+                "Discretizations" => "disc.md",
             ]
         ] 
         )

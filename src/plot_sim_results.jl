@@ -1,4 +1,4 @@
-export summaryplot, resultsanim
+export summaryplot, resultsanim, plotframe
 export get_subf_z, get_subf_r
 
 """

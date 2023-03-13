@@ -8,9 +8,11 @@ TODO: fill this out
 ```@docs
 reinitialize_ϕ
 reinitialize_ϕ!
+reinitialize_ϕ_HCR!
 advect_ϕ
 advect_ϕ!
-vector_extrap_from_front
+extrap_v_pde
+extrap_v_fastmarch
 ```
 
 # Discretizations
@@ -18,8 +20,8 @@ vector_extrap_from_front
 calc_∇ϕ_1st
 calc_Nd∇v
 calc_Nd∇v!
-𝒢
-𝒢_all
+𝒢_1st
+𝒢_weno
 calc_Vd∇ϕ
 ```
 
@@ -27,7 +29,6 @@ calc_Vd∇ϕ
 
 ```@docs
 identify_Γ
-Γ_cells
 identify_B
 identify_regions_RC
 calc_dϕdr_sdf

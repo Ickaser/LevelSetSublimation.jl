@@ -2,7 +2,11 @@
 
 TODO: fill this out
 ```@docs
-take_time_step
-multistep
 sim_from_dict
+```
+
+# Domain Setup
+```@docs
+Domain
+make_ϕ0
 ```
