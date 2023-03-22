@@ -17,7 +17,8 @@ makedocs(
                 "Level Set" => "levelset.md",
                 "Heat Equation" => "heat.md",
                 "Discretizations" => "disc.md",
-            ]
+            ],
+            "References" => "refs.md"
         ] 
         )
 

@@ -2,10 +2,11 @@ export identify_Γ, Γ_cells, identify_B, plot_RC, 𝒢_all
 export reinitialize_ϕ, reinitialize_ϕ!, reinitialize_ϕ_all!
 export reinitialize_ϕ_HCR!, reinitialize_ϕ_HCR
 
+export 𝒢_1st, 𝒢_weno, 𝒢_1st_all, 𝒢_weno_all
+export wenodiffs_local
 # Functions exported just for the sake of making documentation work
 export update_ϕ_in_Γ!
 export calc_dϕdr_sdf, calc_dϕdz_sdf, identify_regions_RC
-export 𝒢_1st, 𝒢_weno, 𝒢_1st_all, 𝒢_weno_all
 
 
 # ---------------- Drawn from Hartmann, 2008, "Constrained reinitialization"
@@ -595,7 +596,7 @@ end
     𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
     𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
 
-Compute the norm of the gradient by Godunov's scheme with WENO differences ([wenodiffs_local](@ref)).
+Compute the norm of the gradient by Godunov's scheme with WENO differences ([`wenodiffs_local`](@ref)).
 
 Described in [hartmannAccuracyEfficiencyConstrained2009](@cite), eq. 6 to eq. 9.
 Let all ghost cells equal the function value at boundary; I think this is equivalent to using homogeneous Neumann boundaries.
@@ -649,7 +650,7 @@ end
 
 Compute the norm of the gradient of `ϕ` throughout domain by Godunov's scheme with WENO derivatives.
 
-Internally, calls [𝒢_weno](@ref) on all computational cells.
+Internally, calls [`𝒢_weno`](@ref) on all computational cells.
 """
 function 𝒢_weno_all(ϕ, dom::Domain)
     return reshape([𝒢_weno(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)

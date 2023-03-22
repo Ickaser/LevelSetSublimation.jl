@@ -15,6 +15,14 @@ function get_ϕ(sol::ODESolution, t, dom::Domain)
 end
 
 
+"""
+    plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
+
+Unpack simulation results and plot the state at time `t`.
+
+`heatvar = :T` or `=:ϕ` decides whether temperature or level set function is plotted as colors.
+If given, `maxT` sets an upper limit for the associated colorbar.
+"""
 function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
     @unpack ϕsol = simresults
     @unpack dom, T_params = simconfig

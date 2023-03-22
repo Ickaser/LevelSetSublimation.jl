@@ -68,7 +68,7 @@ end
 
 Add a star marker to Γ (front) cells based on `ϕ` for current plot, in mutating fashion.
 
-Internally calls [Γ_cells](@ref).
+Internally calls `Γ_cells`.
 """
 function markfront(phi, dom::Domain; lab="", c=:white)
     frontcells = Γ_cells(phi, dom)

@@ -1,3 +1,34 @@
+@article{choppAnotherLookVelocity2009,
+  title = {Another {{Look}} at {{Velocity Extensions}} in the {{Level Set Method}}},
+  author = {Chopp, David L.},
+  year = {2009},
+  month = jan,
+  journal = {SIAM Journal on Scientific Computing},
+  volume = {31},
+  number = {5},
+  pages = {3255--3273},
+  issn = {1064-8275, 1095-7197},
+  doi = {10.1137/070686329},
+  abstract = {The level set method [S. Osher and J. A. Sethian, J. Comput. Phys., 79 (1988), pp. 12\textendash 49] has become a widely used numerical method for moving interfaces; e.g., see the many examples in [J. Sethian, Level Set Methods: Evolving Interfaces in Geometry, Fluid Mechanics, Computer Vision and Material Science, Cambridge University Press, London, 1996; S. Osher and R. Fedkiw, Level Set Methods and Dynamic Implicit Surfaces, Springer Verlag, Heidelberg, 2002]. For many applications, the velocity of the interface is known only on the interface, while the level set method requires information about the interface speed at least in a neighborhood of grid points near the interface. To address this issue, velocity extensions are used to map the velocity information on the interface into the rest of the computational domain [D. Adalsteinsson and J. Sethian, J. Comput. Phys., 118 (1995), pp. 269\textendash 277]. This allows the level set method to proceed. The velocity extension method presented in [D. Adalsteinsson and J. Sethian, J. Comput. Phys., 118 (1995), pp. 269\textendash 277] uses the fast marching method [J. Sethian, Proc. Natl. Acad. Sci., 93 (1996), pp. 1591\textendash 1595; J. Sethian, SIAM Rev., 41 (1999), pp. 199\textendash 235], and is only a first-order approximation for the velocity field near the interface. Furthermore, it can lead to unexpected behavior in some cases. This is primarily due to the strictly local solution for the characteristics of the flow near the interface. In this paper, we look more closely at the characteristics near the interface, and then present a modified velocity extension method, also based on the fast marching method, which handles the characteristcs more accurately. In turn, this new method will lead to some interesting new possibilities for the fast marching method.},
+  langid = {english},
+  file = {C\:\\Users\\iwheeler\\Zotero\\storage\\5YA3JYX6\\Chopp - 2009 - Another Look at Velocity Extensions in the Level S.pdf}
+}
+
+@article{dumbserHighOrderSpace2014,
+  title = {High Order Space\textendash Time Adaptive {{ADER-WENO}} Finite Volume Schemes for Non-Conservative Hyperbolic Systems},
+  author = {Dumbser, Michael and Hidalgo, Arturo and Zanotti, Olindo},
+  year = {2014},
+  month = jan,
+  journal = {Computer Methods in Applied Mechanics and Engineering},
+  volume = {268},
+  pages = {359--387},
+  issn = {00457825},
+  doi = {10.1016/j.cma.2013.09.022},
+  abstract = {We present a class of high order finite volume schemes for the solution of non-conservative hyperbolic systems that combines the one-step ADER-WENO finite volume approach with space\textendash time adaptive mesh refinement (AMR). The resulting algorithm, which is particularly well suited for the treatment of material interfaces in compressible multi-phase flows, is based on: (i) high order of accuracy in space obtained through WENO reconstruction, (ii) a high order one-step time discretization via a local space\textendash time discontinuous Galerkin predictor method, and (iii) the use of a path conservative scheme for handling the non-conservative terms of the equations. The AMR property with time accurate local time stepping, which has been treated according to a cell-by-cell strategy, strongly relies on the high order one-step time discretization, which naturally allows a high order accurate and consistent computation of the jump terms at interfaces between elements using different time steps. The new scheme has been successfully validated on some test problems for the Baer\textendash Nunziato model of compressible multiphase flows.},
+  langid = {english},
+  file = {C\:\\Users\\iwheeler\\Zotero\\storage\\K38XMPAZ\\Dumbser et al. - 2014 - High order space–time adaptive ADER-WENO finite vo.pdf}
+}
+
 @article{gadaNovelDualGridLevelSet2011,
   title = {On a {{Novel Dual-Grid Level-Set Method}} for {{Two-Phase Flow Simulation}}},
   author = {Gada, Vinesh H. and Sharma, Atul},
@@ -74,6 +105,19 @@
   file = {C\:\\Users\\iwheeler\\Zotero\\storage\\KRMJ7G34\\Grooss and Hesthaven - 2006 - A level set discontinuous Galerkin method for free.pdf}
 }
 
+@article{hartmannAccuracyEfficiencyConstrained2009,
+  title = {On Accuracy and Efficiency of Constrained Reinitialization},
+  author = {Hartmann, D. and Meinke, M. and Schr{\"o}der, W.},
+  year = {2009},
+  journal = {International Journal for Numerical Methods in Fluids},
+  pages = {n/a-n/a},
+  issn = {02712091, 10970363},
+  doi = {10.1002/fld.2135},
+  abstract = {The reinitialization, which is required to regularize the level set function, can be computationally expensive and hence is a determining factor for the overall efficiency of a level set method. However, it often has a significantly adverse impact on the accuracy of the level set solution. This short note is meant to shed light on the efficiency and accuracy issues of the reinitialization process. Using just one clearly defined level set propagation test case with an analytical solution the solutions obtained using a recently proposed efficient lower-order constrained reinitialization (CR) scheme and standard low- and high-order reinitialization schemes are juxtaposed to evidence the superiority of the novel CR formulation. It is shown that maintaining the location of the zero level set during the reinitialization is crucial for the accuracy and that the displacement caused by standard high-order reinitialization schemes clearly outweighs the benefit of the high-order smoothing of the level set function. Finally, results of a three-dimensional problem are concisely reported to demonstrate the general applicability of the CR scheme. Copyright q 2009 John Wiley \& Sons, Ltd.},
+  langid = {english},
+  file = {C\:\\Users\\iwheeler\\Zotero\\storage\\PH342GS3\\Hartmann et al. - 2009 - On accuracy and efficiency of constrained reinitia.pdf}
+}
+
 @article{hartmannConstrainedReinitializationEquation2010,
   title = {The Constrained Reinitialization Equation for Level Set Methods},
   author = {Hartmann, Daniel and Meinke, Matthias and Schr{\"o}der, Wolfgang},
@@ -106,6 +150,21 @@
   file = {C\:\\Users\\iwheeler\\Zotero\\storage\\2GARGCLM\\Hartmann et al. - 2008 - Differential equation based constrained reinitiali.pdf}
 }
 
+@article{jiangWeightedENOSchemes2000,
+  title = {Weighted {{ENO Schemes}} for {{Hamilton--Jacobi Equations}}},
+  author = {Jiang, Guang-Shan and Peng, Danping},
+  year = {2000},
+  month = jan,
+  journal = {SIAM Journal on Scientific Computing},
+  volume = {21},
+  number = {6},
+  pages = {2126--2143},
+  issn = {1064-8275, 1095-7197},
+  doi = {10.1137/S106482759732455X},
+  langid = {english},
+  file = {C\:\\Users\\iwheeler\\Zotero\\storage\\B6YB9JBU\\Jiang and Peng - 2000 - Weighted ENO Schemes for Hamilton--Jacobi Equation.pdf}
+}
+
 @book{osherLevelSetMethods2003,
   title = {Level Set Methods and Dynamic Implicit Surfaces},
   author = {Osher, Stanley and Fedkiw, Ronald P.},
@@ -134,6 +193,21 @@
   file = {C\:\\Users\\iwheeler\\Zotero\\storage\\5C6WAIDS\\Osher and Chakravarthy - 1983 - Upwind schemes and boundary conditions with applic.pdf}
 }
 
+@article{sethianFastMarchingMethods1999,
+  title = {Fast {{Marching Methods}}},
+  author = {Sethian, J. A.},
+  year = {1999},
+  month = jan,
+  journal = {SIAM Review},
+  volume = {41},
+  number = {2},
+  pages = {199--235},
+  issn = {0036-1445, 1095-7200},
+  doi = {10.1137/S0036144598347059},
+  langid = {english},
+  file = {C\:\\Users\\iwheeler\\Zotero\\storage\\JJ6UQQPM\\Sethian - 1999 - Fast Marching Methods.pdf}
+}
+
 @article{shaikhSharpinterfaceLevelsetMethod2016,
   title = {On Sharp-Interface Level-Set Method for Heat and/or Mass Transfer Induced {{Stefan}} Problem},
   author = {Shaikh, Javed and Sharma, Atul and Bhardwaj, Rajneesh},
@@ -147,4 +221,20 @@
   abstract = {A detailed sharp interface level set method (SI-LSM) based CFD development methodology as well as its implementation and application to the various types of Stefan problem is not found and reported here. The methodology and code-validation are presented in-detail for heat and/or mass transfer induced Stefan flow, 2D Cartesian as well as axi-symmetric coordinate system and Dirichlet as well as jump boundary conditions at the interface. For the Dirichlet BC, a higher order extrapolation methodology is presented \textendash{} for the computation of ghost fluid value across the interface. Whereas, for the jump BC, a generic finite volume method based discretized equation is proposed \textendash{} consisting of additional source term and modification in diffusion coefficient for the control-volumes adjoining the interface. An excellent agreement between the present and published results are shown separately for Stefan flow problems induced by heat transfer (melting as well as solidification), mass transfer (isothermal evaporation) and heat as well as mass transfer (non-isothermal evaporation). Finally, a performance study is presented demonstrating a superior performance of the present sharp as compared to diffused interface level set method. The performance study is also presented for two different methods of computation of normal gradient across the interface, with regard to numerical oscillations in the results.The present work \textendash involving localized fluid flow and heat as well as mass transfer in the two-phase domain \textendash{} will be extremely useful to CFD developer on multi-phase flow.},
   langid = {english},
   file = {C\:\\Users\\iwheeler\\Zotero\\storage\\7V2M7ZBS\\Shaikh et al. - 2016 - On sharp-interface level-set method for heat ando.pdf}
+}
+
+@article{shuHighOrderWeighted2009,
+  title = {High {{Order Weighted Essentially Nonoscillatory Schemes}} for {{Convection Dominated Problems}}},
+  author = {Shu, Chi-Wang},
+  year = {2009},
+  month = feb,
+  journal = {SIAM Review},
+  volume = {51},
+  number = {1},
+  pages = {82--126},
+  issn = {0036-1445, 1095-7200},
+  doi = {10.1137/070679065},
+  abstract = {High order accurate weighted essentially nonoscillatory (WENO) schemes are relatively new but have gained rapid popularity in numerical solutions of hyperbolic partial differential equations (PDEs) and other convection dominated problems. The main advantage of such schemes is their capability to achieve arbitrarily high order formal accuracy in smooth regions while maintaining stable, nonoscillatory, and sharp discontinuity transitions. The schemes are thus especially suitable for problems containing both strong discontinuities and complex smooth solution features. WENO schemes are robust and do not require the user to tune parameters. At the heart of the WENO schemes is actually an approximation procedure not directly related to PDEs, hence the WENO procedure can also be used in many non-PDE applications. In this paper we review the history and basic formulation of WENO schemes, outline the main ideas in using WENO schemes to solve various hyperbolic PDEs and other convection dominated problems, and present a collection of applications in areas including computational fluid dynamics, computational astronomy and astrophysics, semiconductor device simulation, traffic flow models, computational biology, and some non-PDE applications. Finally, we mention a few topics concerning WENO schemes that are currently under investigation.},
+  langid = {english},
+  file = {C\:\\Users\\iwheeler\\Zotero\\storage\\CHCXFC5F\\Shu - 2009 - High Order Weighted Essentially Nonoscillatory Sch.pdf}
 }

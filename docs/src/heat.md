@@ -2,13 +2,13 @@
 
 TODO: fill this out
 
-# Heat Equation Solution
+## Heat Equation Solution
 ```@docs
 solve_T
 make_decent_params
 make_artificial_params
 ```
-# Coupling T solutions to level set motion
+## Coupling T solutions to level set motion
 
 ```@docs
 compute_frontvel_withT

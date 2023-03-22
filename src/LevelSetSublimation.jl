@@ -8,7 +8,7 @@ using DrWatson, Reexport
 
 export contour
 if !isdefined(LevelSetSublimation, :contour)
-    const contour = Contour.contour # This used to be necessary...
+    const contour = Contour.contour # I want access to all of Plots, because I'm lazy, so I have to specify this one.
 end
 const CI = CartesianIndex
 
