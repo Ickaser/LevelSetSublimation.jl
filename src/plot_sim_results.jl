@@ -81,10 +81,11 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
 end
 
 """
-    resultsanim(simresults, simconfig, casename; seconds_length=3)
+    resultsanim(simresults, simconfig, casename; seconds_length=5)
 
-Generate a .gif of the given simresults, with filename casename_evol.gif.
-TODO: generate names in the style of produce_or_load.
+Generate a .gif of the given simresults, with filename `casename_evol.gif`.
+
+TODO: generate names in the style of `produce_or_load`.
 """
 function resultsanim(simresults, simconfig, casename; seconds_length=5)
     @unpack ϕsol = simresults
