@@ -5,12 +5,7 @@
 
 # ------------------------------- Parameters to control
 
-# casename = "box_all"
 ϕ0type = :flat # Options: :flat, :cyl, :box, :cone, etc. See make_ϕ0
-
-sim_dt = 1.0
-
-T_params = make_artificial_params()
 
 Q_gl = 2.0
 Q_sh = 1.0
@@ -41,32 +36,22 @@ println("Parameters loaded")
 
 nr = 51
 nz = 51
-# rmin = 0.0
-# zmin = 0.0
 rmax = 1.0
 zmax = 1.0
 
 # Default "bandwidth" size: 20% of domain size, extending on both sides of front
-# This default is built into Domain constructor
-# bwr = ceil(Int, 0.2*(rmax-rmin)/dr)
-# bwz = ceil(Int, 0.2*(zmax-zmin)/dz)
+# bwfrac = 0.2
 
 dom = Domain(nr, nz, rmax, zmax)
-# dom = Domain(nr, nz, rmin, rmax, zmin, zmax)
-# dom = Domain(nr, nz, rmin, rmax, zmin, zmax, bwr, bwz)
-# dom = Domain(nr, nz, rmax, zmax, bwr, bwz)
+# dom = Domain(nr, nz, rmax, zmax, bwfrac)
 
 dom_fine = Domain(2*nr, 2*nz, rmax, zmax)
-
-# --------------------- Set up initial contour ϕ0
 
 # ----------------------- COmbine into a dict
 
 # To do multiple combinations, include a vector here, per DrWatson
 all_configs = Dict(
     "T_params" => T_params,
-    "sim_dt" => sim_dt,
-    # "sim_dt" => [sim_dt*0.5, sim_dt],
     # "dom" => dom,
     "dom" => [dom, dom_fine],
     "ϕ0type" => ϕ0type,
@@ -93,6 +78,4 @@ for conf in list_configs
 
 end
 println("Finished running (or loading) simulations")
-# @tagsave
 
-# println
