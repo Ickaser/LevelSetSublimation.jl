@@ -5,34 +5,151 @@ export compute_frontvel_withT, plot_frontvel
     function compute_Qice(ϕ, dom::Domain, params)
 
 Compute the total heat input into frozen domain from vial boundaries
-
-This function is currently not treating the sharp interface carefully.
-TODO
 """
 function compute_Qice(ϕ, dom::Domain, params)
     @unpack Q_sh, Q_ic, Q_gl = params
-
     # Heat flux from shelf, at bottom of vial
-    botϕ = ϕ[:,1]
-    botr = dom.rgrid[botϕ .<=0]
-    botsurf = 2π * sum(botr) * dom.dr # Should interpolate at edge.
+    botsurf = compute_icesh_area(ϕ, dom)
     Qbot = botsurf * Q_sh
-
     # Heat flux from glass, at outer radius
-    outϕ = ϕ[end,:]
-    outsurf = 2π * dom.rmax * dom.dz * sum(outϕ .<=0)
+    outsurf = compute_icegl_area(ϕ, dom)
     Qout = outsurf * Q_gl
-
-    # Volumetric heat throughout ice: compute like bottom surface above
-    icevol = sum(reshape(dom.rgrid, :, 1) .* (ϕ .<= 0) ) * dom.dr * dom.dz * 2π
+    # Volumetric heat throughout ice
+    icevol = compute_icevol(ϕ, dom)
     Qvol = icevol * Q_ic
-    
-    # println("Qbot = $Qbot, Qout = $Qout")
     return Qbot + Qout + Qvol
 end
 
+"""
+    compute_icesh_area(ϕ, dom::Domain)
 
-"Geometric: compute area of cone-shaped sections of interface."
+Compute area of where ice meets bottom surface of vial.
+"""
+function compute_icesh_area(ϕ, dom::Domain)
+    botϕ = ϕ[:,1]
+    # botr = dom.rgrid[botϕ .> 0]
+    # botsurf = 2π * sum(botr) * dom.dr # Not interpolating at edge.
+    botsurf::Float64 = 0.0
+    for i in 1:length(botϕ)-1
+        ϕl, ϕr = botϕ[i:i+1]
+        if ϕl <= 0 && ϕr <= 0 # full segment in ice
+            rmin = dom.rgrid[i]
+            rmax = dom.rgrid[i+1]
+        elseif ϕl > 0 && ϕr <= 0 # right of segment in ice
+            θ = ϕr / (ϕr - ϕl)
+            rmin = dom.rgrid[i] + θ*dom.dr
+            rmax = dom.rgrid[i+1]
+        elseif ϕl <= 0 && ϕr > 0 # left of segment in ice
+            θ = ϕl / (ϕl - ϕr)
+            rmin = dom.rgrid[i] 
+            rmax = dom.rgrid[i+1] + θ*dom.dr
+        else
+            continue # Full segment is dried
+        end
+        botsurf += π*(rmax^2 - rmin^2)
+    end
+    return botsurf
+end
+
+"""
+    compute_icegl_area(ϕ, dom::Domain)
+
+Compute area of where ice meets radial outer surface of vial.
+"""
+function compute_icegl_area(ϕ, dom::Domain)
+    outϕ = ϕ[end,:]
+    # outsurf = dom.rmax*dom.dz*2π * sum(outϕ .> 0)
+    outsurf::Float64 = 0.0
+    outcoeff = dom.rmax*dom.dz*2π
+    for seg in zip(outϕ[begin:end-1], outϕ[begin+1:end])
+        if seg[1] <= 0 && seg[2] <= 0 # full segment in ice
+            outsurf += outcoeff
+        elseif (seg[1] <= 0) ⊻ (seg[2] <= 0)  # ⊻ xor: part of segment in ice
+            ϕneg, ϕpos = minmax(seg...)
+            θ = ϕpos / (ϕpos - ϕneg)
+            outsurf += θ*outcoeff
+        end
+    end
+    return outsurf
+end
+
+"""
+    compute_icevol(ϕ, dom::Domain)
+
+Compute volume of ice (region where ϕ < 0) as sum of cylinders and cones.
+
+Cylinders at outer edge (maximum radius), cones everywhere else, which are identified by interface.
+"""
+function compute_icevol(ϕ, dom::Domain)
+    # One-line version, without any cones:
+    # icevol = sum(reshape(dom.rgrid, :, 1) .* (ϕ .<= 0) ) * dom.dr * dom.dz * 2π
+
+    function loc_in_grid(r, z, dom)
+        rloc = findlast(r .>= dom.rgrid)
+        zloc = findlast(z .>= dom.zgrid)
+        return CI(rloc, zloc)
+    end
+
+    totvol::Float64 = 0.0
+    # Volume from outer cylinder edge: R/2 * outer surface area
+    totvol += dom.rmax/2 * compute_icegl_area(ϕ, dom)
+
+    cl = contour(dom.rgrid,dom.zgrid,ϕ, 0)
+    for line in lines(cl) # iterate over disconnected segments of contour
+        rs, zs = coordinates(line) # coordinates of this section of contour 
+        for i in 1:length(rs)-1
+
+            r1, r2 = rs[i:i+1]
+            z1, z2 = zs[i:i+1]
+            # Compute volume of cone slice: cone minus the top chunk
+            rmin, rmax = minmax(r1, r2)
+            dr = rmax - rmin # Absoluate value
+            h = abs(zs[i+1] - zs[i])
+            vol = 2π*h*(dr^2/3 + dr*rmin + rmax^2)
+
+            # If cone contains ice, add to volume.
+            # If cone contains air, subtract, because surrounded by other ice.
+            # Six cases of possible edge connections in a box to consider; worked out in my tablet notes
+            ij1 = loc_in_grid(r1, z1, dom)
+            ij2 = loc_in_grid(r2, z2, dom)
+            mi = min(ij1, ij2) # Bottom left index
+            m = max(ij1, ij2) - mi # Local max of indices: (0,0), (0,1), (1,0), or (1,1)
+            if m == CI(1, 1) || m == CI(0, 0) # Case 1 or 6 from notes: top edge to right edge, left edge to bottom edge
+                if ϕ[mi] <= 0
+                    totvol += vol
+                else
+                    totvol -= vol
+                end
+            elseif m == CI(0, 1) # Case 2 and 3 from notes, handled together: top to bottom or top to left
+                if ϕ[mi+m] < 0
+                    totvol += vol
+                else
+                    totvol -= vol
+                end
+            elseif m == CI(1, 0) # Case 4 and 5 from notes, separate
+                if ϕ[mi+CI(0,1)] * ϕ[mi] > 0 # Case 4: right to bottom
+                    if ϕ[mi] < 0
+                        totvol += vol
+                    else
+                        totvol -= vol
+                    end
+                else   # Case 5: left to right, slope matters for in or out
+                    slope = (r2-r1)/(z2-z1)
+                    totvol += vol * sign(ϕ[mi] * slope)
+                end
+            else
+                @warn "Didn't get a case match for volume" ij1 ij2 vol
+            end
+        end
+    end
+    return totvol
+end
+
+"""
+    compute_icesurf(ϕ, dom::Domain)
+
+Compute the surface area of interface, treating as cone-shaped sections.
+"""
 function compute_icesurf(ϕ, dom::Domain)
     totsurf = 0.0
     # cl = levels(contours(dom.rgrid,dom.zgrid,ϕ, 0))[1]
@@ -73,36 +190,19 @@ function compute_icesurf(ϕ, dom::Domain)
     return totsurf
 end
 
-
-""" 
-    compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
-
-Return `(vr, vz)` for the corresponding `(ir, iz)` location, based on temperature profile and z.
+"""
 
 Quadratic ghost cell extrapolation (into frozen domain), second order finite differences, for T.
 For ϕ derivatives, simple second order finite differences (one-sided at boundaries).
 """
-function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
-    # dr = dom.dr
-    # dz = dom.dz
-    # nr = dom.nr
-    # nz = dom.nz
-        
-    # If Qice_surf (heat to ice divided by surface area) not supplied, compute it from shelf
-    # This should be outside this function. TODO
-    if Qice_per_surf === nothing
-        Qice = compute_Qice(ϕ, dom, params)
-        icesurf = compute_icesurf(ϕ, dom)
-        Qice_per_surf = Qice / icesurf
-    end
-    
+function compute_heatflux(T, ϕ, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack k, ΔH, ρf, Q_sh, Q_gl, Tf = params
+    @unpack k, Q_sh, Q_gl, Tf = params
     pT = T[ir, iz]
     pϕ = ϕ[ir, iz]
     
     if pϕ > 2dr || pϕ > 2dz || pϕ < -2dr || pϕ < -2dz
-        @debug "Computing front velocity for cell which may not be at front." ir iz pϕ
+        @debug "Computing heat flux for cell which may not be at front." ir iz pϕ
     end
 
     # Enforce BCs explicitly for boundary cells
@@ -172,9 +272,8 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
 
         nT = T[ir, iz+1]
         sT = T[ir, iz-1]
-        # North and south ghost cell: weird kink? Set to 0 and procrastinate
+        # North and south ghost cell: weird kink
         if sϕ <= 0 && nϕ <= 0
-            # @warn "Ghost cell on north *and* south: do the math, this is currently not implemented" ir iz pϕ nϕ sϕ
             dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
             # dTz = 0
             θz1 = pϕ/(pϕ - nϕ)
@@ -190,7 +289,6 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
         elseif nϕ <= 0 # North ghost cell
             θz = pϕ /(pϕ - nϕ)
             if θz > dz
-                # dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*(3θz+1)/(θz+1)*0.25) * dz1 # Quadratic extrapolation
                 dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
             else
                 dTz = (Tf - sT )/(θz+1)*dz1
@@ -199,27 +297,34 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
             dTz = (nT - sT) * 0.5*dz1 # Centered difference
         end
     end
-    
-    # q = k*(abs(dTr*dϕr) + abs(dTz*dϕz)) # Assumed: heat is going into frozen domain.
-    # q += Qice_per_surf
-    # md = q/ΔH
-    # vtot = md / ρf
 
-    # qr = k*dTr + Qice_per_surf * dϕr
-    # qz = k*dTz + Qice_per_surf * dϕz
+    ngradϕ = hypot(dϕr, dϕz)
+    dϕr /= ngradϕ
+    dϕz /= ngradϕ
+    return dϕr, dTr, dϕz, dTz
+end
 
-    if debug
-        println("dTr = $dTr, dTz = $dTz, Qice = $Qice_per_surf, c=$((ir,iz))")
+""" 
+    compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
+
+Return `(vr, vz)` for the corresponding `(ir, iz)` location, based on temperature profile and z.
+
+"""
+function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
+    # If Qice_surf (heat to ice divided by surface area) not supplied, compute it here
+    if Qice_per_surf === nothing
+        Qice = compute_Qice(ϕ, dom, params)
+        icesurf = compute_icesurf(ϕ, dom)
+        Qice_per_surf = Qice / icesurf
     end
-
-    # qr = -k* dTr , qtot = -q⋅n = -qr*dϕr - qz*dϕz
+    @unpack k, ΔH, ρf = params
+    
+    dϕr, dTr, dϕz, dTz = compute_heatflux(T, ϕ, ir, iz, dom, params)
+    
     qtot = k*dTr*dϕr + k*dTz*dϕz + Qice_per_surf
     md = qtot / ΔH
     vtot = md / ρf
     
-    if isnan(vtot)
-        println("NaN problem! dTr = $dTr, dTz = $dTz, Qice = $Qice_per_surf, c=$((ir,iz))")
-    end
     return -vtot * dϕr, -vtot * dϕz
 
 end
