@@ -44,6 +44,7 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 """
 # First: version with no spatial variation
 function solve_p_given_b(ϕ, b::Float64, dom::Domain, params)
+    @info "Using scalar b for p"
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
     @unpack p_ch, p_sub = params
@@ -71,7 +72,8 @@ function solve_p_given_b(ϕ, b::Float64, dom::Domain, params)
         # Check if in frozen domain; if so, fix pressure at 1.1psub
         if pϕ <= 0
             add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-            rhs[imx] = 1.1p_sub
+            # rhs[imx] = 1.1p_sub
+            rhs[imx] = p_sub
             continue
         end
 
@@ -298,10 +300,12 @@ function solve_p_given_b(ϕ, b::T, dom::Domain, params) where T<:AbstractArray
         pϕ = ϕ[ir, iz]
         bp = b[ir, iz]
 
-        # Check if in frozen domain; if so, fix pressure at 1.1psub
+        # Check if in frozen domain; if so, fix pressure at arbitrary value
         if pϕ <= 0
             add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-            rhs[imx] = 1.1p_sub
+            # rhs[imx] = 1.1p_sub
+            rhs[imx] = p_sub
+            # rhs[imx] = p_ch
             continue
         end
 
@@ -372,30 +376,37 @@ function solve_p_given_b(ϕ, b::T, dom::Domain, params) where T<:AbstractArray
             if eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
                 if θr >= dr
-                    pc += -2bp*dr2 # Regular 
-                    pc += (θr-1)/θr*bp*(0.5dr1*r1 + dr2) # Due to ghost cell extrapolation
-                    pc += dbr*(θr-1)*0.5dr1/θr # Due to gradient in b
+                    # pc += -2bp*dr2 # Regular 
+                    # pc += (θr-1)/θr*bp*(0.5dr1*r1 + dr2) # Due to ghost cell extrapolation
+                    # pc += dbr*(θr-1)*0.5dr1/θr # Due to gradient in b
+                    pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/(θr+1)
                     wc += bp*(0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
                     rhs[imx] -= p_sub*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else
+                    # @info "hmm, east" θr dr ir iz
                     pc += -2bp*dr2 # Regular
-                    wc += bp*(-0.5dr1*r1 + dr2) # Regular
-                    wc += (bp*(dr+2r)*(θr-1)*0.5dr2*r1 - dbr*dr1) /(θr+1) # Due to ghost cell extrapolation + b gradient
+                    # wc += bp*(-0.5dr1*r1 + dr2) # Regular
+                    # wc += (bp*(dr+2r)*(θr-1)*0.5dr2*r1 - dbr*dr1) /(θr+1) # Due to ghost cell extrapolation + b gradient
+                    wc += (bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1)
+                    rhs[imx] -= p_sub*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
                 if θr >= dr # Regular magnitude θ
-                    pc += -2bp*dr2 # Regular 
-                    pc += bp*(-dr+2r)*(θr-1)*0.5dr2*r1/θr # Due to ghost cell extrapolation
-                    pc += dbr*(1-θr)*0.5dr1/θr # Due to gradient in b
+                    # pc += -2bp*dr2 # Regular 
+                    # pc += bp*(-dr+2r)*(θr-1)*0.5dr2*r1/θr # Due to ghost cell extrapolation
+                    # pc += dbr*(1-θr)*0.5dr1/θr # Due to gradient in b
+                    pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
                     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
                     rhs[imx] -= p_sub*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else # Very small θ
+                    # @info "hmm, west" θr dr ir iz
                     pc += -2bp*dr2 # Regular
-                    ec += bp*( 0.5dr1*r1 + dr2) # Regular
-                    ec += bp*(-dr+2r)*(θr-1)/(θr+1)*0.5dr2*r1 # Due to ghost cell extrapolation
-                    ec += dbr*dr1/(θr+1) # Due to gradient in b
-                    rhs[imx] -= p_sub*(bp*(dr2-0.5dr1*r1)-dbr*0.5dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # ec += bp*( 0.5dr1*r1 + dr2) # Regular
+                    # ec += bp*(-0.5dr1*r1 + dr2)*(θr-1)/(θr+1) # Due to ghost cell extrapolation
+                    # ec += dbr*dr1/(θr+1) # Due to gradient in b
+                    ec += (bp*(dr1*r1 + 2θr*dr2) + dbr*dr1)/(θr+1)
+                    rhs[imx] -= p_sub*(bp*(2dr2-dr1*r1)-dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
 
             else # Bulk, not at front 
@@ -438,38 +449,21 @@ function solve_p_given_b(ϕ, b::T, dom::Domain, params) where T<:AbstractArray
             rhs[imx] = BC4
             continue
 
-            # sϕ = ϕ[ir, iz-1]
-            # if sϕ < 0 # Front is within a cell of boundary
-            #     # stefan_debug = true
-            #     # p. 65 of project notes
-            #     θz = pϕ/(pϕ-sϕ)
-            #     # Have an exact value given by BC + front
-            #     # No way to treat other equations, so add to matrix and stop here
-            #     add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-            #     rhs[imx] = Tf + θz*BC4*dz
-            #     continue
-            # else
-            #     # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
-            #     # p. 65, 66 of project notes
-            #     pc += -2dr2
-            #     sc +=  2dr2
-            #     rhs[imx] += -2*BC4*dz1
-            # end
-
         else # Bulk in z, still need to check for Stefan front
             nϕ = ϕ[ir, iz+1]
             sϕ = ϕ[ir, iz-1]
             dbz = (b[iz+1]-b[iz-1])*0.5*dz1
-            if nϕ <= 0
+            if nϕ <= 0 # North ghost cell
                 θz = pϕ / (pϕ - nϕ)
                 if θz > dz
                     pc += (0.5dbz*(θz-1)*dz1 - bp*(θz+1)*dz2 )/θz
                     sc += bp*dz2 - dbz*0.5*dz1
                     rhs[imx] -= p_sub*(bp*dz2 + dbz*0.5*dz1)/θz
                 else
+                    # @info "hmm, north" θz dz ir iz
                     pc += -2bp*dz2
                     sc += (2*bp*θz*dz2 - dbz*dz1)/(θz+1)
-                    rhs[imx] -= p_sub*(bp*dz2 + dbz*dz1)/(θz+1)
+                    rhs[imx] -= p_sub*(2bp*dz2 + dbz*dz1)/(θz+1)
                 end
             elseif sϕ <= 0
                 θz = pϕ / (pϕ - sϕ)
@@ -478,6 +472,7 @@ function solve_p_given_b(ϕ, b::T, dom::Domain, params) where T<:AbstractArray
                     nc += bp*dz2 + dbz*0.5dz1
                     rhs[imx] -= p_sub*(bp*dz2 - dbz*0.5dz1)/θz
                 else
+                    # @info "hmm, south" θz dz ir iz
                     pc += -2bp*dz2
                     nc += (2*bp*θz*dz2 + dbz*dz1)/(θz+1)
                     rhs[imx] -= p_sub*(2bp*dz2 - dbz*dz1)/(θz+1)
@@ -505,22 +500,28 @@ function solve_p_given_b(ϕ, b::T, dom::Domain, params) where T<:AbstractArray
 end
 
 
-function solve_p(ϕ, T, dom::Domain, params; p0::Union{Nothing, G} =nothing, maxit=5, reltol=0.01) where G<:AbstractArray
+function solve_p(ϕ, T, dom::Domain, params; p0::Union{Nothing, G} =nothing, maxit=5, reltol=1e-6) where G<:AbstractArray
     if p0 === nothing
-        meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
-        b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
+        # meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
+        # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
+        b = eval_b(T, 0, dom, params)
         p0 = solve_p_given_b(ϕ, b, dom, params)
     end
 
+    relerr::Float64 = 0.0
+    p⁺ = copy(p0)
     # Iterate 5 times
     for i in 1:maxit
         b = eval_b(T, p0, dom, params)
+        display(heat(b, dom))
         p⁺ = solve_p_given_b(ϕ, b, dom, params)
         relerr = maximum(abs.(p⁺ .- p0) ./ p⁺)
+        # @info "Maximum relative error in p after $i iterations:" relerr
         if relerr < reltol
             return p⁺
         end
+        p0 = p⁺
     end
-    @info "Maximum relative error in p after $maxit iterations:" relerr
+    @info "Reached maximum iterations in p:" relerr maxit
     return p⁺
 end

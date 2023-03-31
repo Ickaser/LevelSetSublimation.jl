@@ -100,6 +100,7 @@ function make_artificial_params()
     κ = 0.5
     R = 8.3145
     Mw = 18 
+    μ = 1.0
 
     # Sublimation
     ΔH = 1.0
@@ -119,7 +120,7 @@ function make_artificial_params()
 
 
     params = Dict{Symbol, Any}()
-    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf, p_sub, p_ch, ϵ, l, κ, R, Mw 
+    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf, p_sub, p_ch, ϵ, l, κ, R, Mw, μ
     return params
 end
 
