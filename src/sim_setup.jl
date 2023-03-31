@@ -43,9 +43,10 @@ end
 """
     make_decent_params()
 
-Return a dictionary of `T_params`, with values corresponding to SI units
+Return a dictionary of `params`, with values corresponding to SI units
 
 In theory, gives physical values of parameters. Haven't actually done that, though.
+Also, currently broken.
 """
 function make_decent_params()
     Q_gl = 2.0  # heat flux from glass
@@ -58,7 +59,7 @@ function make_decent_params()
     # ΔHsub = 678.0 # u"cal/g"
     # ΔHsub = 2.837e9 # u"J/kg"
     ρf = 920    # density of ice
-    T_params = Dict{Symbol, Any}()
+    params = Dict{Symbol, Any}()
     " Takes T as Kelvin, returns P in Pa"
     function calc_psub(T)
         ai = [-0.212144006e2,  0.273203819e2,  -0.610598130e1]
@@ -69,8 +70,8 @@ function make_decent_params()
     end
     Rw = 8.3145 / .018 # J/molK * mol/kg
     calc_ρvap(T) = calc_psub(T)/Rw/T # compute density of vapor
-    @pack! T_params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf
-    return T_params
+    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf
+    return params
 end
         
 """
@@ -83,16 +84,28 @@ For convenience in testing code.
 function make_artificial_params()
             
     # Very artificial parameters
+    # Heat transfer
     Q_gl = 1.0
     Q_sh = 1.0
     Q_ic = 1.0
     Q_ck = 0.0
     k = 1.0
     Tf = 250.0
+
+    # Mass transfer
+    p_sub = 5.0
+    p_ch = 1.5
+    ϵ = 0.9
+    l = 1.0
+    κ = 0.5
+    R = 8.3145
+    Mw = 18 
+
+    # Sublimation
     ΔH = 1.0
     # ΔHsub = 678.0 # u"cal/g"
     ρf = 100.0 
-    T_params = Dict{Symbol, Any}()
+
     " Takes T as Kelvin, returns P in Pa"
     function calc_psub(T)
         ai = [-0.212144006e2,  0.273203819e2,  -0.610598130e1]
@@ -103,8 +116,11 @@ function make_artificial_params()
     end
     Rw = 8.3145 / .018 # J/molK * mol/kg
     calc_ρvap(T) = calc_psub(T)/Rw/T
-    @pack! T_params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf
-    return T_params
+
+
+    params = Dict{Symbol, Any}()
+    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf, p_sub, p_ch, ϵ, l, κ, R, Mw 
+    return params
 end
 
 default_params = make_artificial_params()

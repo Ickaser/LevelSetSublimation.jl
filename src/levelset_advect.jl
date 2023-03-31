@@ -791,7 +791,7 @@ function fastmarch_v!(vf, acc, locs::Vector{CartesianIndex{2}}, ϕ, dom::Domain)
 end
 
 """
-    extrap_v_fastmarch(ϕ, T, dom::Domain, T_params)
+    extrap_v_fastmarch(ϕ, T, dom::Domain, params)
 
 Compute an extrapolated velocity field from T and ϕ.
 

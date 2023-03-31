@@ -337,7 +337,7 @@ Calculate, then plot the front velocity given `ϕ` and `T`.
 Meant for debugging, mostly. Scales all velocity arrows to have length 0.5.
 Generates a freshplot().
 """
-function plot_frontvel(ϕ, T, dom::Domain)
+function plot_frontvel(ϕ, T, dom::Domain, params)
     front_cells = findall(identify_Γ(ϕ, dom) .& (ϕ .> 0))
     xs = []
     ys = []
@@ -346,11 +346,11 @@ function plot_frontvel(ϕ, T, dom::Domain)
     for cell in front_cells
         push!(xs, dom.rgrid[Tuple(cell)[1]])
         push!(ys, dom.zgrid[Tuple(cell)[2]])
-        vr, vz = compute_frontvel_withT(T, ϕ, Tuple(cell)..., dom, T_params)
+        vr, vz = compute_frontvel_withT(T, ϕ, Tuple(cell)..., dom, params)
         push!(vrs, vr)
         push!(vzs, vz)
-        # push!(vrs, get_front_vr(T, ϕ, Tuple(cell)..., T_params) )
-        # push!(vzs, get_front_vz(T, ϕ, Tuple(cell)..., T_params) )
+        # push!(vrs, get_front_vr(T, ϕ, Tuple(cell)..., params) )
+        # push!(vzs, get_front_vz(T, ϕ, Tuple(cell)..., params) )
     end
     maxv = max(maximum(abs.(vrs)), maximum(abs.(vzs)))
     println("Maximum front velocity: $maxv")

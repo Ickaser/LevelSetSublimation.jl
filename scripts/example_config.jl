@@ -1,10 +1,10 @@
 dom = Domain(51, 51, 1.0, 1.0)
-T_params = p = make_artificial_params()
+params = p = make_artificial_params()
 ϕ0type = :circ
 
 config = Dict{Symbol, Any}()
-@pack! config = dom, T_params, ϕ0type
+@pack! config = dom, params, ϕ0type
 
 ϕ0 = make_ϕ0(ϕ0type, dom)
 reinitialize_ϕ_HCR!(ϕ0, dom)
-T0 = solve_T(ϕ0, dom, T_params)
+T0 = solve_T(ϕ0, dom, params)

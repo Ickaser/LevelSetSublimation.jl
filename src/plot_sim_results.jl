@@ -25,12 +25,12 @@ If given, `maxT` sets an upper limit for the associated colorbar.
 """
 function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
     @unpack ϕsol = simresults
-    @unpack dom, T_params = simconfig
+    @unpack dom, params = simconfig
     ϕ = reshape(ϕsol(t), dom.nr, dom.nz)
 
     tr = round(t, sigdigits=3)
     if heatvar == :T
-        T = solve_T(ϕ, dom, T_params)
+        T = solve_T(ϕ, dom, params)
         local p = plot(aspect_ratio=:equal)
         plot_cylheat(T, dom; maxT=maxT)
         plot_cylcont(ϕ, dom, c=:white)
@@ -61,7 +61,7 @@ Return a 2x3 plot of simulation results from start to finish.
 """
 function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
     @unpack ϕsol = simresults
-    @unpack dom, T_params= simconfig
+    @unpack dom, params= simconfig
 
     tf = ϕsol.t[end]
 
@@ -69,7 +69,7 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
     nplots = prod(layout)
     frames = range(0.0, tf, length=nplots)
 
-    T_nm1 = solve_T(get_ϕ(ϕsol, frames[end-1], dom), dom, T_params)
+    T_nm1 = solve_T(get_ϕ(ϕsol, frames[end-1], dom), dom, params)
     maxT = maximum(T_nm1)
 
     for f in frames
@@ -89,13 +89,13 @@ TODO: generate names in the style of `produce_or_load`.
 """
 function resultsanim(simresults, simconfig, casename; seconds_length=5)
     @unpack ϕsol = simresults
-    @unpack dom, T_params= simconfig
+    @unpack dom, params= simconfig
 
     tf = ϕsol.t[end]
 
     # Maximum T for plotting
     ϕ = reshape(ϕsol(0.9*tf), dom.nr, dom.nz)
-    T = solve_T(ϕ, dom, T_params)
+    T = solve_T(ϕ, dom, params)
     maxT = maximum(T)
 
     fps = 30
@@ -106,7 +106,7 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5)
         # freshplot()
         plot(aspect_ratio=:equal, size=(800,500))
         ϕ = reshape(ϕsol(ti), dom.nr, dom.nz)
-        T = solve_T(ϕ, dom, T_params)
+        T = solve_T(ϕ, dom, params)
         tr = round(ti, sigdigits=3)
         plot!(title="timestep=$tr")
         plot_cylheat(T, dom, maxT=maxT)

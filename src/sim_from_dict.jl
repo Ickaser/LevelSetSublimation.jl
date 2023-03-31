@@ -11,12 +11,12 @@ export ϕevol_RHS
 
 Evaluate local time rate of change for `ϕ` (passed in flattened form as `ϕ_flat`), and put results in `dϕ_flat`.
 
-Parameters `p` assumed to be `(dom::Domain, T_params)`
+Parameters `p` assumed to be `(dom::Domain, params)`
 This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing a temperature profilef
 """
 function ϕevol_RHS!(dϕ_flat, ϕ_flat, p, t)
     dom = p[1]
-    T_params = p[2]
+    params = p[2]
     dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
     ϕ = reshape(ϕ_flat, dom.nr, dom.nz)
     # debug
@@ -25,8 +25,8 @@ function ϕevol_RHS!(dϕ_flat, ϕ_flat, p, t)
     #     @info "NaN in ϕ"
     # end
 
-    T = solve_T(ϕ, dom, T_params)
-    vf = extrap_v_fastmarch(ϕ, T, dom, T_params)
+    T = solve_T(ϕ, dom, params)
+    vf = extrap_v_fastmarch(ϕ, T, dom, params)
     vr = @view vf[:,:,1]
     vz = @view vf[:,:,2]
     
@@ -74,15 +74,15 @@ end
 
 
 """
-    ϕevol_RHS(ϕ, dom::Domain, T_params)
+    ϕevol_RHS(ϕ, dom::Domain, params)
     ϕevol_RHS(ϕ, config)
     
 Compute the time derivative of `ϕ` with given parameters.
 
 Wraps a call on `ϕevol_RHS!`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function ϕevol_RHS(ϕ, dom::Domain, T_params)
-    p = (dom, T_params)
+function ϕevol_RHS(ϕ, dom::Domain, params)
+    p = (dom, params)
     dϕ = zeros(dom.nr, dom.nz)
     dϕ_flat = reshape(dϕ, :)
     ϕ_flat = reshape(ϕ, :)
@@ -90,7 +90,7 @@ function ϕevol_RHS(ϕ, dom::Domain, T_params)
     return dϕ
 end
 function ϕevol_RHS(ϕ, config)
-    ϕevol_RHS(ϕ, config[:dom], config[:T_params])
+    ϕevol_RHS(ϕ, config[:dom], config[:params])
 end
 
 """
@@ -165,11 +165,17 @@ Maximum simulation time is specified by `tf`.
 `fullconfig` should have the following fields:
 - `ϕ0type`, types listed for [`make_ϕ0`](@ref)
 - `dom`, an instance of [`Domain`](@ref)
-- `T_params`, which in turn has fields
+- `params`, which in turn has fields
     - `Tf`: ice temperature
     - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
     - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
     - `k`: thermal conductivity of cake
+    - `ϵ` : porosity of porous medium
+    - `l` : dusty gas model constant: characteristic length for Knudsen diffusion
+    - `κ` : dusty gas model constant: length^2 corresponding loosely to Darcy's Law permeability
+    - `R` : universal gas constant, with appropriate units 
+    - `Mw`: molecular weight of species (water), with appropriate units
+    - `μ` : dynamic viscosity of species (water), with appropriate units
 
 If you are getting a warning about instability, it can often be fixed by tinkering with the reinitialization behavior.
 That shouldn't be true but it seems like it is.
@@ -180,14 +186,14 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack T_params, ϕ0type, dom = fullconfig
+    @unpack params, ϕ0type, dom = fullconfig
 
     ϕ0 = make_ϕ0(ϕ0type, dom)
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000) # Don't reinit if using IterativeCallback
     ϕ0_flat = reshape(ϕ0, :)
 
     # ---- Set up ODEProblem
-    prob_p = (dom, T_params)
+    prob_p = (dom, params)
     tspan = (0, tf)
     prob = ODEProblem(ϕevol_RHS!, ϕ0_flat, tspan, prob_p)
 
@@ -263,17 +269,17 @@ function take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
     return Tip1, ϕip1
 end
 """
-    multistep(n, dt, T0, ϕ0, dom::Domain, T_params)
+    multistep(n, dt, T0, ϕ0, dom::Domain, params)
 
 Return `Ti` and `ϕi` after `n` timesteps of `dt`.
 
 I anticipate this being useful mostly if the timestep for stability is small and don't need to store every time step.
 """
-function multistep(n, dt, T0, ϕ0, dom::Domain, T_params)
+function multistep(n, dt, T0, ϕ0, dom::Domain, params)
     Ti = copy(T0)
     ϕi = copy(ϕ0)
     for i in 1:n
-        Ti, ϕi = take_time_step(Ti, ϕi, dom, T_params, dt)
+        Ti, ϕi = take_time_step(Ti, ϕi, dom, params, dt)
     end
     return Ti, ϕi
 end
@@ -288,7 +294,7 @@ Implicitly, have maximum number of time steps of 1000.
 - `ϕ0type`, types listed for [`make_ϕ0`](@ref)
 - `dom`, an instance of [`Domain`](@ref)
 - `sim_dt`, simulation time step (used in advection only)
-- `T_params`, which in turn has fields
+- `params`, which in turn has fields
     - `Tf`: ice temperature
     - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
     - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
@@ -298,14 +304,14 @@ function sim_from_dict_old(fullconfig; maxsteps=1000)
 
     # ------------------- Get simulation parameters
 
-    @unpack T_params, ϕ0type, dom, sim_dt = fullconfig
+    @unpack params, ϕ0type, dom, sim_dt = fullconfig
 
     # println("Inside: dom.nr = $(dom.nr)")
     ϕ0 = make_ϕ0(ϕ0type, dom)
 
     # ---------------------- Set up first step
     reinitialize_ϕ!(ϕ0, dom, 1.0)
-    T0 = solve_T(ϕ0, dom, T_params)
+    T0 = solve_T(ϕ0, dom, params)
 
     # maxsteps = 1000
 
@@ -322,7 +328,7 @@ function sim_from_dict_old(fullconfig; maxsteps=1000)
     # --------------- Run simulation
 
     for i in 1:maxsteps
-        Ti, ϕi = take_time_step(Ti, ϕi, dom, T_params, sim_dt)
+        Ti, ϕi = take_time_step(Ti, ϕi, dom, params, sim_dt)
         # @time Ti, ϕi = multistep(3, 10.0, Ti, ϕi)
         
         # Store solutions for later plotting
