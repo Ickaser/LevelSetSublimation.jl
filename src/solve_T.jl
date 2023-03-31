@@ -260,9 +260,9 @@ function solve_T(ϕ, dom::Domain, params)
                 end
 
             else # Bulk, not at front 
-                ec +=  1.0dr2 + 0.5dr1*r1
-                pc += -2.0dr2
-                wc +=  1.0dr2 - 0.5dr1*r1
+                ec +=  k*(1.0dr2 + 0.5dr1*r1)
+                pc += -k*(2.0dr2)
+                wc +=  k*(1.0dr2 - 0.5dr1*r1)
                 rhs[imx] += 0
             end
         end
@@ -287,9 +287,9 @@ function solve_T(ϕ, dom::Domain, params)
             else
                 # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
                 # p. 65, 66 of project notes
-                pc += -2dz2
-                nc +=  2dz2
-                rhs[imx] += -2*BC3*dz1
+                pc += -k*2dz2
+                nc +=  k*2dz2
+                rhs[imx] += -2k*BC3*dz1
             end
         elseif iz == nz
             # Adiabatic BC
@@ -307,9 +307,9 @@ function solve_T(ϕ, dom::Domain, params)
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
                 # p. 65, 66 of project notes
-                pc += -2dr2
-                sc +=  2dr2
-                rhs[imx] += -2*BC4*dz1
+                pc += -2k*dr2
+                sc +=  2k*dr2
+                rhs[imx] += -2k*BC4*dz1
             end
 
         else # Bulk in z, still need to check for Stefan front
@@ -343,9 +343,9 @@ function solve_T(ϕ, dom::Domain, params)
                 end
 
             else # Bulk, no Stefan front
-                sc +=  1.0dz2
-                pc += -2.0dz2
-                nc +=  1.0dz2
+                sc +=  k*1.0dz2
+                pc += -k*2.0dz2
+                nc +=  k*1.0dz2
                 rhs[imx] += 0
             end
         end
