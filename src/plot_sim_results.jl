@@ -88,22 +88,22 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
 end
 
 """
-    resultsanim(simresults, simconfig, casename; seconds_length=5)
+    resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T)
 
 Generate a .gif of the given simresults, with filename `casename_evol.gif`.
 
 TODO: generate names in the style of `produce_or_load`.
 """
-function resultsanim(simresults, simconfig, casename; seconds_length=5)
+function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T)
     @unpack ϕsol = simresults
     @unpack dom, params= simconfig
 
     tf = ϕsol.t[end]
 
     # Maximum T for plotting
-    ϕ = reshape(ϕsol(0.9*tf), dom.nr, dom.nz)
-    T = solve_T(ϕ, dom, params)
-    maxT = maximum(T)
+    # ϕ = reshape(ϕsol(0.9*tf), dom.nr, dom.nz)
+    # T = solve_T(ϕ, dom, params)
+    # maxT = maximum(T)
 
     fps = 30
     frames = range(0, tf, length=seconds_length*fps)
@@ -111,13 +111,15 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5)
     # plot!(size=(800,500))
     anim = @animate for ti ∈ frames
         # freshplot()
-        plot(aspect_ratio=:equal, size=(800,500))
-        ϕ = reshape(ϕsol(ti), dom.nr, dom.nz)
-        T = solve_T(ϕ, dom, params)
-        tr = round(ti, sigdigits=3)
-        plot!(title="timestep=$tr")
-        plot_cylheat(T, dom, maxT=maxT)
-        plot_cylcont(ϕ, dom, c=:white)
+        p = plotframe(ti, simresults, simconfig, heatvar=heatvar)
+        # plot(aspect_ratio=:equal, size=(800,500))
+        # ϕ = reshape(ϕsol(ti), dom.nr, dom.nz)
+        # T = solve_T(ϕ, dom, params)
+        # tr = round(ti, sigdigits=3)
+        # plot!(title="timestep=$tr")
+        # # plot_cylheat(T, dom, maxT=maxT)
+        # plot_cylheat(T, dom)
+        # plot_cylcont(ϕ, dom, c=:white)
     end
 
     # fps = ceil(Int, nt/2)  # nt/x makes x-second long animation

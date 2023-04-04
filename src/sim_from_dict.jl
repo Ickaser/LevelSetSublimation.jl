@@ -22,7 +22,7 @@ function ϕevol_RHS!(du, u, p, t)
     dom = p[1]
     params = p[2]
     ntot = dom.ntot
-    dϕ = reshape(du[1:ntot], dom.nr, dom.nz)
+    dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
     ϕ = reshape(u[1:ntot], dom.nr, dom.nz)
 
     Tf = u[ntot+1]
@@ -87,9 +87,8 @@ function ϕevol_RHS!(du, u, p, t)
         # end
         # @info "check" ind rcomp zcomp vz[ind] dϕdz_s dϕdz_n
     end
-    vtot = hypot.(vr, vz)
     # display(heat(dϕ, dom))
-    @info "eval derivatives" Tf p_sub-params[:p_ch] extrema(dϕ) extrema(vtot)
+    # @info "eval derivatives" Tf p_sub-params[:p_ch] extrema(dϕ) extrema(vtot)
     return nothing
 end
 
@@ -145,14 +144,7 @@ Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 function next_reinit_time(integ)
     dom = integ.p[1]
     du = similar(integ.u)
-    du_0 = copy(du)
     ϕevol_RHS!(du, integ.u, integ.p, integ.t)
-    
-    @info "problems?" extrema(du_0 .- du)
-
-    # B = identify_B(reshape(integ.u, dom.nr, dom.nz), dom)
-    # dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
-    # max_dϕdt = maximum(abs.(dϕ[B]))
 
     # The main region of concern is the frozen region near interface
     # Find the largest value of dϕdt in that region
@@ -162,14 +154,12 @@ function next_reinit_time(integ)
     B⁻ = B .& (ϕ .<= 0)
     max_dϕdt = maximum(abs.(dϕ[B⁻]))
 
-    # max_dϕdt = maximum(abs.(dϕ_flat))
-
     # Reinit next when interface should have moved across half of band around interface 
     domfrac = min(0.5 * dom.bwfrac, 0.1) # Minimum of 0.5 of the band, or 0.1 of domain size.
     minlen = min(domfrac*dom.rmax , domfrac*dom.zmax, integ.t*max_dϕdt + dom.dz)  # Also: at early times, do more often
     dt = minlen / max_dϕdt 
     # dt = 0.5 * minlen / max_dϕdt 
-    @info "Reinit at t=$(integ.t), dt=$dt" extrema(du) extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+    @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
     return integ.t + dt
 end
 

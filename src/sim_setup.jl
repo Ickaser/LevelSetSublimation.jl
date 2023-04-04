@@ -90,10 +90,11 @@ function make_artificial_params()
     Q_ic = 1.0
     Q_ck = 0.0
     k = 1.0
+    # This acts as an initial value 
     Tf = 233.15
 
     # Mass transfer
-    p_sub = 15 # This gets overwritten almost immediately
+    p_sub = 15 # This gets overwritten almost immediately: fixed by Tf
     p_ch = 5 # 100 mTorr is about 13 Pa
     ϵ = 0.9
     l = 1.0
