@@ -90,37 +90,30 @@ function make_artificial_params()
     Q_ic = 1.0
     Q_ck = 0.0
     k = 1.0
-    Tf = 250.0
+    Tf = 233.15
 
     # Mass transfer
-    p_sub = 5.0
-    p_ch = 1.5
+    p_sub = 15 # This gets overwritten almost immediately
+    p_ch = 5 # 100 mTorr is about 13 Pa
     ϵ = 0.9
     l = 1.0
     κ = 0.5
     R = 8.3145
-    Mw = 18 
+    Mw = .018 #mol/kg
     μ = 1.0
 
     # Sublimation
     ΔH = 1.0
     # ΔHsub = 678.0 # u"cal/g"
     ρf = 100.0 
+    Cpf = 10.0
 
-    " Takes T as Kelvin, returns P in Pa"
-    function calc_psub(T)
-        ai = [-0.212144006e2,  0.273203819e2,  -0.610598130e1]
-        bi = [0.333333333e-2,  0.120666667e1,  0.170333333e1]
-        θ = T/275.16
-        lnπ = sum(ai .* θ .^bi) / θ
-        exp(lnπ)*611.657
-    end
-    Rw = 8.3145 / .018 # J/molK * mol/kg
-    calc_ρvap(T) = calc_psub(T)/Rw/T
+    # Rw = 8.3145 / .018 # J/molK * mol/kg
+    # calc_ρvap(T) = calc_psub(T)/Rw/T
 
 
     params = Dict{Symbol, Any}()
-    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf, p_sub, p_ch, ϵ, l, κ, R, Mw, μ
+    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf, p_sub, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
     return params
 end
 

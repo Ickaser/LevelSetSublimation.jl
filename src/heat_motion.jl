@@ -1,23 +1,51 @@
 export compute_Qice, compute_icesurf
-export compute_frontvel_withT, plot_frontvel
+export compute_frontvel_withT, compute_frontvel_mass, plot_frontvel
 
 """
-    function compute_Qice(ϕ, dom::Domain, params)
+    function compute_Qice(ϕ, T, p, dom::Domain, params)
 
-Compute the total heat input into frozen domain from vial boundaries
+Compute the total heat input into frozen domain.
+
+See p. 112-113 from paperlike notes. At pseudosteady conditions, all heat getting added to the system goes to the frozen domain,
+so we don't actually need to treat different areas of the surface.
+In addition, the sublimation flux is simply evaluated on the top surface.
+
 """
-function compute_Qice(ϕ, dom::Domain, params)
-    @unpack Q_sh, Q_ic, Q_gl = params
+function compute_Qice(ϕ, T, p, dom::Domain, params)
+
+    @unpack Q_sh, Q_ic, Q_gl, Q_ck, ΔH= params
+
     # Heat flux from shelf, at bottom of vial
-    botsurf = compute_icesh_area(ϕ, dom)
-    Qbot = botsurf * Q_sh
+    # botsurf = compute_icesh_area(ϕ, dom)
+    # Qbot = botsurf * Q_sh
+    Qbot = π*dom.rmax^2 * Q_sh
+
     # Heat flux from glass, at outer radius
-    outsurf = compute_icegl_area(ϕ, dom)
-    Qout = outsurf * Q_gl
-    # Volumetric heat throughout ice
+    # radsurf = compute_icegl_area(ϕ, dom)
+    # Qrad = radsurf * Q_gl
+    Qrad = 2π*dom.rmax*dom.zmax * Q_gl
+
+    # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
-    Qvol = icevol * Q_ic
-    return Qbot + Qout + Qvol
+    dryvol = π*dom.rmax^2*dom.zmax - icevol
+    Qvol = icevol * Q_ic + dryvol * Q_ck
+
+    # Sublimation rate
+    md = compute_topmassflux(ϕ, T, p, dom, params)
+    # @info "mass flow" md/params[:ρf]
+    Qsub = - md * ΔH
+
+    return Qbot + Qrad + Qvol + Qsub
+end
+
+"""
+    compute_topmassflux(ϕ, T, p, dom::Domain, params)
+"""
+function compute_topmassflux(ϕ, T, p, dom::Domain, params)
+    dpdz = [compute_pderiv(ϕ, p, ir, dom.nz, dom, params)[4] for ir in 1:dom.nr]
+    b = eval_b(T, p, params)[:,1]
+    md = - 2π * sum(dpdz .*b .* dom.rgrid) * dom.dr
+    return md
 end
 
 """
@@ -191,11 +219,14 @@ function compute_icesurf(ϕ, dom::Domain)
 end
 
 """
+    compute_Tderiv(ϕ, T, ir::Int, iz::Int, dom::Domain, params)
+
+Compute `∂ϕ/∂r`, `∂T/∂r`, `∂ϕ/∂z` and `∂T/∂z` at point `(ir, iz)`, given `T`, `ϕ`.
 
 Quadratic ghost cell extrapolation (into frozen domain), second order finite differences, for T.
 For ϕ derivatives, simple second order finite differences (one-sided at boundaries).
 """
-function compute_heatflux(T, ϕ, ir::Int, iz::Int, dom::Domain, params)
+function compute_Tderiv(ϕ, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack k, Q_sh, Q_gl, Tf = params
     pT = T[ir, iz]
@@ -207,16 +238,10 @@ function compute_heatflux(T, ϕ, ir::Int, iz::Int, dom::Domain, params)
 
     # Enforce BCs explicitly for boundary cells
     if ir == 1 
-        # dϕr = (ϕ[ir+1, iz] - pϕ) * dr1 # 1st order
         dϕr = (-0.5ϕ[ir+2, iz] +2ϕ[ir+1, iz] - 1.5pϕ) * dr1 # 2nd order 
-        # dTr = (T[ir+1, iz] - pT) * dr1
-        # dϕr = min(0, (ϕ[ir+1,iz] - pϕ)) * dr1 # Clamp to 0
         dTr = 0
     elseif ir == nr
-        # dϕr = (pϕ - ϕ[ir-1, iz]) * dr1 # 1st order
         dϕr = (1.5pϕ - 2ϕ[ir-1, iz] + 0.5ϕ[ir-2,iz]) * dr1 # 2nd order
-        # dTr = (pT - T[ir-1, iz]) * dr1
-        # dϕr = min(0, (pϕ - ϕ[ir-1,iz])) * dr1 # Clamp to 0
         dTr = Q_gl / k
     else 
         # Bulk
@@ -238,15 +263,12 @@ function compute_heatflux(T, ϕ, ir::Int, iz::Int, dom::Domain, params)
                 dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
             else 
                 dTr = (eT - Tf)/(θr+1)*dr1 # Linear extrapolation from east
-                # dTr = (eT - pT)       *dr1 # Linear extrapolation from east
-                # @show pT-Tf θr+1
             end
         elseif eϕ <= 0 # East ghost cell
             θr = pϕ /(pϕ - eϕ)
             if θr > dr
                 dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*(3θr+1)/(θr+1)*0.25) * dr1 # Quadratic extrapolation
             else
-                # eTg = (2Tf + (th-1)wT )/(th+1)
                 dTr = (Tf - wT)/(θr+1)*dr1 # Linear extrapolation from west
             end
         else # No ghost cells
@@ -256,13 +278,10 @@ function compute_heatflux(T, ϕ, ir::Int, iz::Int, dom::Domain, params)
             
     # Enforce BCs explicitly for boundary cells
     if iz == 1 
-        # dϕz = (ϕ[ir, iz+1] - pϕ) * dr1 # 1st order
         dϕz = (-0.5ϕ[ir, iz+2] +2ϕ[ir, iz+1] - 1.5pϕ) * dz1 # 2nd order 
         dTz = Q_sh / k
     elseif iz == nz
-        # dϕz = (pϕ - ϕ[ir, iz-1]) * dz1 # 1st order
         dϕz = (1.5pϕ - 2ϕ[ir, iz-1] + 0.5ϕ[ir,iz-2]) * dz1 # 2nd order
-        # dϕz = min(0, (pϕ - ϕ[ir,iz-1])) * dz1 # Clamp to 0
         dTz = 0
     else 
         # Bulk
@@ -275,7 +294,6 @@ function compute_heatflux(T, ϕ, ir::Int, iz::Int, dom::Domain, params)
         # North and south ghost cell: weird kink
         if sϕ <= 0 && nϕ <= 0
             dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
-            # dTz = 0
             θz1 = pϕ/(pϕ - nϕ)
             θz2 = pϕ/(pϕ - sϕ)
             dTz = (Tf - pT)*(θz1 - θz2)/(θz2 * (2θz2-θz1))
@@ -304,13 +322,134 @@ function compute_heatflux(T, ϕ, ir::Int, iz::Int, dom::Domain, params)
     return dϕr, dTr, dϕz, dTz
 end
 
+"""
+    compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
+
+Compute `∂ϕ/∂r`, `∂p/∂r`, `∂ϕ/∂z` and `∂p/∂z` at point `(ir, iz)`, given `p`, `ϕ`.
+
+Quadratic ghost cell extrapolation (into frozen domain), second order finite differences, for p.
+For ϕ derivatives, simple second order finite differences (one-sided at boundaries).
+
+The distinction between this and `compute_Tderiv` is just in boundary values.
+"""
+function compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
+    @unpack dr, dz, dr1, dz1, nr, nz = dom
+    @unpack p_sub, p_ch = params
+    pp = p[ir, iz]
+    ϕp = ϕ[ir, iz]
+    
+    if ϕp > 2dr || ϕp > 2dz || ϕp < -2dr || ϕp < -2dz
+        @debug "Computing mass flux for cell which may not be at front." ir iz ϕp
+    end
+
+    # Enforce BCs explicitly for boundary cells
+    if ir == 1 
+        dϕr = (-0.5ϕ[ir+2, iz] +2ϕ[ir+1, iz] - 1.5ϕp) * dr1 # 2nd order 
+        dpr = 0
+    elseif ir == nr
+        dϕr = (1.5ϕp - 2ϕ[ir-1, iz] + 0.5ϕ[ir-2,iz]) * dr1 # 2nd order
+        dpr = 0
+    else 
+        # Bulk
+        eϕ = ϕ[ir+1, iz]
+        wϕ = ϕ[ir-1, iz]
+        dϕr = (eϕ - wϕ) * 0.5dr1
+
+        pe = p[ir+1, iz]
+        pw = p[ir-1, iz]
+        # West and east ghost cell: weird kink? Set to 0 and procrastinate
+        if wϕ <= 0 && eϕ <= 0
+            dϕr = (eϕ - wϕ) * 0.5*dr1 # Centered difference
+            θr1 = ϕp/(ϕp - eϕ)
+            θr2 = ϕp/(ϕp - wϕ)
+            dpr = (p_sub - pp)*(θr1 - θr2)/(θr2 * (2θr2-θr1))
+        elseif wϕ <= 0 # West ghost cell
+            θr = ϕp /(ϕp - wϕ)
+            if θr > dr
+                dpr = (-p_sub/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+            else 
+                dpr = (pe - p_sub)/(θr+1)*dr1 # Linear extrapolation from east
+            end
+        elseif eϕ <= 0 # East ghost cell
+            θr = ϕp /(ϕp - eϕ)
+            if θr > dr
+                dpr = ( p_sub/(θr+1)/θr - pp*(1-θr)/θr - pw*(3θr+1)/(θr+1)*0.25) * dr1 # Quadratic extrapolation
+            else
+                dpr = (p_sub - pw)/(θr+1)*dr1 # Linear extrapolation from west
+            end
+        else # No ghost cells
+            dpr = (pe - pw) * 0.5*dr1 # Centered difference
+        end
+    end
+            
+    if iz == 1 
+        # Enforce BCs explicitly for Neumann boundary cells
+        dϕz = (-0.5ϕ[ir, iz+2] +2ϕ[ir, iz+1] - 1.5ϕp) * dz1 # 2nd order 
+        dpz = 0
+    elseif iz == nz # Behaves like bulk--we have a Dirichlet condition here, not Neumann
+        sϕ = ϕ[ir, iz-1]
+        if sϕ <= 0 # South ghost cell
+            θz = ϕp /(ϕp - sϕ)
+            dpz = (p_ch - p_sub)*dz1/θz # Employ Dirichlet condition
+            dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
+        elseif ϕ[ir, iz-2] <= 0 # Use one cell
+            dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
+            dpz = (pp - p[ir, iz-1]) * dz1 # 1st order
+        else # 2nd order
+            dϕz = (1.5ϕp - 2ϕ[ir, iz-1] + 0.5ϕ[ir,iz-2]) * dz1 # 2nd order
+            dpz = (1.5pp - 2p[ir, iz-1] + 0.5p[ir,iz-2]) * dz1 # 2nd order
+        end
+
+        #     θz = sϕ /(sϕ - ϕ[ir, iz-2])
+    else 
+        # Bulk
+        nϕ = ϕ[ir, iz+1]
+        sϕ = ϕ[ir, iz-1]
+        dϕz = (nϕ - sϕ) * 0.5dz1
+
+        # nT = T[ir, iz+1]
+        # sT = T[ir, iz-1]
+        pn = p[iz, iz+1]
+        ps = p[iz, iz-1]
+        # North and south ghost cell: weird kink
+        if sϕ <= 0 && nϕ <= 0
+            dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
+            θz1 = ϕp/(ϕp - nϕ)
+            θz2 = ϕp/(ϕp - sϕ)
+            dpz = (p_sub - pp)*(θz1 - θz2)/(θz2 * (2θz2-θz1))
+        elseif sϕ <= 0 # South ghost cell
+            θz = ϕp /(ϕp - sϕ)
+            if θz > dz
+                dpz = (-p_sub/(θz+1)/θz + pp*(1-θz)/θz + pn*θz/(θz+1)) * dz1 # Quadratic extrapolation
+            else
+                dpz = (pp - p_sub)/(θz+1)*dz1
+            end
+        elseif nϕ <= 0 # North ghost cell
+            θz = ϕp /(ϕp - nϕ)
+            if θz > dz
+                dpz = ( p_sub/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
+            else
+                dpz = (p_sub - ps )/(θz+1)*dz1
+            end
+        else # No ghost cells
+            dpz = (pn - ps) * 0.5*dz1 # Centered difference
+        end
+    end
+
+    ngradϕ = hypot(dϕr, dϕz)
+    # @show ngradϕ dϕr dϕz
+    dϕr /= ngradϕ
+    dϕz /= ngradϕ
+    return dϕr, dpr, dϕz, dpz
+end
+
 """ 
-    compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
+    compute_frontvel_withT(ϕ, T, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
 
 Return `(vr, vz)` for the corresponding `(ir, iz)` location, based on temperature profile and z.
 
 """
-function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
+function compute_frontvel_withT(ϕ, T, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
     # If Qice_surf (heat to ice divided by surface area) not supplied, compute it here
     if Qice_per_surf === nothing
         Qice = compute_Qice(ϕ, dom, params)
@@ -319,7 +458,7 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
     end
     @unpack k, ΔH, ρf = params
     
-    dϕr, dTr, dϕz, dTz = compute_heatflux(T, ϕ, ir, iz, dom, params)
+    dϕr, dTr, dϕz, dTz = compute_Tderiv(ϕ, T, ir, iz, dom, params)
     
     qtot = k*dTr*dϕr + k*dTz*dϕz + Qice_per_surf
     md = qtot / ΔH
@@ -328,6 +467,45 @@ function compute_frontvel_withT(T, ϕ, ir::Int, iz::Int, dom::Domain, params, Qi
     return -vtot * dϕr, -vtot * dϕz
 
 end
+
+"""
+    compute_frontvel_mass(ϕ, T, p, dom::Domain, params; debug=false)
+
+Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on Γ with ϕ>0). 
+"""
+function compute_frontvel_mass(ϕ, T, p, dom::Domain, params; debug=false)
+
+    @unpack k, ΔH, ρf, ϵ = params
+
+    Γf = identify_Γ(ϕ, dom)
+    Γ = findall(Γf)
+    Γ⁺ = [c for c in Γ if ϕ[c]>0]
+    b = eval_b(T, p, params)
+     
+    vf = zeros(Float64, dom.nr, dom.nz, 2)
+
+    for c in Γ⁺
+        ir, iz = Tuple(c)
+        # dϕr, dTr, dϕz, dTz = compute_Tderiv(T, ϕ, ir, iz, dom, params)
+        dϕr, dpr, dϕz, dpz = compute_pderiv(ϕ, p, ir, iz, dom, params)
+    
+        # qloc = k*dTr*dϕr + k*dTz*dϕz + Qice_per_surf
+        
+        # Normal is out of the ice
+        # md = -b∇p⋅∇ϕ , >0 for sublimation occurring
+        # v = md/ρ * -∇ϕ
+        md_l = -b[c] * (dpr*dϕr + dpz * dϕz)
+        vtot = md_l / ρf / ϵ 
+        vf[c,1] = -vtot * dϕr
+        vf[c,2] = -vtot * dϕz
+        # @info "vtot" vtot md_l c vf[c,1] vf[c,2] dϕr dϕz
+
+    end
+    
+    return vf
+
+end
+
 
 """
     function plot_frontvel(ϕ, T, dom::Domain)
@@ -346,7 +524,7 @@ function plot_frontvel(ϕ, T, dom::Domain, params)
     for cell in front_cells
         push!(xs, dom.rgrid[Tuple(cell)[1]])
         push!(ys, dom.zgrid[Tuple(cell)[2]])
-        vr, vz = compute_frontvel_withT(T, ϕ, Tuple(cell)..., dom, params)
+        vr, vz = compute_frontvel_withT(ϕ, T, Tuple(cell)..., dom, params)
         push!(vrs, vr)
         push!(vzs, vz)
         # push!(vrs, get_front_vr(T, ϕ, Tuple(cell)..., params) )

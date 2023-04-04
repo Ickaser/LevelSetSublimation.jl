@@ -10,8 +10,8 @@ export get_subf_z, get_subf_r, get_ϕ
 #     plot!(title="timestep=$(f-1)")
 #     return p
 # end
-function get_ϕ(sol::ODESolution, t, dom::Domain)
-    reshape(sol(t), dom.nr, dom.nz)
+function get_ϕ_Tf(sol::ODESolution, t, dom::Domain)
+    reshape(sol(t)[1:dom.ntot], dom.nr, dom.nz), sol(t)[dom.ntot+1]
 end
 
 
@@ -26,7 +26,10 @@ If given, `maxT` sets an upper limit for the associated colorbar.
 function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
     @unpack ϕsol = simresults
     @unpack dom, params = simconfig
-    ϕ = reshape(ϕsol(t), dom.nr, dom.nz)
+    params = deepcopy(params)
+    ϕ, Tf = get_ϕ_Tf(ϕsol, t, dom)
+    p_sub = calc_psub(Tf)
+    @pack! params = Tf, p_sub
 
     tr = round(t, sigdigits=3)
     if heatvar == :T
@@ -69,11 +72,15 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
     nplots = prod(layout)
     frames = range(0.0, tf, length=nplots)
 
-    T_nm1 = solve_T(get_ϕ(ϕsol, frames[end-1], dom), dom, params)
+    ϕ_nm1, Tf_nm1= get_ϕ_Tf(ϕsol, frames[end-1], dom)
+    params = deepcopy(params)
+    params[:Tf] = Tf_nm1
+    T_nm1 = solve_T(ϕ_nm1, dom, params)
     maxT = maximum(T_nm1)
 
     for f in frames
-        p = plotframe(f, simresults, simconfig, maxT=maxT, heatvar=heatvar)
+        # p = plotframe(f, simresults, simconfig, maxT=maxT, heatvar=heatvar)
+        p = plotframe(f, simresults, simconfig, heatvar=heatvar)
         push!(plots, p)
     end
 

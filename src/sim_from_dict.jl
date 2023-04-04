@@ -7,29 +7,47 @@ export ϕevol_RHS
 # ---------- Fully adaptive time stepping functions
 
 """
-    ϕevol_RHS!(dϕ_flat, ϕ_flat, p, t)
+    ϕevol_RHS!(du, u, p, t)
 
-Evaluate local time rate of change for `ϕ` (passed in flattened form as `ϕ_flat`), and put results in `dϕ_flat`.
+Evaluate local time rate of change for `u` and put results in `du`.
+
+`u` and `du` are both structured as follows:
+First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`
 
 Parameters `p` assumed to be `(dom::Domain, params)`
-This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing a temperature profilef
+This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
+using `compute_frontvel_mass`.
 """
-function ϕevol_RHS!(dϕ_flat, ϕ_flat, p, t)
+function ϕevol_RHS!(du, u, p, t)
     dom = p[1]
     params = p[2]
-    dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
-    ϕ = reshape(ϕ_flat, dom.nr, dom.nz)
+    ntot = dom.ntot
+    dϕ = reshape(du[1:ntot], dom.nr, dom.nz)
+    ϕ = reshape(u[1:ntot], dom.nr, dom.nz)
+
+    Tf = u[ntot+1]
+    p_sub = calc_psub(Tf) # Returned as Pa
+    @pack! params = Tf, p_sub # Update current temperature and sublimation pressure 
     # debug
     # if isnan(sum(ϕ))
     #     ϕ[isnan.(ϕ)] .= 1
     #     @info "NaN in ϕ"
     # end
 
+
+    # Plug current value of Tf into params, where it then gets passed around
+
+
     T = solve_T(ϕ, dom, params)
-    vf = extrap_v_fastmarch(ϕ, T, dom, params)
+    p = solve_p(ϕ, T, dom, params)
+    vf = extrap_v_fastmarch(ϕ, T, p, dom, params)
     vr = @view vf[:,:,1]
     vz = @view vf[:,:,2]
     
+    Qice = compute_Qice(ϕ, T, p, dom, params)
+    @unpack ρf, Cpf = params
+    dTdt = Qice / ρf / Cpf / compute_icevol(ϕ, dom)
+    du[ntot+1] = dTdt
 
     indmin = CI(1, 1)
     indmax = CI(dom.nr, dom.nz)
@@ -69,6 +87,9 @@ function ϕevol_RHS!(dϕ_flat, ϕ_flat, p, t)
         # end
         # @info "check" ind rcomp zcomp vz[ind] dϕdz_s dϕdz_n
     end
+    vtot = hypot.(vr, vz)
+    # display(heat(dϕ, dom))
+    @info "eval derivatives" Tf p_sub-params[:p_ch] extrema(dϕ) extrema(vtot)
     return nothing
 end
 
@@ -83,11 +104,15 @@ Wraps a call on `ϕevol_RHS!`, for convenience in debugging and elsewhere that e
 """
 function ϕevol_RHS(ϕ, dom::Domain, params)
     p = (dom, params)
-    dϕ = zeros(dom.nr, dom.nz)
-    dϕ_flat = reshape(dϕ, :)
-    ϕ_flat = reshape(ϕ, :)
-    ϕevol_RHS!(dϕ_flat, ϕ_flat, p, 0.0)
-    return dϕ
+    du = zeros(dom.ntot+1)
+    # dϕ = zeros(dom.nr, dom.nz)
+
+    # dϕ_flat = reshape(dϕ, :)
+    u = similar(ϕ, dom.ntot+1)
+    u[1:dom.ntot] .= reshape(ϕ, :)
+    u[dom.ntot+1] = params[:Tf]
+    ϕevol_RHS!(du, u, p, 0.0)
+    return du
 end
 function ϕevol_RHS(ϕ, config)
     ϕevol_RHS(ϕ, config[:dom], config[:params])
@@ -105,22 +130,25 @@ function reinit_wrap(integ; verbose=false)
     if verbose
         @info "Reinit at t=$(integ.t)"
     end
-    dom = integ.p[1]
-    ϕ = reshape(integ.u, dom.nr, dom.nz)
-    # reinitialize_ϕ!(ϕ, dom) 
-    reinitialize_ϕ_HCR!(ϕ, dom, tol=1e-6) 
+dom = integ.p[1]
+ϕ = reshape((@view integ.u[1:dom.ntot]), dom.nr, dom.nz)
+# reinitialize_ϕ!(ϕ, dom) 
+reinitialize_ϕ_HCR!(ϕ, dom, tol=1e-6) 
 end
 
 """
-    next_reinit_time(integ)
+next_reinit_time(integ)
 
 Compute the next time reinitialization should be necessary, given the current integrator state.
 Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 """
 function next_reinit_time(integ)
     dom = integ.p[1]
-    dϕ_flat = similar(integ.u)
-    ϕevol_RHS!(dϕ_flat, integ.u, integ.p, integ.t)
+    du = similar(integ.u)
+    du_0 = copy(du)
+    ϕevol_RHS!(du, integ.u, integ.p, integ.t)
+    
+    @info "problems?" extrema(du_0 .- du)
 
     # B = identify_B(reshape(integ.u, dom.nr, dom.nz), dom)
     # dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
@@ -128,8 +156,8 @@ function next_reinit_time(integ)
 
     # The main region of concern is the frozen region near interface
     # Find the largest value of dϕdt in that region
-    ϕ = reshape(integ.u, dom.nr, dom.nz)
-    dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
+    ϕ = reshape(integ.u[1:dom.ntot], dom.nr, dom.nz)
+    dϕ = reshape(du[1:dom.ntot], dom.nr, dom.nz)
     B = identify_B(ϕ, dom)
     B⁻ = B .& (ϕ .<= 0)
     max_dϕdt = maximum(abs.(dϕ[B⁻]))
@@ -141,7 +169,7 @@ function next_reinit_time(integ)
     minlen = min(domfrac*dom.rmax , domfrac*dom.zmax, integ.t*max_dϕdt + dom.dz)  # Also: at early times, do more often
     dt = minlen / max_dϕdt 
     # dt = 0.5 * minlen / max_dϕdt 
-    # @info "Reinit at t=$(integ.t), dt=$dt"#, next at t=$(integ.t+dt)" 
+    @info "Reinit at t=$(integ.t), dt=$dt" extrema(du) extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
     return integ.t + dt
 end
 
@@ -188,20 +216,28 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
 
     @unpack params, ϕ0type, dom = fullconfig
 
+    params = deepcopy(params)
+
     ϕ0 = make_ϕ0(ϕ0type, dom)
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000) # Don't reinit if using IterativeCallback
     ϕ0_flat = reshape(ϕ0, :)
+    
+    # Full array of starting state variables
+    u0 = similar(ϕ0_flat, dom.ntot+1) # Add 1 to length: Tf
+    u0[1:dom.ntot] .= ϕ0_flat
+    u0[dom.ntot+1] = params[:Tf]
+    @info "Initial Tf:" u0[dom.ntot+1]
 
     # ---- Set up ODEProblem
     prob_p = (dom, params)
     tspan = (0, tf)
-    prob = ODEProblem(ϕevol_RHS!, ϕ0_flat, tspan, prob_p)
+    prob = ODEProblem(ϕevol_RHS!, u0, tspan, prob_p)
 
     # --- Set up reinitialization callback
 
     # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
     if verbose
-        cb1 = IterativeCallback(next_reinit_time, x->reinit_wrap(x, verbose=false),  initial_affect = true)
+        cb1 = IterativeCallback(next_reinit_time, x->reinit_wrap(x, verbose=true),  initial_affect = true)
     else
         cb1 = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
     end

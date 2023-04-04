@@ -2,8 +2,17 @@
 export solve_p_given_b
 export solve_p
 
+" Takes T as Kelvin, returns P in Pa"
+function calc_psub(T)
+    ai = [-0.212144006e2,  0.273203819e2,  -0.610598130e1]
+    bi = [0.333333333e-2,  0.120666667e1,  0.170333333e1]
+    θ = T/275.16
+    lnπ = sum(ai .* θ .^bi) / θ
+    exp(lnπ)*611.657
+end
+
 """
-    eval_b(T, p, dom::Domain, params)
+    eval_b(T, p, params)
 
 Compute transport coefficient `b` as a function of space, given `T`, `p`, and `params`.
 
@@ -18,9 +27,9 @@ Compute transport coefficient `b` as a function of space, given `T`, `p`, and `p
 
 If `κ=0`, no spatial variation due to pressure occurs.
 """
-function eval_b(T, p, dom::Domain, params)
+function eval_b(T, p, params)
     @unpack ϵ, l, κ, R, Mw, μ = params
-    b = @. 1/R/T * (l*sqrt(R*T/Mw) + κ/μ*p)
+    b = @. 1/R/T/Mw * (l*sqrt(R*T/Mw) + κ/μ*p)
 end
 
 """
@@ -144,14 +153,11 @@ function solve_p_given_b(ϕ, b::Float64, dom::Domain, params)
                     wc += b*(-0.5dr1*r1 + dr2) # Regular
                     rhs[imx] -= p_sub*b*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
-                    # stefan_debug = true
-                    # println("east θ<dr, ir=$ir, iz=$iz")
                     pc += -2b*dr2 # Regular
                     wc += b*(-0.5dr1*r1 + dr2) # Regular
                     wc += b*(dr+2r)*(θr-1)*0.5dr2*r1/(θr+1) # Due to ghost cell extrapolation 
                 end
             elseif wϕ <= 0 # West ghost cell across front
-                # stefan_debug = true
                 θr = pϕ / (pϕ - wϕ)
                 if θr >= dr # Regular magnitude θ
                     pc += -2b*dr2 # Regular 
@@ -203,24 +209,6 @@ function solve_p_given_b(ϕ, b::Float64, dom::Domain, params)
             add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
             rhs[imx] = BC4
             continue
-
-            # sϕ = ϕ[ir, iz-1]
-            # if sϕ < 0 # Front is within a cell of boundary
-            #     # stefan_debug = true
-            #     # p. 65 of project notes
-            #     θz = pϕ/(pϕ-sϕ)
-            #     # Have an exact value given by BC + front
-            #     # No way to treat other equations, so add to matrix and stop here
-            #     add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-            #     rhs[imx] = Tf + θz*BC4*dz
-            #     continue
-            # else
-            #     # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
-            #     # p. 65, 66 of project notes
-            #     pc += -2dr2
-            #     sc +=  2dr2
-            #     rhs[imx] += -2*BC4*dz1
-            # end
 
         else # Bulk in z, still need to check for Stefan front
             nϕ = ϕ[ir, iz+1]
@@ -368,43 +356,30 @@ function solve_p_given_b(ϕ, b::T, dom::Domain, params) where T<:AbstractArray
 
         else # r direction bulk
             # Check for Stefan boundary
-            # ef = b[ir+1, iz]
-            # wf = b[ir-1, iz]
             dbr = (b[ir+1, iz]-b[ir-1, iz])*0.5*dr1
             eϕ = ϕ[ir+1, iz]
             wϕ = ϕ[ir-1, iz]
             if eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
                 if θr >= dr
-                    # pc += -2bp*dr2 # Regular 
-                    # pc += (θr-1)/θr*bp*(0.5dr1*r1 + dr2) # Due to ghost cell extrapolation
-                    # pc += dbr*(θr-1)*0.5dr1/θr # Due to gradient in b
                     pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/(θr+1)
                     wc += bp*(0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
                     rhs[imx] -= p_sub*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else
                     # @info "hmm, east" θr dr ir iz
                     pc += -2bp*dr2 # Regular
-                    # wc += bp*(-0.5dr1*r1 + dr2) # Regular
-                    # wc += (bp*(dr+2r)*(θr-1)*0.5dr2*r1 - dbr*dr1) /(θr+1) # Due to ghost cell extrapolation + b gradient
                     wc += (bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                     rhs[imx] -= p_sub*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
                 if θr >= dr # Regular magnitude θ
-                    # pc += -2bp*dr2 # Regular 
-                    # pc += bp*(-dr+2r)*(θr-1)*0.5dr2*r1/θr # Due to ghost cell extrapolation
-                    # pc += dbr*(1-θr)*0.5dr1/θr # Due to gradient in b
                     pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
                     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
                     rhs[imx] -= p_sub*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else # Very small θ
                     # @info "hmm, west" θr dr ir iz
                     pc += -2bp*dr2 # Regular
-                    # ec += bp*( 0.5dr1*r1 + dr2) # Regular
-                    # ec += bp*(-0.5dr1*r1 + dr2)*(θr-1)/(θr+1) # Due to ghost cell extrapolation
-                    # ec += dbr*dr1/(θr+1) # Due to gradient in b
                     ec += (bp*(dr1*r1 + 2θr*dr2) + dbr*dr1)/(θr+1)
                     rhs[imx] -= p_sub*(bp*(2dr2-dr1*r1)-dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
@@ -499,12 +474,11 @@ function solve_p_given_b(ϕ, b::T, dom::Domain, params) where T<:AbstractArray
     psol = reshape(sol, nr, nz)
 end
 
-
-function solve_p(ϕ, T, dom::Domain, params; p0::Union{Nothing, G} =nothing, maxit=5, reltol=1e-6) where G<:AbstractArray
+function solve_p(ϕ, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit=10, reltol=1e-6) where G<:AbstractArray
     if p0 === nothing
         # meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
         # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
-        b = eval_b(T, 0, dom, params)
+        b = eval_b(T, 0, params)
         p0 = solve_p_given_b(ϕ, b, dom, params)
     end
 
@@ -512,8 +486,7 @@ function solve_p(ϕ, T, dom::Domain, params; p0::Union{Nothing, G} =nothing, max
     p⁺ = copy(p0)
     # Iterate 5 times
     for i in 1:maxit
-        b = eval_b(T, p0, dom, params)
-        display(heat(b, dom))
+        b = eval_b(T, p0, params)
         p⁺ = solve_p_given_b(ϕ, b, dom, params)
         relerr = maximum(abs.(p⁺ .- p0) ./ p⁺)
         # @info "Maximum relative error in p after $i iterations:" relerr

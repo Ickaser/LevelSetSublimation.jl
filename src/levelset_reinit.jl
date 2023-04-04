@@ -152,6 +152,7 @@ end
     identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain)
     identify_B(Γ_field::Matrix{Bool}, dom::Domain)
     identify_B(ϕ::Matrix{Float64}, dom::Domain)
+    identify_B(ϕ::Any, dom::Domain)
 
 Return a field of bools identifying the band around the interface.
 
@@ -177,6 +178,9 @@ function identify_B(Γ_field::Matrix{Bool}, dom::Domain)
     return identify_B(findall(Γ_field), dom)
 end
 function identify_B(ϕ::Matrix{Float64}, dom::Domain)
+    return identify_B(Γ_cells(ϕ, dom), dom)
+end
+function identify_B(ϕ, dom::Domain)
     return identify_B(Γ_cells(ϕ, dom), dom)
 end
 

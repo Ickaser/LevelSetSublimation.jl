@@ -791,16 +791,16 @@ function fastmarch_v!(vf, acc, locs::Vector{CartesianIndex{2}}, ϕ, dom::Domain)
 end
 
 """
-    extrap_v_fastmarch(ϕ, T, dom::Domain, params)
+    extrap_v_fastmarch(ϕ, T, p, dom::Domain, params)
 
-Compute an extrapolated velocity field from T and ϕ.
+Compute an extrapolated velocity field from `ϕ`, `T`, and `p`.
 
 Internally calls `compute_frontvel_withT` on positive half of Γ.
 Using fast marching, instead of the PDE-based approach, to get second order accuracy more easily.
 
 TODO: improve performance. Currently makes a lot of allocations, I think.
 """
-function extrap_v_fastmarch(ϕ, T, dom::Domain, params)
+function extrap_v_fastmarch(ϕ, T, p, dom::Domain, params)
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
     Γ⁺ = [c for c in Γ if ϕ[c]>0]
@@ -811,21 +811,23 @@ function extrap_v_fastmarch(ϕ, T, dom::Domain, params)
     Ω⁻ = findall(ϕ⁻)
     Ω⁺ = findall(ϕ⁻ .⊽ Γf ) # Exclude Γ⁺
 
-    vf = fill(0.0, dom.nr, dom.nz, 2)
+    # vf = fill(0.0, dom.nr, dom.nz, 2)
 
-    Qice = compute_Qice(ϕ, dom, params)
-    icesurf = compute_icesurf(ϕ, dom)
-    Qice_per_surf = Qice / icesurf
+    # Qice = compute_Qice(ϕ, dom, params)
+    # icesurf = compute_icesurf(ϕ, dom)
+    # Qice_per_surf = Qice / icesurf
 
     # Accepted set
     acc = fill(false, dom.nr, dom.nz)
 
 
     # First, compute velocity on Γ⁺
-    for c in Γ⁺
-        vf[c, :] .= compute_frontvel_withT(T, ϕ, Tuple(c)..., dom, params, Qice_per_surf)
-        acc[c] = true
-    end
+    # for c in Γ⁺
+    #     vf[c, :] .= compute_frontvel_withT(ϕ, T, Tuple(c)..., dom, params, Qice_per_surf)
+    #     acc[c] = true
+    # end
+    vf  = compute_frontvel_mass(ϕ, T, p, dom, params)
+    acc[Γ⁺] .= true
 
     # Second, fastmarch in positive half of B
 
@@ -850,7 +852,7 @@ function extrap_v_pde(ϕi, Ti, dom, params)
     Qice_surf = Qice / icesurf
     
     Bf = identify_B(ϕi, dom)
-    frontfunc(ir, iz) = compute_frontvel_withT(Ti, ϕi, ir, iz, dom, params, Qice_surf)
+    frontfunc(ir, iz) = compute_frontvel_withT(ϕi, Ti, ir, iz, dom, params, Qice_surf)
     vf = vector_extrap_from_front(ϕi, Bf, frontfunc, dom, prop_t)
     return vf
 end
