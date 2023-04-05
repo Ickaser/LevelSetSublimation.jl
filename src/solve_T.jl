@@ -5,9 +5,11 @@ export solve_T, solve_T_original
 # Construct sparse array with rows, cols, vals format, then construct sparse matrix
 
 """
-    solve_T(ϕ, dom::Domain, params)
+    solve_T(u, dom::Domain, params)
 
-Compute 2D axisymmetric T profile, returning ghost cell values, for given level set function `ϕ`.
+Compute 2D axisymmetric T profile, returning ghost cell values, for given state `u`.
+
+`u` contains ϕ and Tf; unpacked with `ϕ_T_from_u`.
 
 Neumann boundary conditions on all rectangular boundaries; Dirichlet on zero-level set.
 `params` should have fields: 
@@ -23,10 +25,11 @@ Neumann boundaries use a ghost point & BC to define ghost cell, then use same st
 Coefficients computed in `gfm_extrap.ipynb`, using Sympy.  
 (For higher order, see Gibou and Fedkiw, 2005, "A fourth order accurate discretization ... Laplace ... ")  
 """
-function solve_T(ϕ, dom::Domain, params)
+function solve_T(u, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Q_gl, Q_sh, Q_ck, k, Tf = params
+    @unpack Q_gl, Q_sh, Q_ck, k = params
+    ϕ, Tf = ϕ_T_from_u(u, dom)
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
     if minimum(ϕ) > 0

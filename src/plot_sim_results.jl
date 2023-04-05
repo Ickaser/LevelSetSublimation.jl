@@ -1,18 +1,6 @@
 export summaryplot, resultsanim, plotframe, get_ϕ_Tf
 export get_subf_z, get_subf_r, get_ϕ
 
-# function plotframe(f::Int, simresults::Dict, simconfig::Dict; maxT=nothing)
-#     @unpack full_ϕ, full_T = simresults
-#     @unpack dom = simconfig
-#     local p = plot(aspect_ratio=:equal)
-#     plot_cylheat(full_T[f,:,:], dom; maxT=maxT)
-#     plot_cylcont(full_ϕ[f,:,:], dom, c=:white)
-#     plot!(title="timestep=$(f-1)")
-#     return p
-# end
-function get_ϕ_Tf(sol::ODESolution, t, dom::Domain)
-    reshape(sol(t)[1:dom.ntot], dom.nr, dom.nz), sol(t)[dom.ntot+1]
-end
 
 
 """
@@ -27,39 +15,27 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     @unpack ϕsol = simresults
     @unpack dom, cparams = simconfig
     params = deepcopy(cparams)
-    ϕ, Tf = get_ϕ_Tf(ϕsol, t, dom)
-    p_sub = calc_psub(Tf)
-    @pack! params = Tf, p_sub
+    u = ϕsol(t)
+    ϕ, Tf = ϕ_T_from_u(u, dom)
+    # p_sub = calc_psub(Tf)
+    T = solve_T(u, dom, params)
+    p = solve_p(u, T, dom, params)
+    if heatvar == :T 
+        heatvar_vals = T
+    elseif heatvar == :ϕ 
+        heatvar_vals = ϕ
+    elseif heatvar == :p
+        heatvar_vals = p # Either ϕ, 
+    else
+        @warn "Invalid value of heatvar passed to `plotframe`. Should be :ϕ, :T, or :p." heatvar
+    end
 
     tr = round(t, sigdigits=3)
-    if heatvar == :T
-        T = solve_T(ϕ, dom, params)
-        local pl = plot(aspect_ratio=:equal)
-        plot_cylheat(T, dom; maxT=maxT)
-        plot_cylcont(ϕ, dom, c=:white)
-        plot!(title="timestep=$tr")
-        return pl
-    elseif heatvar == :ϕ
-        local pl = plot(aspect_ratio=:equal)
-        plot_cylheat(ϕ, dom;)
-        plot_cylcont(ϕ, dom, c=:white)
-        plot!(title="timestep=$tr")
-        return pl
-    elseif heatvar == :p
-        T = solve_T(ϕ, dom, params)
-        p = solve_p(ϕ, T, dom, params)
-        local pl = plot(aspect_ratio=:equal)
-        plot_cylheat(p, dom;)
-        plot_cylcont(ϕ, dom, c=:white)
-        plot!(title="timestep=$tr")
-        return pl
-    else
-        @warn "Invalid variable to be plotted as heatmap" heatvar
-        local pl = plot(aspect_ratio=:equal)
-        plot_cylcont(ϕ, dom, c=:white)
-        plot!(title="timestep=$tr")
-        return pl
-    end
+    local pl = plot(aspect_ratio=:equal)
+    plot_cylheat(heatvar_vals, dom; maxT=maxT)
+    plot_cylcont(ϕ, dom, c=:white)
+    plot!(title="timestep=$tr")
+    return pl
 end
 
 """
@@ -80,11 +56,8 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
     nplots = prod(layout)
     frames = range(0.0, tf, length=nplots)
 
-    ϕ_nm1, Tf_nm1= get_ϕ_Tf(ϕsol, frames[end-1], dom)
-    params = deepcopy(cparams)
-    params[:Tf] = Tf_nm1
-    T_nm1 = solve_T(ϕ_nm1, dom, params)
-    maxT = maximum(T_nm1)
+    # T_nm1 = solve_T(ϕsol(frames[end-1]), dom, cparams)
+    # maxT = maximum(T_nm1)
 
     for f in frames
         # p = plotframe(f, simresults, simconfig, maxT=maxT, heatvar=heatvar)

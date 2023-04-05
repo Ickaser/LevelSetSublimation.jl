@@ -226,7 +226,8 @@ Using fast marching, instead of the PDE-based approach, to get second order accu
 
 TODO: improve performance. Currently makes a lot of allocations, I think.
 """
-function extrap_v_fastmarch(ϕ, T, p, dom::Domain, params)
+function extrap_v_fastmarch(u, T, p, dom::Domain, params)
+    ϕ, Tf = ϕ_T_from_u(u, dom)
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
     Γ⁺ = [c for c in Γ if ϕ[c]>0]
@@ -252,7 +253,7 @@ function extrap_v_fastmarch(ϕ, T, p, dom::Domain, params)
     #     vf[c, :] .= compute_frontvel_withT(ϕ, T, Tuple(c)..., dom, params, Qice_per_surf)
     #     acc[c] = true
     # end
-    vf  = compute_frontvel_mass(ϕ, T, p, dom, params)
+    vf  = compute_frontvel_mass(u, T, p, dom, params)
     acc[Γ⁺] .= true
 
     # Second, fastmarch in positive half of B

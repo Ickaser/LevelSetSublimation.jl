@@ -11,9 +11,10 @@ so we don't actually need to treat different areas of the surface.
 In addition, the sublimation flux is simply evaluated on the top surface.
 
 """
-function compute_Qice(ϕ, T, p, dom::Domain, params)
+function compute_Qice(u, T, p, dom::Domain, params)
 
     @unpack Q_sh, Q_ic, Q_gl, Q_ck, ΔH= params
+    ϕ, Tf = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
     # botsurf = compute_icesh_area(ϕ, dom)
@@ -31,7 +32,7 @@ function compute_Qice(ϕ, T, p, dom::Domain, params)
     Qvol = icevol * Q_ic + dryvol * Q_ck
 
     # Sublimation rate
-    md = compute_topmassflux(ϕ, T, p, dom, params)
+    md = compute_topmassflux(u, T, p, dom, params)
     # @info "mass flow" md/params[:ρf]
     Qsub = - md * ΔH
 
@@ -41,8 +42,8 @@ end
 """
     compute_topmassflux(ϕ, T, p, dom::Domain, params)
 """
-function compute_topmassflux(ϕ, T, p, dom::Domain, params)
-    dpdz = [compute_pderiv(ϕ, p, ir, dom.nz, dom, params)[4] for ir in 1:dom.nr]
+function compute_topmassflux(u, T, p, dom::Domain, params)
+    dpdz = [compute_pderiv(u, p, ir, dom.nz, dom, params)[4] for ir in 1:dom.nr]
     b = eval_b(T, p, params)[:,1]
     md = - 2π * sum(dpdz .*b .* dom.rgrid) * dom.dr
     return md
@@ -332,9 +333,11 @@ For ϕ derivatives, simple second order finite differences (one-sided at boundar
 
 The distinction between this and `compute_Tderiv` is just in boundary values.
 """
-function compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
+function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack p_sub, p_ch = params
+    @unpack p_ch = params
+    ϕ, Tf = ϕ_T_from_u(u, dom)
+    p_sub = calc_psub(Tf)
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
     
@@ -354,42 +357,32 @@ function compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
         eϕ = ϕ[ir+1, iz]
         wϕ = ϕ[ir-1, iz]
         dϕr = (eϕ - wϕ) * 0.5dr1
-
+        pp = p[ir, iz]
         pe = p[ir+1, iz]
         pw = p[ir-1, iz]
-        # West and east ghost cell: weird kink? Set to 0 and procrastinate
+        dpr = (pe - pw)
+        if wϕ <= 0 && eϕ <= 0 # West and east ghost cell
+            θr1 = ϕp/(ϕp - eϕ)
+            θr2 = ϕp/(ϕp - wϕ)
+            dpr = (p_sub - pp)*(θr1 - θr2)/(θr2 * (2θr2-θr1))
+        elseif wϕ <= 0 # West ghost cell
+            θr = ϕp /(ϕp - wϕ)
+            if θr > dr
+                dpr = (-p_sub/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+            else 
+                dpr = (pe - p_sub)/(θr+1)*dr1 # Linear extrapolation from east
+            end
+        elseif eϕ <= 0 # East ghost cell
+            θr = ϕp /(ϕp - eϕ)
+            if θr > dr
+                dpr = ( p_sub/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
+            else
+                dpr = (p_sub - pw)/(θr+1)*dr1 # Linear extrapolation from west
+            end
+        else # No ghost cells
+            dpr = (pe - pw) * 0.5*dr1 # Centered difference
+        end
 
-        # NEEDS TO BE DOUBLE CHECKED, same for z
-        dpr = (pe - pw) * 0.5dr1 
-        # if wϕ <= 0 && eϕ <= 0
-        #     θr1 = ϕp/(ϕp - eϕ)
-        #     θr2 = ϕp/(ϕp - wϕ)
-        #     dpr = (p_sub - pp)*(θr1 - θr2)/(θr2 * (2θr2-θr1))
-        # elseif wϕ <= 0 # West ghost cell
-        #     θr = ϕp /(ϕp - wϕ)
-        #     if θr > dr
-        #         # dpr = (-p_sub/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
-        #         dpr = (pe - pw) * 0.5dr1 
-
-        #         # @info "west" dpr θr
-        #         # dpr = (-p_sub/θr + pp*(1-θr)/θr + pe) * 0.5dr1 # Linear extrapolation
-        #         # pg = pp*(θr-1)/θr + p_sub/θr
-        #         # pg = pp + (p_sub-pp)/θr
-        #         # dpr = (pe - pg)*0.5dr1
-        #         # @info "west" dpr pg pp p_sub θr
-        #     else 
-        #         dpr = (pe - p_sub)/(θr+1)*dr1 # Linear extrapolation from east
-        #     end
-        # elseif eϕ <= 0 # East ghost cell
-        #     θr = ϕp /(ϕp - eϕ)
-        #     if θr > dr
-        #         dpr = ( p_sub/(θr+1)/θr - pp*(1-θr)/θr - pw*(3θr+1)/(θr+1)*0.25) * dr1 # Quadratic extrapolation
-        #     else
-        #         dpr = (p_sub - pw)/(θr+1)*dr1 # Linear extrapolation from west
-        #     end
-        # else # No ghost cells
-        #     dpr = (pe - pw) * 0.5*dr1 # Centered difference
-        # end
     end
             
     if iz == 1 
@@ -400,7 +393,7 @@ function compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
         sϕ = ϕ[ir, iz-1]
         if sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
-            dpz = (p_ch - p_sub)*dz1/θz # Employ Dirichlet condition
+            dpz = (pp - p_sub)*dz1/θz # Employ Dirichlet condition
             dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
         elseif ϕ[ir, iz-2] <= 0 # Use one cell
             dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
@@ -409,43 +402,36 @@ function compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
             dϕz = (1.5ϕp - 2ϕ[ir, iz-1] + 0.5ϕ[ir,iz-2]) * dz1 # 2nd order
             dpz = (1.5pp - 2p[ir, iz-1] + 0.5p[ir,iz-2]) * dz1 # 2nd order
         end
-
-        #     θz = sϕ /(sϕ - ϕ[ir, iz-2])
-    else 
-        # Bulk
+    else # Bulk
         nϕ = ϕ[ir, iz+1]
         sϕ = ϕ[ir, iz-1]
         dϕz = (nϕ - sϕ) * 0.5dz1
-
-        # nT = T[ir, iz+1]
-        # sT = T[ir, iz-1]
-        pn = p[iz, iz+1]
-        ps = p[iz, iz-1]
+        pp = p[ir, iz]
+        pn = p[ir, iz+1]
+        ps = p[ir, iz-1]
         dpz = (pn - ps) * 0.5dz1
-
-    #     # North and south ghost cell: weird kink
-    #     if sϕ <= 0 && nϕ <= 0
-    #         dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
-    #         θz1 = ϕp/(ϕp - nϕ)
-    #         θz2 = ϕp/(ϕp - sϕ)
-    #         dpz = (p_sub - pp)*(θz1 - θz2)/(θz2 * (2θz2-θz1))
-    #     elseif sϕ <= 0 # South ghost cell
-    #         θz = ϕp /(ϕp - sϕ)
-    #         if θz > dz
-    #             dpz = (-p_sub/(θz+1)/θz + pp*(1-θz)/θz + pn*θz/(θz+1)) * dz1 # Quadratic extrapolation
-    #         else
-    #             dpz = (pp - p_sub)/(θz+1)*dz1
-    #         end
-    #     elseif nϕ <= 0 # North ghost cell
-    #         θz = ϕp /(ϕp - nϕ)
-    #         if θz > dz
-    #             dpz = ( p_sub/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
-    #         else
-    #             dpz = (p_sub - ps )/(θz+1)*dz1
-    #         end
-    #     else # No ghost cells
-    #         dpz = (pn - ps) * 0.5*dz1 # Centered difference
-    #     end
+        if sϕ <= 0 && nϕ <= 0 # North and south ghost cell: weird kink
+            θz1 = ϕp/(ϕp - nϕ)
+            θz2 = ϕp/(ϕp - sϕ)
+            dpz = (p_sub - pp)*(θz1 - θz2)/(θz2 * (2θz2-θz1))
+        elseif sϕ <= 0 # South ghost cell
+            θz = ϕp /(ϕp - sϕ)
+            if θz > dz
+                # dpz = (-p_sub/(θz+1)/θz + pp*(1-θz)/θz + pn*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                dpz = ((-p_sub + pp*(1-θz))/θz + pn)*0.5*dz1 
+            else
+                dpz = (pn - p_sub)/(θz+1)*dz1
+            end
+        elseif nϕ <= 0 # North ghost cell
+            θz = ϕp /(ϕp - nϕ)
+            if θz > dz
+                dpz = ( p_sub/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
+            else
+                dpz = (p_sub - ps )/(θz+1)*dz1
+            end
+        else # No ghost cells
+            dpz = (pn - ps) * 0.5*dz1 # Centered difference
+        end
 
     end
 
@@ -463,9 +449,10 @@ end
 
 Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on Γ with ϕ>0). 
 """
-function compute_frontvel_mass(ϕ, T, p, dom::Domain, params; debug=false)
+function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
 
     @unpack k, ΔH, ρf, ϵ = params
+    ϕ, Tf = ϕ_T_from_u(u, dom)
 
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
@@ -479,7 +466,7 @@ function compute_frontvel_mass(ϕ, T, p, dom::Domain, params; debug=false)
     for c in Γ⁺
         ir, iz = Tuple(c)
         # dϕr, dTr, dϕz, dTz = compute_Tderiv(ϕ, T, ir, iz, dom, params)
-        dϕr, dpr, dϕz, dpz = compute_pderiv(ϕ, p, ir, iz, dom, params)
+        dϕr, dpr, dϕz, dpz = compute_pderiv(u, p, ir, iz, dom, params)
     
         # qloc = k*dTr*dϕr + k*dTz*dϕz + Qice_per_surf
         

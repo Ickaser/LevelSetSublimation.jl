@@ -29,7 +29,10 @@ If `κ=0`, no spatial variation due to pressure occurs.
 """
 function eval_b(T, p, params)
     @unpack ϵ, l, κ, R, Mw, μ = params
-    b = @. 1/R/T/Mw * (l*sqrt(R*T/Mw) + κ/μ*p)
+    if minimum(T) <= 0
+        @info "weird" T p
+    end
+    b = @. 1/R/T/Mw * (l*sqrt(R*max(T,1)/Mw) + κ/μ*p)
 end
 
 """
@@ -52,11 +55,11 @@ Neumann boundaries use a ghost point & BC to define ghost cell, then use same st
 Coefficients computed in `gfm_extrap.ipynb`, using Sympy.  
 """
 # First: version with no spatial variation
-function solve_p_given_b(ϕ, b::Float64, dom::Domain, params)
+function solve_p_given_b(ϕ, b::Float64, p_sub, dom::Domain, params)
     @info "Using scalar b for p"
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack p_ch, p_sub = params
+    @unpack p_ch = params
 
     # To prevent blowup, artificially add some corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
@@ -262,10 +265,10 @@ function solve_p_given_b(ϕ, b::Float64, dom::Domain, params)
 end
 
 # Version with spatial variation
-function solve_p_given_b(ϕ, b::T, dom::Domain, params) where T<:AbstractArray
+function solve_p_given_b(ϕ, b::T, p_sub, dom::Domain, params) where T<:AbstractArray
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack p_ch, p_sub = params
+    @unpack p_ch = params
 
     # To prevent blowup, artificially add some corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
@@ -474,12 +477,15 @@ function solve_p_given_b(ϕ, b::T, dom::Domain, params) where T<:AbstractArray
     psol = reshape(sol, nr, nz)
 end
 
-function solve_p(ϕ, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit=10, reltol=1e-6) where G<:AbstractArray
+function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit=10, reltol=1e-6) where G<:AbstractArray
+    ϕ, Tf = ϕ_T_from_u(u, dom)
+    p_sub = calc_psub(Tf)
+
     if p0 === nothing
         # meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
         # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
         b = eval_b(T, 0, params)
-        p0 = solve_p_given_b(ϕ, b, dom, params)
+        p0 = solve_p_given_b(ϕ, b, p_sub, dom, params)
     end
 
     relerr::Float64 = 0.0
@@ -487,7 +493,7 @@ function solve_p(ϕ, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxi
     # Iterate 5 times
     for i in 1:maxit
         b = eval_b(T, p0, params)
-        p⁺ = solve_p_given_b(ϕ, b, dom, params)
+        p⁺ = solve_p_given_b(ϕ, b, p_sub, dom, params)
         relerr = maximum(abs.(p⁺ .- p0) ./ p⁺)
         # @info "Maximum relative error in p after $i iterations:" relerr
         if relerr < reltol

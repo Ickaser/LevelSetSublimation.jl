@@ -1,11 +1,10 @@
-export take_time_step, multistep
-export sim_from_dict_old, sim_from_dict
+export sim_from_dict
 
-export ϕevol_RHS
+export ϕevol_RHS, ϕ_T_from_u
 
 # --------- Convenience functions that need a home
 
-function current_state(u, dom)
+function ϕ_T_from_u(u, dom)
     ϕ = reshape(u[1:dom.ntot], size(dom))
     Tf = u[dom.ntot+1]
     return ϕ, Tf
@@ -30,27 +29,16 @@ function ϕevol_RHS!(du, u, p, t)
     params = p[2]
     ntot = dom.ntot
     dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
-    ϕ, Tf = current_state(u, dom)
-    p_sub = calc_psub(Tf) # Returned as Pa
-    @pack! params = Tf, p_sub # Update current temperature and sublimation pressure 
-    # debug
-    # if isnan(sum(ϕ))
-    #     ϕ[isnan.(ϕ)] .= 1
-    #     @info "NaN in ϕ"
-    # end
+    ϕ, Tf = ϕ_T_from_u(u, dom)
+    # p_sub = calc_psub(Tf) # Returned as Pa
 
-
-    # Plug current value of Tf into params, where it then gets passed around
-
-
-    T = solve_T(ϕ, dom, params)
-    p = solve_p(ϕ, T, dom, params)
-    vf = extrap_v_fastmarch(ϕ, T, p, dom, params)
-    # @info "after vf" params[:p_sub]
+    T = solve_T(u, dom, params)
+    p = solve_p(u, T, dom, params)
+    vf = extrap_v_fastmarch(u, T, p, dom, params)
     vr = @view vf[:,:,1]
     vz = @view vf[:,:,2]
     
-    Qice = compute_Qice(ϕ, T, p, dom, params)
+    Qice = compute_Qice(u, T, p, dom, params)
     @unpack ρf, Cpf = params
     dTdt = Qice / ρf / Cpf / compute_icevol(ϕ, dom)
     du[ntot+1] = dTdt
@@ -162,8 +150,8 @@ function next_reinit_time(integ)
 
     # The main region of concern is the frozen region near interface
     # Find the largest value of dϕdt in that region
-    ϕ = reshape(integ.u[1:dom.ntot], dom.nr, dom.nz)
-    dϕ = reshape(du[1:dom.ntot], dom.nr, dom.nz)
+    ϕ, Tf = ϕ_T_from_u(integ.u, dom)
+    dϕ, dTf = ϕ_T_from_u(du, dom)
     B = identify_B(ϕ, dom)
     B⁻ = B .& (ϕ .<= 0)
     max_dϕdt = maximum(abs.(dϕ[B⁻]))
@@ -173,7 +161,7 @@ function next_reinit_time(integ)
     minlen = min(domfrac*dom.rmax , domfrac*dom.zmax, integ.t*max_dϕdt + dom.dz)  # Also: at early times, do more often
     dt = minlen / max_dϕdt 
     # dt = 0.5 * minlen / max_dϕdt 
-    @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+    # @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
     return integ.t + dt
 end
 
@@ -222,7 +210,7 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack cparams, ϕ0type, dom = fullconfig
+    @unpack cparams, ϕ0type, dom, Tf0 = fullconfig
 
     params = deepcopy(cparams)
 
@@ -233,10 +221,9 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     # Full array of starting state variables
     u0 = similar(ϕ0_flat, dom.ntot+1) # Add 1 to length: Tf
     u0[1:dom.ntot] .= ϕ0_flat
-    u0[dom.ntot+1] = Tf = params[:Tf]
-    p_sub = calc_psub(Tf)
-    params[:p_sub] = p_sub
-    @info "Initial Tf:" Tf p_sub
+    u0[dom.ntot+1] = Tf0 
+    p_sub = calc_psub(Tf0)
+    @info "Initial Tf:" Tf0 p_sub
 
     # ---- Set up ODEProblem
     prob_p = (dom, params)
