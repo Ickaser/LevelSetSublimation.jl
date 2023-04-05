@@ -358,28 +358,38 @@ function compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
         pe = p[ir+1, iz]
         pw = p[ir-1, iz]
         # West and east ghost cell: weird kink? Set to 0 and procrastinate
-        if wϕ <= 0 && eϕ <= 0
-            dϕr = (eϕ - wϕ) * 0.5*dr1 # Centered difference
-            θr1 = ϕp/(ϕp - eϕ)
-            θr2 = ϕp/(ϕp - wϕ)
-            dpr = (p_sub - pp)*(θr1 - θr2)/(θr2 * (2θr2-θr1))
-        elseif wϕ <= 0 # West ghost cell
-            θr = ϕp /(ϕp - wϕ)
-            if θr > dr
-                dpr = (-p_sub/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
-            else 
-                dpr = (pe - p_sub)/(θr+1)*dr1 # Linear extrapolation from east
-            end
-        elseif eϕ <= 0 # East ghost cell
-            θr = ϕp /(ϕp - eϕ)
-            if θr > dr
-                dpr = ( p_sub/(θr+1)/θr - pp*(1-θr)/θr - pw*(3θr+1)/(θr+1)*0.25) * dr1 # Quadratic extrapolation
-            else
-                dpr = (p_sub - pw)/(θr+1)*dr1 # Linear extrapolation from west
-            end
-        else # No ghost cells
-            dpr = (pe - pw) * 0.5*dr1 # Centered difference
-        end
+
+        # NEEDS TO BE DOUBLE CHECKED, same for z
+        dpr = (pe - pw) * 0.5dr1 
+        # if wϕ <= 0 && eϕ <= 0
+        #     θr1 = ϕp/(ϕp - eϕ)
+        #     θr2 = ϕp/(ϕp - wϕ)
+        #     dpr = (p_sub - pp)*(θr1 - θr2)/(θr2 * (2θr2-θr1))
+        # elseif wϕ <= 0 # West ghost cell
+        #     θr = ϕp /(ϕp - wϕ)
+        #     if θr > dr
+        #         # dpr = (-p_sub/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+        #         dpr = (pe - pw) * 0.5dr1 
+
+        #         # @info "west" dpr θr
+        #         # dpr = (-p_sub/θr + pp*(1-θr)/θr + pe) * 0.5dr1 # Linear extrapolation
+        #         # pg = pp*(θr-1)/θr + p_sub/θr
+        #         # pg = pp + (p_sub-pp)/θr
+        #         # dpr = (pe - pg)*0.5dr1
+        #         # @info "west" dpr pg pp p_sub θr
+        #     else 
+        #         dpr = (pe - p_sub)/(θr+1)*dr1 # Linear extrapolation from east
+        #     end
+        # elseif eϕ <= 0 # East ghost cell
+        #     θr = ϕp /(ϕp - eϕ)
+        #     if θr > dr
+        #         dpr = ( p_sub/(θr+1)/θr - pp*(1-θr)/θr - pw*(3θr+1)/(θr+1)*0.25) * dr1 # Quadratic extrapolation
+        #     else
+        #         dpr = (p_sub - pw)/(θr+1)*dr1 # Linear extrapolation from west
+        #     end
+        # else # No ghost cells
+        #     dpr = (pe - pw) * 0.5*dr1 # Centered difference
+        # end
     end
             
     if iz == 1 
@@ -411,31 +421,35 @@ function compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
         # sT = T[ir, iz-1]
         pn = p[iz, iz+1]
         ps = p[iz, iz-1]
-        # North and south ghost cell: weird kink
-        if sϕ <= 0 && nϕ <= 0
-            dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
-            θz1 = ϕp/(ϕp - nϕ)
-            θz2 = ϕp/(ϕp - sϕ)
-            dpz = (p_sub - pp)*(θz1 - θz2)/(θz2 * (2θz2-θz1))
-        elseif sϕ <= 0 # South ghost cell
-            θz = ϕp /(ϕp - sϕ)
-            if θz > dz
-                dpz = (-p_sub/(θz+1)/θz + pp*(1-θz)/θz + pn*θz/(θz+1)) * dz1 # Quadratic extrapolation
-            else
-                dpz = (pp - p_sub)/(θz+1)*dz1
-            end
-        elseif nϕ <= 0 # North ghost cell
-            θz = ϕp /(ϕp - nϕ)
-            if θz > dz
-                dpz = ( p_sub/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
-            else
-                dpz = (p_sub - ps )/(θz+1)*dz1
-            end
-        else # No ghost cells
-            dpz = (pn - ps) * 0.5*dz1 # Centered difference
-        end
+        dpz = (pn - ps) * 0.5dz1
+
+    #     # North and south ghost cell: weird kink
+    #     if sϕ <= 0 && nϕ <= 0
+    #         dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
+    #         θz1 = ϕp/(ϕp - nϕ)
+    #         θz2 = ϕp/(ϕp - sϕ)
+    #         dpz = (p_sub - pp)*(θz1 - θz2)/(θz2 * (2θz2-θz1))
+    #     elseif sϕ <= 0 # South ghost cell
+    #         θz = ϕp /(ϕp - sϕ)
+    #         if θz > dz
+    #             dpz = (-p_sub/(θz+1)/θz + pp*(1-θz)/θz + pn*θz/(θz+1)) * dz1 # Quadratic extrapolation
+    #         else
+    #             dpz = (pp - p_sub)/(θz+1)*dz1
+    #         end
+    #     elseif nϕ <= 0 # North ghost cell
+    #         θz = ϕp /(ϕp - nϕ)
+    #         if θz > dz
+    #             dpz = ( p_sub/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
+    #         else
+    #             dpz = (p_sub - ps )/(θz+1)*dz1
+    #         end
+    #     else # No ghost cells
+    #         dpz = (pn - ps) * 0.5*dz1 # Centered difference
+    #     end
+
     end
 
+    # @info "pderiv" dpr dpz ir iz
     ngradϕ = hypot(dϕr, dϕz)
     # @show ngradϕ dϕr dϕz
     dϕr /= ngradϕ
@@ -443,30 +457,6 @@ function compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
     return dϕr, dpr, dϕz, dpz
 end
 
-""" 
-    compute_frontvel_withT(ϕ, T, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
-
-Return `(vr, vz)` for the corresponding `(ir, iz)` location, based on temperature profile and z.
-
-"""
-function compute_frontvel_withT(ϕ, T, ir::Int, iz::Int, dom::Domain, params, Qice_per_surf=nothing; debug=false)
-    # If Qice_surf (heat to ice divided by surface area) not supplied, compute it here
-    if Qice_per_surf === nothing
-        Qice = compute_Qice(ϕ, dom, params)
-        icesurf = compute_icesurf(ϕ, dom)
-        Qice_per_surf = Qice / icesurf
-    end
-    @unpack k, ΔH, ρf = params
-    
-    dϕr, dTr, dϕz, dTz = compute_Tderiv(ϕ, T, ir, iz, dom, params)
-    
-    qtot = k*dTr*dϕr + k*dTz*dϕz + Qice_per_surf
-    md = qtot / ΔH
-    vtot = md / ρf
-    
-    return -vtot * dϕr, -vtot * dϕz
-
-end
 
 """
     compute_frontvel_mass(ϕ, T, p, dom::Domain, params; debug=false)
@@ -483,10 +473,12 @@ function compute_frontvel_mass(ϕ, T, p, dom::Domain, params; debug=false)
     b = eval_b(T, p, params)
      
     vf = zeros(Float64, dom.nr, dom.nz, 2)
+    
+    # @info "Inside frontvel" params[:p_sub]
 
     for c in Γ⁺
         ir, iz = Tuple(c)
-        # dϕr, dTr, dϕz, dTz = compute_Tderiv(T, ϕ, ir, iz, dom, params)
+        # dϕr, dTr, dϕz, dTz = compute_Tderiv(ϕ, T, ir, iz, dom, params)
         dϕr, dpr, dϕz, dpz = compute_pderiv(ϕ, p, ir, iz, dom, params)
     
         # qloc = k*dTr*dϕr + k*dTz*dϕz + Qice_per_surf
@@ -506,37 +498,4 @@ function compute_frontvel_mass(ϕ, T, p, dom::Domain, params; debug=false)
 
 end
 
-
-"""
-    function plot_frontvel(ϕ, T, dom::Domain)
-
-Calculate, then plot the front velocity given `ϕ` and `T`.
-
-Meant for debugging, mostly. Scales all velocity arrows to have length 0.5.
-Generates a freshplot().
-"""
-function plot_frontvel(ϕ, T, dom::Domain, params)
-    front_cells = findall(identify_Γ(ϕ, dom) .& (ϕ .> 0))
-    xs = []
-    ys = []
-    vrs = []
-    vzs = []
-    for cell in front_cells
-        push!(xs, dom.rgrid[Tuple(cell)[1]])
-        push!(ys, dom.zgrid[Tuple(cell)[2]])
-        vr, vz = compute_frontvel_withT(ϕ, T, Tuple(cell)..., dom, params)
-        push!(vrs, vr)
-        push!(vzs, vz)
-        # push!(vrs, get_front_vr(T, ϕ, Tuple(cell)..., params) )
-        # push!(vzs, get_front_vz(T, ϕ, Tuple(cell)..., params) )
-    end
-    maxv = max(maximum(abs.(vrs)), maximum(abs.(vzs)))
-    println("Maximum front velocity: $maxv")
-    vrs ./= maxv * 2
-    vzs ./= maxv * 2
-
-    freshplot(dom)
-    quiver!(xs, ys, quiver=(vrs, vzs))
-end
-# frontpos = findall(identify_Γ(fixed_ϕ) .& (fixed_ϕ .> 0))
 

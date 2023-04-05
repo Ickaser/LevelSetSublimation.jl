@@ -1,12 +1,9 @@
-export identify_Γ, Γ_cells, identify_B, plot_RC, 𝒢_all
-export reinitialize_ϕ, reinitialize_ϕ!, reinitialize_ϕ_all!
+export identify_Γ, Γ_cells, identify_B 
 export reinitialize_ϕ_HCR!, reinitialize_ϕ_HCR
 
 export 𝒢_1st, 𝒢_weno, 𝒢_1st_all, 𝒢_weno_all
 export wenodiffs_local
 # Functions exported just for the sake of making documentation work
-export update_ϕ_in_Γ!
-export calc_dϕdr_sdf, calc_dϕdz_sdf, identify_regions_RC
 
 
 # ---------------- Drawn from Hartmann, 2008, "Constrained reinitialization"
@@ -20,21 +17,15 @@ function identify_Γ(ϕ, dom::Domain)
     locs = similar(ϕ, Bool)
     locs .= false
     sg = sign.(ϕ)
-    xshift = sg[1:end-1,:] .* sg[2:end,:]
-    yshift = sg[:,1:end-1] .* sg[:,2:end]
-    
+    xshift = sg[1:end-1,:] .* sg[2:end,:] # Multiply neighbors in x
+    yshift = sg[:,1:end-1] .* sg[:,2:end] # Multiply neighbors in y
+    # Any cell with opposite sign of neighbor (or 0) gets added to Γ
     for i in 1:dom.nr-1, j in 1:dom.nz
-        # if locs[i,j]
-        #     continue
-        # end
         if xshift[i,j] <= 0
             locs[i,j] = locs[i+1,j] = true
         end
     end
     for i in 1:dom.nr, j in 1:dom.nz-1
-        # if locs[i,j]
-        #     continue
-        # end
         if yshift[i,j] <= 0
             locs[i,j] = locs[i, j+1] = true
         end
@@ -48,105 +39,6 @@ end
 Compute `findall(identify_Γ(ϕ, dom))`. (That's the whole implementation.)
 """
 Γ_cells(ϕ, dom::Domain) = findall(identify_Γ(ϕ, dom))
-
-"""
-    function calc_curvature(ϕ, dom::Domain)
-
-Not used explicitly at present, but useful for debugging.
-"""
-function calc_curvature(ϕ, dom::Domain)
-    dx2 = dom.dr2
-    dy2 = dom.dz2
-    # dx2 = 1/dx^2
-    # dy2 = 1/dy^2
-    nx = dom.nr
-    ny = dom.nz
-    # nx, ny = size(ϕ)
-    ∇2ϕ = similar(ϕ)
-    
-    # Second order everywhere (upwind at edges)
-
-    for ix in 2:nx-1
-        ∇2ϕ[ix,:] = @. (ϕ[ix+1,:] - 2ϕ[ix,:] + ϕ[ix-1,:] )*dx2
-    end
-    ∇2ϕ[1,:] = ∇2ϕ[2,:] # Uses the same stencil, unfortunately
-    ∇2ϕ[end,:] = ∇2ϕ[end-1,:] # Uses the same stencil, unfortunately
-
-    # y portion, need to be slightly more careful about reusing stencils
-    ∇2ϕ[:,1] += @. (ϕ[:,3] - 2ϕ[:,2] + ϕ[:,1])*dy2
-    ∇2ϕ[:,end] += @. (ϕ[:,end] - 2ϕ[:,end-1] + ϕ[:,end-2])*dy2
-    for iy in 2:ny-1
-        ∇2ϕ[:,iy] += @. (ϕ[:,iy+1] -2ϕ[:,iy] + ϕ[:,iy-1] )*dy2
-    end
-            
-    return -∇2ϕ
-end
-
-"""
-    function identify_regions_RC(ϕ, Γ, dom::Domain)
-
-Takes full level set field ϕ, list of front cells Γ, and domain.
-Computes curvature (or at least something proportional to it) at all locations Γ, then compares against sign of ϕ to assign to R or C
-"""
-function identify_regions_RC(ϕ, Γ, dom::Domain)
-    # dx2 = 1/dx^2
-    # dy2 = 1/dy^2
-    dx2 = dom.dr2
-    dy2 = dom.dz2
-    # nx, ny = size(ϕ)
-    nx = dom.nr
-    ny = dom.nz
-    numcells = length(Γ)
-    CC = fill(0.0, numcells) # Note: Curvature = -∇^2(ϕ)
-    R = Vector{CartesianIndex{2}}()
-    C = Vector{CartesianIndex{2}}()
-    for ic in 1:numcells
-        cell = Γ[ic]
-        ix, iy = Tuple(cell)
-        if ix == 1
-            CC[ic] -= (ϕ[3,iy] - 2ϕ[2,iy] + ϕ[1,iy])*dx2
-        elseif ix == nx
-            CC[ic] -= (ϕ[nx,iy] - 2ϕ[nx-1,iy] + ϕ[nx-2,iy])*dx2
-        else
-            CC[ic] -= (ϕ[ix+1,iy] - 2ϕ[ix,iy] + ϕ[ix-1,iy])*dx2
-        end
-        if iy == 1
-            CC[ic] -= (ϕ[ix,3] - 2ϕ[ix,2] + ϕ[ix,1])*dy2
-        elseif iy == ny
-            CC[ic] -= (ϕ[ix,ny] - 2ϕ[ix,ny-1] + ϕ[ix,ny-2])*dy2
-        else
-            CC[ic] -= (ϕ[ix,iy+1] - 2ϕ[ix,iy] + ϕ[ix,iy-1])*dx2
-        end
-
-        CC = round.(CC, digits=7)
-
-        if CC[ic]*ϕ[cell] < 0 || (ϕ[cell] < 0 && CC[ic] == 0 )
-            push!(C, cell)
-            # println("C: c=$((ix, iy)), CC[c] = $(CC[ic]), ϕ[c] = $(ϕ[cell])")
-        else
-            push!(R, cell)
-            # println("R: c=$((ix, iy)), CC[c] = $(CC[ic]), ϕ[c] = $(ϕ[cell])")
-        end
-    end
-    return R, C
-
-end
-
-"""
-    function plot_RC(ϕ, dom::Domain)
-
-Mark cells in ℛ with black, cells in 𝒞 with white, in mutating fashion.
-"""
-function plot_RC(ϕ, dom::Domain)
-    R, C = identify_regions_RC(ϕ, Γ_cells(ϕ, dom), dom)
-    Rr = [rgrid[Tuple(c)[1]] for c in R]
-    Rz = [zgrid[Tuple(c)[2]] for c in R]
-    Cr = [rgrid[Tuple(c)[1]] for c in C]
-    Cz = [zgrid[Tuple(c)[2]] for c in C]
-    scatter!(Rr, Rz, c=:black)
-    scatter!(Cr, Cz, c=:white)
-    # plot_RC(RC, nr, nz)
-end
 
 """
     identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain)
@@ -182,94 +74,6 @@ function identify_B(ϕ::Matrix{Float64}, dom::Domain)
 end
 function identify_B(ϕ, dom::Domain)
     return identify_B(Γ_cells(ϕ, dom), dom)
-end
-
-"""
-    calc_dϕdr_sdf(ϕ, Γf, i, j, dom::Domain)
-
-Take a derivative in 𝑟 inside Γ, for computing signed distance function.
-
-This is equivalent to part of Eq. 21 in Hartmann 2008.
-"""
-function calc_dϕdr_sdf(ϕ, Γf, i, j, dom::Domain)
-    # Fancy conditions for near coalescence: ignored for now
-    # TODO: fill these out for real. If A && B is true, jp = j, likewise for jm = j or something
-    # A = true
-    # B = true
-    if i == dom.nr
-        ip = i
-        im = (Γf[i-1,j] ? i-1 : i)
-    elseif i == 1
-        ip = (Γf[i+1,j] ? i+1 : i)
-        im = i
-    else
-        ip = (Γf[i+1,j] ? i+1 : i)
-        im = (Γf[i-1,j] ? i-1 : i)
-    end
-    num = ϕ[ip,j] - ϕ[im,j]
-    den = max(dom.rgrid[ip] - dom.rgrid[im], .001*dom.dr)
-    return num/den
-end
-
-"""
-    calc_dϕdr_sdf(ϕ, Γf, i, j, dom::Domain)
-
-Take a derivative in 𝑧 inside Γ, for computing signed distance function.
-
-This is equivalent to part of Eq. 21 in Hartmann 2008.
-"""
-function calc_dϕdz_sdf(ϕ, Γf, i, j, dom::Domain)
-    # Fancy conditions for near coalescence: ignored for now
-    # TODO: fill these out for real. If A && B is true, jp = j, likewise for jm = j or something
-    # A = true
-    # B = true
-    if j == dom.nz
-        jp = j
-        jm = (Γf[i,j-1] ? j-1 : j)
-    elseif j == 1
-        jp = (Γf[i,j+1] ? j+1 : j)
-        jm = j
-    else
-        jp = (Γf[i,j+1] ? j+1 : j)
-        jm = (Γf[i,j-1] ? j-1 : j)
-    end
-    num = ϕ[i,jp] - ϕ[i,jm]
-    den = max(dom.zgrid[jp] - dom.zgrid[jm], .001*dom.dz)
-    return num/den
-end
-
-function calc_dij_R!(d, ϕ, Γf, R, dom::Domain)
-    # nr, nz = size(ϕ)
-    for c in R
-        if ϕ[c]==0
-            d[c] = 0
-            continue
-        end
-        i, j = Tuple(c)
-        den = hypot(calc_dϕdr_sdf(ϕ, Γf, i, j, dom), calc_dϕdz_sdf(ϕ, Γf, i, j, dom))
-        d[c] = ϕ[c] / den
-    end
-end
-function calc_dij_C!(d, ϕ, C, dom::Domain)
-    # nr, nz = size(ϕ)
-    for c in C
-        if(ϕ[c]==0)
-            d[c] = 0
-            continue
-        end
-        pos_neighbors = [CI(1, 0), CI(-1,0), CI(0,1), CI(0,-1)]
-        neighbors = [nb for nb in [c].+pos_neighbors if checkbounds(Bool, ϕ, nb)]
-
-        if length(Sij) > 0
-            num = sum([d[nb] for nb in Sij])
-            den = sum([ϕ[nb] for nb in Sij])
-            d[c] =  ϕ[c] * num / den
-        else
-            @warn "Length of Sij is $(length(Sij))! Not updating value."
-            d[c] = ϕ[c]
-            continue
-        end
-    end
 end
 
 """
@@ -343,54 +147,24 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 20, tol=1e-4)
             # @info "End reinit early" sdf_err_L1(ϕ, dom) v
             break
         end
-
         F .= 0
         rhs .= 0
         for (i,c) in enumerate(Cv)
             # Check for neighbor sign changes, per comment pre Eq. 18
             Sij = Sij_list[i]
             signs_Sij = (ϕ[c] .* ϕ[Sij]) .<= 0
-
             # If a neighbor no longer has opposite sign, skip this cell
             if sum(signs_Sij) < length(Sij) 
                 continue
             end
             # Eq. 21b
             F[c] = (rij_list[i] * sum(ϕ[Sij]) - ϕ[c]) / dx
-            # @info "F" c F[c] rij_list[i]*sum(ϕ[Sij])
         end
-        # for c in CartesianIndices(ϕ)
-        #     𝒢 = 𝒢_weno(ϕ, c, dom)
-        #     rhs[c] = dτ * (S[c]*(𝒢 - 1) - 0.5F[c])
-        # end
-        # 𝒢 = 𝒢_weno.([ϕ], CartesianIndices(ϕ), [dom]) .- 1
-        # rhs .= S .* 𝒢 .- 0.5F
         rhs .= S .* (𝒢_weno.([ϕ], CartesianIndices(ϕ), [dom]) .- 1) .- 0.5F
-        # @info "step" S F 𝒢 rhs 
-        # @info "Timestep" v F
         ϕ .-= rhs .* dτ
     end
 end
 
-
-"""
-    update_ϕ_in_Γ!(ϕ, dom::Domain)
-
-Reinitialize the interface cells of `ϕ`.
-
-This is the scheme CR-2 in Hartmann 2008 (note the published erratum to that article, which amends ℛ and 𝒞).
-"""
-function update_ϕ_in_Γ!(ϕ, dom::Domain)
-    Γf = identify_Γ(ϕ, dom)
-    Γc = findall(Γf)
-    RC = identify_regions_RC(ϕ, Γc, dom)
-    dl = fill(0.0, dom.nr, dom.nz)
-    calc_dij_R!(dl, ϕ, Γf, Γc, dom)
-    calc_dij_C!(dl, ϕ, RC[2], dom)
-    for c in Γc
-        ϕ[c] = dl[c]
-    end
-end
 
 """
     LD{T}
@@ -453,104 +227,6 @@ function 𝒢_1st_all(ϕ, dom::Domain)
 end
 
 
-
-"""
-    reinitialize_ϕ!(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
-
-Reinitialize the signed distance function `ϕ`.
-
-Carried out in place.  
-
-This relies on `update_ϕ_in_Γ`, which implements CR-2 from Hartmann 2008,
-then in a band ℬ around the interface, solves a reinitialization PDE
-using a first-order or WENO spatial scheme with time integration given by `alg`.
-"""
-function reinitialize_ϕ!(ϕ, dom::Domain, tf=100.0; alg=BS3())
-
-    Γf = identify_Γ(ϕ, dom)
-    Γ = findall(Γf)
-    Bf = identify_B(Γ, dom)
-    BnΓ = findall(Bf .⊻ Γf)
-    ΩnB = findall(fill(true, dom.nr, dom.nz) .⊻ Bf)
-
-    outside_B = 1.5*dom.bwfrac*max(dom.rmax, dom.zmax)
-    update_ϕ_in_Γ!(ϕ, dom)
-
-    sarr = sign.(ϕ)
-    Γ = Γ_cells(ϕ, dom)
-
-    
-    ϕ_ode = ϕ[BnΓ]
-    cached = copy(ϕ)
-    function sub_rhs(du, u, p, t) 
-        cached[BnΓ] .= u
-        for (i, c) in enumerate(BnΓ)
-            # du[i] = sarr[c] * (1-𝒢_1st(cached, Tuple(c)..., dom))
-            du[i] = sarr[c] * (1-𝒢_weno(cached, Tuple(c)..., dom))
-        end
-        return du
-    end
-    tspan = (0.0, tf)
-    prob = ODEProblem(sub_rhs, ϕ_ode, tspan)
-    sol = solve(prob, alg, dt = 1.0; callback=TerminateSteadyState(1e-4, 1e-4))
-    ϕ[BnΓ] .= sol[end]
-
-    # @info "Reinitialization time" sol.t[end]
-
-    ϕ[ΩnB] .= sarr[ΩnB] .* outside_B
-
-    nothing
-end
-
-"""
-    reinitialize_ϕ(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
-
-Reinitialize the signed distance function `ϕ`, returning a new array.
-
-Simply makes a copy of `ϕ` and calls `reinitialize_ϕ!`.
-"""
-function reinitialize_ϕ(ϕ, dom::Domain, tf=1.0; alg = BS3())
-    ϕ1 = copy(ϕ)
-    reinitialize_ϕ!(ϕ1, dom, tf; alg=alg)
-    ϕ1
-end
-
-
-"""
-    reinitialize_ϕ_all!(ϕ, dom::Domain, tf=1.0; alg=BS3(), outside_B = 1)
-
-Reinitialize the signed distance function `ϕ`.
-
-Carried out in place.  
-
-This relies on `update_ϕ_in_Γ`, which implements CR-2 from Hartmann 2008,
-then everywhere else, solves a reinitialization PDE
-using a WENO spatial scheme with time integration given by `alg`.
-"""
-function reinitialize_ϕ_all!(ϕ, dom::Domain, tf=100.0; alg=BS3())
-    Γf = identify_Γ(ϕ, dom)
-    Γ = findall(Γf)
-    sarr = sign.(ϕ)
-
-    update_ϕ_in_Γ!(ϕ, dom)
-
-    function sub_rhs(du, u, p, t) 
-        ϕl = reshape(u, dom.nr, dom.nz)
-        dϕ = sarr .* (1 .- 𝒢_weno_all(ϕl, dom))
-        dϕ[Γ] .= 0.0
-        du .= reshape(dϕ, :)
-        return du
-    end
-    tspan = (0.0, tf)
-    ϕ_flat = reshape(ϕ, :)
-    prob = ODEProblem(sub_rhs, ϕ_flat, tspan)
-    sol = solve(prob, alg, dt = 1.0; callback=TerminateSteadyState(1e-4, 1e-4))
-    ϕ .= reshape(sol[end], dom.nr, dom.nz)
-
-    # @info "Reinitialization time" sol.t[end]
-
-    nothing
-end
 
 
 """

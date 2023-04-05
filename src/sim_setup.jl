@@ -90,11 +90,8 @@ function make_artificial_params()
     Q_ic = 1.0
     Q_ck = 0.0
     k = 1.0
-    # This acts as an initial value 
-    Tf = 233.15
 
     # Mass transfer
-    p_sub = 15 # This gets overwritten almost immediately: fixed by Tf
     p_ch = 5 # 100 mTorr is about 13 Pa
     ϵ = 0.9
     l = 1.0
@@ -114,7 +111,7 @@ function make_artificial_params()
 
 
     params = Dict{Symbol, Any}()
-    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf, p_sub, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
+    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, ΔH, ρf, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
     return params
 end
 

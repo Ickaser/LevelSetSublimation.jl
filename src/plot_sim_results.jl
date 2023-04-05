@@ -1,4 +1,4 @@
-export summaryplot, resultsanim, plotframe, plotframe
+export summaryplot, resultsanim, plotframe, get_ϕ_Tf
 export get_subf_z, get_subf_r, get_ϕ
 
 # function plotframe(f::Int, simresults::Dict, simconfig::Dict; maxT=nothing)
@@ -20,13 +20,13 @@ end
 
 Unpack simulation results and plot the state at time `t`.
 
-`heatvar = :T` or `=:ϕ` decides whether temperature or level set function is plotted as colors.
+`heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
 function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
     @unpack ϕsol = simresults
-    @unpack dom, params = simconfig
-    params = deepcopy(params)
+    @unpack dom, cparams = simconfig
+    params = deepcopy(cparams)
     ϕ, Tf = get_ϕ_Tf(ϕsol, t, dom)
     p_sub = calc_psub(Tf)
     @pack! params = Tf, p_sub
@@ -34,23 +34,31 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     tr = round(t, sigdigits=3)
     if heatvar == :T
         T = solve_T(ϕ, dom, params)
-        local p = plot(aspect_ratio=:equal)
+        local pl = plot(aspect_ratio=:equal)
         plot_cylheat(T, dom; maxT=maxT)
         plot_cylcont(ϕ, dom, c=:white)
         plot!(title="timestep=$tr")
-        return p
+        return pl
     elseif heatvar == :ϕ
-        local p = plot(aspect_ratio=:equal)
+        local pl = plot(aspect_ratio=:equal)
         plot_cylheat(ϕ, dom;)
         plot_cylcont(ϕ, dom, c=:white)
         plot!(title="timestep=$tr")
-        return p
-    else
-        @warn "Invalid variable to be plotted as heatmap" heatvar
-        local p = plot(aspect_ratio=:equal)
+        return pl
+    elseif heatvar == :p
+        T = solve_T(ϕ, dom, params)
+        p = solve_p(ϕ, T, dom, params)
+        local pl = plot(aspect_ratio=:equal)
+        plot_cylheat(p, dom;)
         plot_cylcont(ϕ, dom, c=:white)
         plot!(title="timestep=$tr")
-        return p
+        return pl
+    else
+        @warn "Invalid variable to be plotted as heatmap" heatvar
+        local pl = plot(aspect_ratio=:equal)
+        plot_cylcont(ϕ, dom, c=:white)
+        plot!(title="timestep=$tr")
+        return pl
     end
 end
 
@@ -64,7 +72,7 @@ Return a 2x3 plot of simulation results from start to finish.
 """
 function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
     @unpack ϕsol = simresults
-    @unpack dom, params= simconfig
+    @unpack dom, cparams= simconfig
 
     tf = ϕsol.t[end]
 
@@ -73,7 +81,7 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
     frames = range(0.0, tf, length=nplots)
 
     ϕ_nm1, Tf_nm1= get_ϕ_Tf(ϕsol, frames[end-1], dom)
-    params = deepcopy(params)
+    params = deepcopy(cparams)
     params[:Tf] = Tf_nm1
     T_nm1 = solve_T(ϕ_nm1, dom, params)
     maxT = maximum(T_nm1)
@@ -90,13 +98,15 @@ end
 """
     resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T)
 
-Generate a .gif of the given simresults, with filename `casename_evol.gif`.
+Generate a .gif of the given simresults, with filename `casename_heatvar_evol.gif`.
+
+Pass either `:p` or `:T` as `heatvar`. Passing `ϕ` will probably cause filename problems
 
 TODO: generate names in the style of `produce_or_load`.
 """
 function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T)
     @unpack ϕsol = simresults
-    @unpack dom, params= simconfig
+    @unpack dom, cparams= simconfig
 
     tf = ϕsol.t[end]
 
@@ -123,7 +133,7 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=
     end
 
     # fps = ceil(Int, nt/2)  # nt/x makes x-second long animation
-    fname = "$(casename)_$(hash(simconfig))_evol.gif"
+    fname = "$(casename)_$(heatvar)_$(hash(simconfig))_evol.gif"
     gif(anim, plotsdir(fname), fps=fps)
 end
 

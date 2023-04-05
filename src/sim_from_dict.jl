@@ -3,6 +3,13 @@ export sim_from_dict_old, sim_from_dict
 
 export ϕevol_RHS
 
+# --------- Convenience functions that need a home
+
+function current_state(u, dom)
+    ϕ = reshape(u[1:dom.ntot], size(dom))
+    Tf = u[dom.ntot+1]
+    return ϕ, Tf
+end
 
 # ---------- Fully adaptive time stepping functions
 
@@ -23,9 +30,7 @@ function ϕevol_RHS!(du, u, p, t)
     params = p[2]
     ntot = dom.ntot
     dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
-    ϕ = reshape(u[1:ntot], dom.nr, dom.nz)
-
-    Tf = u[ntot+1]
+    ϕ, Tf = current_state(u, dom)
     p_sub = calc_psub(Tf) # Returned as Pa
     @pack! params = Tf, p_sub # Update current temperature and sublimation pressure 
     # debug
@@ -41,6 +46,7 @@ function ϕevol_RHS!(du, u, p, t)
     T = solve_T(ϕ, dom, params)
     p = solve_p(ϕ, T, dom, params)
     vf = extrap_v_fastmarch(ϕ, T, p, dom, params)
+    # @info "after vf" params[:p_sub]
     vr = @view vf[:,:,1]
     vz = @view vf[:,:,2]
     
@@ -87,34 +93,42 @@ function ϕevol_RHS!(du, u, p, t)
         # end
         # @info "check" ind rcomp zcomp vz[ind] dϕdz_s dϕdz_n
     end
+    # p1 = heat(vr, dom)
+    # p2 = heat(vz, dom)
+    # display(plot(p1, p2))
     # display(heat(dϕ, dom))
-    # @info "eval derivatives" Tf p_sub-params[:p_ch] extrema(dϕ) extrema(vtot)
+    # if minimum(dϕ) < 0
+    #     @info "negative sublimation" findall(dϕ .<0)
+    # end
+    # @info "eval derivatives" Tf p_sub-params[:p_ch] extrema(dϕ) extrema(T) extrema(p)
     return nothing
 end
 
 
 """
-    ϕevol_RHS(ϕ, dom::Domain, params)
-    ϕevol_RHS(ϕ, config)
+    ϕevol_RHS(u, dom::Domain, params)
+    ϕevol_RHS(u, config)
     
-Compute the time derivative of `ϕ` with given parameters.
+Compute the time derivative of `u` with given parameters.
+
+`u` has `dom.ntot` entries for `ϕ` and one for `Tf`.
 
 Wraps a call on `ϕevol_RHS!`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function ϕevol_RHS(ϕ, dom::Domain, params)
+function ϕevol_RHS(u, dom::Domain, params)
     p = (dom, params)
-    du = zeros(dom.ntot+1)
+    du = similar(u)
     # dϕ = zeros(dom.nr, dom.nz)
 
     # dϕ_flat = reshape(dϕ, :)
-    u = similar(ϕ, dom.ntot+1)
-    u[1:dom.ntot] .= reshape(ϕ, :)
-    u[dom.ntot+1] = params[:Tf]
+    # u = similar(ϕ, dom.ntot+1)
+    # u[1:dom.ntot] .= reshape(ϕ, :)
+    # u[dom.ntot+1] = params[:Tf]
     ϕevol_RHS!(du, u, p, 0.0)
     return du
 end
-function ϕevol_RHS(ϕ, config)
-    ϕevol_RHS(ϕ, config[:dom], config[:params])
+function ϕevol_RHS(u, config)
+    ϕevol_RHS(u, config[:dom], config[:params])
 end
 
 """
@@ -183,11 +197,15 @@ Maximum simulation time is specified by `tf`.
 `fullconfig` should have the following fields:
 - `ϕ0type`, types listed for [`make_ϕ0`](@ref)
 - `dom`, an instance of [`Domain`](@ref)
-- `params`, which in turn has fields
-    - `Tf`: ice temperature
+- `Tf0`, an initial ice temperature
+- `cparams`, which in turn has fields
     - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
     - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
     - `k`: thermal conductivity of cake
+    - `ρf`: density of ice
+    - `Cpf`: heat capacity of ice
+    - `ΔH` : heat of sublimation of ice
+    - `p_ch` : pressure at top of cake
     - `ϵ` : porosity of porous medium
     - `l` : dusty gas model constant: characteristic length for Knudsen diffusion
     - `κ` : dusty gas model constant: length^2 corresponding loosely to Darcy's Law permeability
@@ -204,9 +222,9 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack params, ϕ0type, dom = fullconfig
+    @unpack cparams, ϕ0type, dom = fullconfig
 
-    params = deepcopy(params)
+    params = deepcopy(cparams)
 
     ϕ0 = make_ϕ0(ϕ0type, dom)
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000) # Don't reinit if using IterativeCallback
@@ -215,8 +233,10 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     # Full array of starting state variables
     u0 = similar(ϕ0_flat, dom.ntot+1) # Add 1 to length: Tf
     u0[1:dom.ntot] .= ϕ0_flat
-    u0[dom.ntot+1] = params[:Tf]
-    @info "Initial Tf:" u0[dom.ntot+1]
+    u0[dom.ntot+1] = Tf = params[:Tf]
+    p_sub = calc_psub(Tf)
+    params[:p_sub] = p_sub
+    @info "Initial Tf:" Tf p_sub
 
     # ---- Set up ODEProblem
     prob_p = (dom, params)
@@ -246,7 +266,8 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     cbs = CallbackSet(cb1, cb2)
 
     # --- Solve
-    sol = solve(prob, SSPRK43(), callback=cbs; )
+    sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping
+    # sol = solve(prob, SSPRK33(), dt=1e-4, callback=cbs; )
     # sol = solve(prob, Tsit5(), callback=cbs; )
     # sol = solve(prob, Tsit5(), callback=cb2; ) # No reinit
     return Dict("ϕsol"=>sol)
@@ -254,121 +275,3 @@ end
 
 
 
-# ------------ Semi-manual time stepping. Obsolete, I think  -------------------------
-"""
-    take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
-
-Return ``T_{i+1}, ϕ_{i+1}``, given ``T_i, ϕ_i``.
-
-A fair amount of logic happens inside here. For example, the CFL condition is enforced 
-inside each of the separate time integrations. However, under high heating, it is
-possible to advect the interface past the edge of the band where the level set function 
-is maintained.
-"""
-function take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
-    
-    prop_t = 1.0 # Time step for reinitialization and similar steps
-
-    # --------- Extrapolation by PDE
-    # vf = extrap_v_pde(ϕi, Ti, dom, params)
-
-    # ---------- Extrapolation by fast marching (more recent)
-    vf = extrap_v_fastmarch(ϕi, Ti, dom, params)
-
-    # ----------
-    
-    ϕip1 = advect_ϕ(ϕi, vf, dom, dt)
-    
-    
-    if sum(ϕip1 .<= 0) == 0 # No ice cells left
-        # ϕip1[1,1] = 0 # Artifically add a tiny amount of ice
-        Tip1 = solve_T(ϕip1, dom, params)
-        return Tip1, ϕip1
-    end
-
-
-
-    
-    reinitialize_ϕ!(ϕip1, dom, prop_t)
-    
-    Tip1 = solve_T(ϕip1, dom, params)
-    return Tip1, ϕip1
-end
-"""
-    multistep(n, dt, T0, ϕ0, dom::Domain, params)
-
-Return `Ti` and `ϕi` after `n` timesteps of `dt`.
-
-I anticipate this being useful mostly if the timestep for stability is small and don't need to store every time step.
-"""
-function multistep(n, dt, T0, ϕ0, dom::Domain, params)
-    Ti = copy(T0)
-    ϕi = copy(ϕ0)
-    for i in 1:n
-        Ti, ϕi = take_time_step(Ti, ϕi, dom, params, dt)
-    end
-    return Ti, ϕi
-end
-
-"""
-    sim_from_dict(fullconfig; maxsteps=1000)
-
-Run a simulation from `fullconfig`, returning T and ϕ at each time step.
-
-Implicitly, have maximum number of time steps of 1000.
-`fullconfig` should have the following fields:
-- `ϕ0type`, types listed for [`make_ϕ0`](@ref)
-- `dom`, an instance of [`Domain`](@ref)
-- `sim_dt`, simulation time step (used in advection only)
-- `params`, which in turn has fields
-    - `Tf`: ice temperature
-    - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
-    - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
-    - `k`: thermal conductivity of cake
-"""
-function sim_from_dict_old(fullconfig; maxsteps=1000)
-
-    # ------------------- Get simulation parameters
-
-    @unpack params, ϕ0type, dom, sim_dt = fullconfig
-
-    # println("Inside: dom.nr = $(dom.nr)")
-    ϕ0 = make_ϕ0(ϕ0type, dom)
-
-    # ---------------------- Set up first step
-    reinitialize_ϕ!(ϕ0, dom, 1.0)
-    T0 = solve_T(ϕ0, dom, params)
-
-    # maxsteps = 1000
-
-    full_T = fill(1.0, (maxsteps+1, dom.nr, dom.nz))
-    full_ϕ = fill(1.0, (maxsteps+1, dom.nr, dom.nz))
-    Ti = copy(T0)
-    ϕi = copy(ϕ0)
-    full_T[1,:,:] .= Ti
-    full_ϕ[1,:,:] .= ϕi
-
-
-    # println("Ready to start simulation")
-
-    # --------------- Run simulation
-
-    for i in 1:maxsteps
-        Ti, ϕi = take_time_step(Ti, ϕi, dom, params, sim_dt)
-        # @time Ti, ϕi = multistep(3, 10.0, Ti, ϕi)
-        
-        # Store solutions for later plotting
-        full_T[i+1,:,:] .= round.(Ti, sigdigits=10) # Get rid of numerical noise
-        full_ϕ[i+1,:,:] .= ϕi
-
-        # println("Completed: $i")
-        
-        if minimum(ϕi) > 0
-            println("Sublimation finished after $i timesteps")
-            full_T = full_T[1:i+1, :,:]
-            full_ϕ = full_ϕ[1:i+1, :,:]
-            break
-        end
-    end
-    @strdict full_T full_ϕ
-end
