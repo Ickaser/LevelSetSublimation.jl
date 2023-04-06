@@ -24,9 +24,10 @@ Parameters `p` assumed to be `(dom::Domain, params)`
 This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
 using `compute_frontvel_mass`.
 """
-function ϕevol_RHS!(du, u, p, t)
-    dom = p[1]
-    params = p[2]
+function ϕevol_RHS!(du, u, integ_pars, t)
+    dom = integ_pars[1]
+    params = integ_pars[2]
+    p_last = integ_pars[3]
     ntot = dom.ntot
     dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
     ϕ, Tf = ϕ_T_from_u(u, dom)
@@ -35,7 +36,8 @@ function ϕevol_RHS!(du, u, p, t)
     # p_sub = calc_psub(Tf) # Returned as Pa
 
     T = solve_T(u, dom, params)
-    p = solve_p(u, T, dom, params)
+    p = solve_p(u, T, dom, params, p0 = p_last)
+    integ_pars[3] .= p # Cache current state of p as a guess for next timestep
     vf = extrap_v_fastmarch(u, T, p, dom, params)
     vr = @view vf[:,:,1]
     vz = @view vf[:,:,2]
@@ -107,7 +109,7 @@ Compute the time derivative of `u` with given parameters.
 Wraps a call on `ϕevol_RHS!`, for convenience in debugging and elsewhere that efficiency is less important
 """
 function ϕevol_RHS(u, dom::Domain, params)
-    p = (dom, params)
+    integ_pars = (dom, params, zeros(Float64, size(dom)))
     du = similar(u)
     # dϕ = zeros(dom.nr, dom.nz)
 
@@ -115,7 +117,7 @@ function ϕevol_RHS(u, dom::Domain, params)
     # u = similar(ϕ, dom.ntot+1)
     # u[1:dom.ntot] .= reshape(ϕ, :)
     # u[dom.ntot+1] = params[:Tf]
-    ϕevol_RHS!(du, u, p, 0.0)
+    ϕevol_RHS!(du, u, integ_pars, 0.0)
     return du
 end
 function ϕevol_RHS(u, config)
@@ -220,6 +222,7 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     ϕ0 = make_ϕ0(ϕ0type, dom)
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000) # Don't reinit if using IterativeCallback
     ϕ0_flat = reshape(ϕ0, :)
+
     
     # Full array of starting state variables
     u0 = similar(ϕ0_flat, dom.ntot+1) # Add 1 to length: Tf
@@ -228,10 +231,15 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     p_sub = calc_psub(Tf0)
     @info "Initial Tf:" Tf0 p_sub
 
+    # Cached array for using last pressure state as guess
+    p_last = zeros(Float64, size(dom))
+
     # ---- Set up ODEProblem
-    prob_p = (dom, params)
+    # prob_pars = (dom, params)
+    prob_pars = (dom, params, p_last)
+    # @info "check" prob_pars[3]
     tspan = (0, tf)
-    prob = ODEProblem(ϕevol_RHS!, u0, tspan, prob_p)
+    prob = ODEProblem(ϕevol_RHS!, u0, tspan, prob_pars)
 
     # --- Set up reinitialization callback
 
