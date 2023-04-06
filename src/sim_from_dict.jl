@@ -30,11 +30,7 @@ function ϕevol_RHS!(du, u, p, t)
     ntot = dom.ntot
     dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
     ϕ, Tf = ϕ_T_from_u(u, dom)
-    u[dom.ntot+1] = clamp(Tf, 223.15, 700) # Prevent crazy temperatures from getting passed through
-    if Tf <0
-
-        @info "timestep: Tf < 0" ϕ Tf compute_icevol(ϕ, dom)
-    end
+    u[dom.ntot+1] = clamp(Tf, 200, 700) # Prevent crazy temperatures from getting passed through to other functions
 
     # p_sub = calc_psub(Tf) # Returned as Pa
 
