@@ -130,29 +130,25 @@ function solve_T(u, dom::Domain, params)
                 θr = pϕ / (pϕ - eϕ)
                 if θr >= dr
                     pc += -2k*dr2 # Regular 
-                    pc += k*(θr-1)/θr*(0.5dr1*r1+ dr2) # Due to ghost cell extrapolation
+                    pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
                     rhs[imx] -= Tf*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
-                    # stefan_debug = true
-                    # println("east θ<dr, ir=$ir, iz=$iz")
                     pc += -2k*dr2 # Regular
-                    wc += k*(-0.5dr1*r1 + dr2) # Regular
-                    wc += k*(dr+2r)*(θr-1)*0.5dr2*r1/(θr+1) # Due to ghost cell extrapolation 
+                    wc += k*(-dr1*r1 + 2θr*dr2)/(θr+1)  
+                    rhs[imx] -= Tf*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
                 end
             elseif wϕ <= 0 # West ghost cell across front
-                # stefan_debug = true
                 θr = pϕ / (pϕ - wϕ)
                 if θr >= dr # Regular magnitude θ
                     pc += -2k*dr2 # Regular 
-                    pc += k*(-dr+2r)*(θr-1)*0.5dr2*r1/θr # Due to ghost cell extrapolation
+                    pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf*k*(-0.5dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
                 else # Very small θ
                     pc += -2k*dr2 # Regular
-                    ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    ec += k*(-dr+2r)*(θr-1)/(θr+1)*0.5dr2*r1 # Due to ghost cell extrapolation
-                    rhs[imx] -= Tf*k*(-dr+2r) *dr2 *r1/(θr+1) # Dirichlet BC in ghost cell extrap
+                    ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
+                    rhs[imx] -= Tf*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
 
             else # Bulk, not at front 
