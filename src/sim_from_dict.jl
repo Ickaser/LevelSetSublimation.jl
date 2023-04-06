@@ -30,6 +30,12 @@ function ϕevol_RHS!(du, u, p, t)
     ntot = dom.ntot
     dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
     ϕ, Tf = ϕ_T_from_u(u, dom)
+    u[dom.ntot+1] = clamp(Tf, 223.15, 700) # Prevent crazy temperatures from getting passed through
+    if Tf <0
+
+        @info "timestep: Tf < 0" ϕ Tf compute_icevol(ϕ, dom)
+    end
+
     # p_sub = calc_psub(Tf) # Returned as Pa
 
     T = solve_T(u, dom, params)
@@ -40,8 +46,9 @@ function ϕevol_RHS!(du, u, p, t)
     
     Qice = compute_Qice(u, T, p, dom, params)
     @unpack ρf, Cpf = params
-    dTdt = Qice / ρf / Cpf / compute_icevol(ϕ, dom)
+    dTdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
     du[ntot+1] = dTdt
+
 
     indmin = CI(1, 1)
     indmax = CI(dom.nr, dom.nz)

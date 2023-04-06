@@ -14,7 +14,7 @@ Currently allowed setups:
 - `:cone`         -- interface a line decreasing in r
 - `:ell_bub `     -- ellipse in center of vial, separated from boundaries
 - `:circ `        -- circle at r=0, z=0 
-- `:circ_bub `    -- circle at r=0, z=0.5zmax, very small radius
+- `:tinycirc `    -- circle at r=0, z=0, very small radius
 """
 function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     if ϕtype == :top || ϕtype == :flat
@@ -30,6 +30,9 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
                 for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :circ
         ϕ0 = [1.1dom.rmax * r^2 + 1.1dom.zmax * z^2 - 1.0 
+                for r in dom.rgrid, z in dom.zgrid]
+    elseif ϕtype == :tinycirc
+        ϕ0 = [dom.rmax * r^2 + dom.zmax * z^2 - 0.11 
                 for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :cone
         ϕ0 = [0.5r + z - 0.9dom.zmax + ϵ 
