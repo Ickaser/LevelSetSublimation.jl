@@ -300,6 +300,8 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
         # Get local r values for use in Laplacian
         r = rgrid[ir]
         r1 = 1/r
+        
+        θ_thresh = dr/dom.rmax
 
         # Stencil values: initialize to 0
         ec = 0
@@ -317,10 +319,15 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
             if eϕ < 0 # Front is within a cell of boundary
                 # p. 65 of project notes
                 θr = pϕ/(pϕ-eϕ)
-                # Have an exact value given by BC + front
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = p_sub - θr*BC1*dr
-                continue
+                if θr >= θ_thresh
+                    pc += -2bp*dr2/θr
+                    rhs[imx] -= 2bp*p_sub*dr2/θr #+ BC1*(r1 - 2dr1)
+                else # Front is within dr/r cells of boundary
+                    # Have an exact value given by BC + front
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    rhs[imx] = p_sub - θr*BC1*dr
+                    continue
+                end
                 # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
@@ -337,13 +344,18 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
             BC2 = 0
             wϕ = ϕ[ir-1, iz]
             if wϕ < 0 # Front is within a cell of boundary
-                # p. 65 of project notes
+                # p. 119 of project notes
                 θr = pϕ/(pϕ-wϕ)
-                # Have an exact value given by BC + front
-                # No way to treat other equations, so add to matrix and stop here
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = p_sub + θr*BC2*dr
-                continue
+                if θr >= θ_thresh
+                    pc += -2bp*dr2/θr
+                    rhs[imx] -= 2p_sub*bp*dr2/θr + BC2*(r1 + 2dr1)
+                else #p. 65 of project notes
+                    # Have an exact value given by BC + front
+                    # No way to treat other equations, so add to matrix and stop here
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    rhs[imx] = p_sub + θr*BC2*dr
+                    continue
+                end
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
@@ -361,7 +373,7 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
             wϕ = ϕ[ir-1, iz]
             if eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
-                if θr >= dr
+                if θr >= θ_thresh
                     pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/(θr+1)
                     wc += -bp*(0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
                     rhs[imx] -= p_sub*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
@@ -373,7 +385,7 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
-                if θr >= dr # Regular magnitude θ
+                if θr >= θ_thresh # Regular magnitude θ
                     pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
                     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
                     rhs[imx] -= p_sub*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
@@ -404,10 +416,15 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
-                # Have an exact value given by BC + front
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = p_sub + θz*BC3*dz
-                continue
+                if θz > θ_thresh
+                    pc += -2bp*dz2/θz
+                    rhs[imx] -= 2*p_sub*bp*dz2/θz + 2*BC3*dz1
+                else
+                    # Have an exact value given by BC + front
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    rhs[imx] = p_sub + θz*BC3*dz
+                    continue
+                end
                 # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
@@ -430,7 +447,7 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
             dbz = (b[iz+1]-b[iz-1])*0.5*dz1
             if nϕ <= 0 # North ghost cell
                 θz = pϕ / (pϕ - nϕ)
-                if θz > dz
+                if θz >= θ_thresh
                     pc += (dbz*(θz-1)*dz1 - bp*(θz+1)*dz2 )/θz
                     sc += bp*dz2 - dbz*0.5*dz1
                     rhs[imx] -= p_sub*(bp*dz2 + dbz*0.5*dz1)/θz
@@ -442,7 +459,7 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 end
             elseif sϕ <= 0
                 θz = pϕ / (pϕ - sϕ)
-                if θz > dz
+                if θz >= θ_thresh
                     pc += (-bp*dz2*(θz+1) + dbz*(1-θz)*dz1)/θz
                     nc += bp*dz2 + dbz*0.5dz1
                     rhs[imx] -= p_sub*(bp*dz2 - dbz*0.5dz1)/θz

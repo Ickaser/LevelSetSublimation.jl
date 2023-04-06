@@ -44,6 +44,8 @@ function solve_T(u, dom::Domain, params)
     vcr = (vals, cols, rows)
     rhs = fill(0.0, ntot)
 
+    θ_thresh = dr / dom.rmax
+
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration
         imx = ir + (iz-1)*nr
@@ -87,10 +89,15 @@ function solve_T(u, dom::Domain, params)
             if eϕ < 0 # Front is within a cell of boundary
                 # p. 65 of project notes
                 θr = pϕ/(pϕ-eϕ)
-                # Have an exact value given by BC + front
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = Tf - θr*BC1*dr
-                continue
+                if θr >= θ_thresh
+                    pc += -2k*dr2/θr
+                    rhs[imx] -= 2k*Tf*dr2/θr #+ BC1*(r1 - 2dr1)
+                else # Front is within dr/r cells of boundary
+                    # Have an exact value given by BC + front
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    rhs[imx] = Tf - θr*BC1*dr
+                    continue
+                end
                 # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
@@ -106,13 +113,19 @@ function solve_T(u, dom::Domain, params)
             BC2 = Q_gl
             wϕ = ϕ[ir-1, iz]
             if wϕ < 0 # Front is within a cell of boundary
-                # p. 65 of project notes
+                # p. 119 of project notes
                 θr = pϕ/(pϕ-wϕ)
-                # Have an exact value given by BC + front
-                # No way to treat other equations, so add to matrix and stop here
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = Tf + θr*BC2*dr
-                continue
+                if θr >= θ_thresh
+                    pc += -2k*dr2/θr
+                    rhs[imx] -= 2Tf*k*dr2/θr + BC2*(r1 + 2dr1)
+                else #p. 65 of project notes
+                    # Have an exact value given by Neumann BC + front
+                    # Can't safely extrapolate to produce ghost cell, so only treat BC: not bulk eq
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    rhs[imx] = Tf + θr*dr*BC2/k
+                    continue
+                end
+
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
@@ -128,7 +141,7 @@ function solve_T(u, dom::Domain, params)
             wϕ = ϕ[ir-1, iz]
             if eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
-                if θr >= dr
+                if θr >= θ_thresh
                     pc += -2k*dr2 # Regular 
                     pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
@@ -140,7 +153,7 @@ function solve_T(u, dom::Domain, params)
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
-                if θr >= dr # Regular magnitude θ
+                if θr >= θ_thresh # Regular magnitude θ
                     pc += -2k*dr2 # Regular 
                     pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     ec += k*( 0.5dr1*r1 + dr2) # Regular
@@ -171,10 +184,15 @@ function solve_T(u, dom::Domain, params)
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
-                # Have an exact value given by BC + front
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = Tf + θz*BC3*dz
-                continue
+                if θz > θ_thresh
+                    pc += -2k*dz2/θz
+                    rhs[imx] -= 2*Tf*k*dz2/θz + 2*BC3*dz1
+                else
+                    # Have an exact value given by BC + front
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    rhs[imx] = Tf + θz*BC3*dz
+                    continue
+                end
                 # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
@@ -191,11 +209,16 @@ function solve_T(u, dom::Domain, params)
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-sϕ)
-                # Have an exact value given by BC + front
-                # No way to treat other equations, so add to matrix and stop here
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = Tf + θz*BC4*dz
-                continue
+                if θz > θ_thresh
+                    pc += -2*k*dz2/θz
+                    rhs[imx] -= 2*Tf*k*dz2/θz + BC4*2*dz1
+                else
+                    # Have an exact value given by BC + front
+                    # No way to treat other equations, so add to matrix and stop here
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    rhs[imx] = Tf + θz*BC4*dz
+                    continue
+                end
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
                 # p. 65, 66 of project notes
@@ -211,7 +234,7 @@ function solve_T(u, dom::Domain, params)
                 # stefan_debug = true
                 θz = pϕ / (pϕ - nϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, north")
-                if θz > dz
+                if θz >= θ_thresh
                     pc += -k*dz2*(θz+1)/θz
                     sc += k*dz2
                     rhs[imx] -= Tf*k*dz2/θz
@@ -224,7 +247,7 @@ function solve_T(u, dom::Domain, params)
                 # stefan_debug = true
                 θz = pϕ / (pϕ - sϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, south")
-                if θz > dz
+                if θz >= θ_thresh
                     pc += -k*dz2*(θz+1)/θz
                     nc += k*dz2
                     rhs[imx] -= Tf*k*dz2/θz
