@@ -1,7 +1,7 @@
 dom = Domain(51, 51, 1.0, 1.0)
 cparams = p = make_artificial_params()
 ϕ0type = :circ
-Tf0 = 243.15
+Tf0 = 233.15
 
 config = Dict{Symbol, Any}()
 @pack! config = dom, cparams, ϕ0type, Tf0

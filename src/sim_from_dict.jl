@@ -33,7 +33,15 @@ function ϕevol_RHS!(du, u, integ_pars, t)
     ϕ, Tf = ϕ_T_from_u(u, dom)
     u[dom.ntot+1] = clamp(Tf, 200, 700) # Prevent crazy temperatures from getting passed through to other functions
 
-    # p_sub = calc_psub(Tf) # Returned as Pa
+    p_sub = calc_psub(Tf) 
+    if p_sub < params[:p_ch] # No driving force for mass transfer: no ice loss, just temperature change
+        Qice = compute_Qice_noflow(u, dom, params)
+        @unpack ρf, Cpf = params
+        dTdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+        du[1:ntot] .= 0.0
+        du[ntot+1] = dTdt
+        return nothing
+    end
 
     T = solve_T(u, dom, params)
     p = solve_p(u, T, dom, params, p0 = p_last)
@@ -46,6 +54,7 @@ function ϕevol_RHS!(du, u, integ_pars, t)
     @unpack ρf, Cpf = params
     dTdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
     du[ntot+1] = dTdt
+
 
 
     indmin = CI(1, 1)
@@ -86,13 +95,6 @@ function ϕevol_RHS!(du, u, integ_pars, t)
         # end
         # @info "check" ind rcomp zcomp vz[ind] dϕdz_s dϕdz_n
     end
-    # p1 = heat(vr, dom)
-    # p2 = heat(vz, dom)
-    # display(plot(p1, p2))
-    # display(heat(dϕ, dom))
-    # if minimum(dϕ) < 0
-    #     @info "negative sublimation" findall(dϕ .<0)
-    # end
     # @info "eval derivatives" Tf p_sub-params[:p_ch] extrema(dϕ) extrema(T) extrema(p)
     return nothing
 end
@@ -156,10 +158,25 @@ function next_reinit_time(integ)
     # The main region of concern is the frozen region near interface
     # Find the largest value of dϕdt in that region
     ϕ, Tf = ϕ_T_from_u(integ.u, dom)
-    dϕ, dTf = ϕ_T_from_u(du, dom)
+    dϕ, dTfdt = ϕ_T_from_u(du, dom)
     B = identify_B(ϕ, dom)
     B⁻ = B .& (ϕ .<= 0)
     max_dϕdt = maximum(abs.(dϕ[B⁻]))
+    if max_dϕdt == 0 # If no sublimation is happening...
+        # Guess when it will start
+        @unpack p_ch = integ.p[2]
+        # Find temperature such that p_sub = p_ch
+        Tstart = Tf
+        for i in 1:5
+            pg = calc_psub(Tstart)
+            dpdT = pg - calc_psub(Tstart - 1)
+            dT = -(pg-p_ch)/dpdT
+            Tstart += dT
+            @info "Newton iter" Tstart i
+        end
+        dt = (Tstart - Tf)/dTfdt * 1.05 # Overshoot slightly, to get into real drying behavior before next check time
+        return integ.t + dt
+    end
 
     # Reinit next when interface should have moved across half of band around interface 
     domfrac = min(0.5 * dom.bwfrac, 0.1) # Minimum of 0.5 of the band, or 0.1 of domain size.
@@ -172,7 +189,7 @@ end
 
 function cond_reinit(u, t, integ)
     dom = integ.p[1]
-    ϕ = reshape(u, size(dom))
+    ϕ, Tf = ϕ_T_from_u(u, size(dom))
     err = sdf_err_L1(ϕ, dom)
     tol = 1e-5 # Roughly dx^4
     @info "error from sdf" err-tol
@@ -232,7 +249,7 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     @info "Initial Tf:" Tf0 p_sub
 
     # Cached array for using last pressure state as guess
-    p_last = zeros(Float64, size(dom))
+    p_last = fill(p_sub, size(dom))
 
     # ---- Set up ODEProblem
     # prob_pars = (dom, params)
@@ -264,10 +281,10 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     cbs = CallbackSet(cb1, cb2)
 
     # --- Solve
-    sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping
-    # sol = solve(prob, SSPRK33(), dt=1e-4, callback=cbs; )
-    # sol = solve(prob, Tsit5(), callback=cbs; )
-    # sol = solve(prob, Tsit5(), callback=cb2; ) # No reinit
+    sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+    # sol = solve(prob, SSPRK33(), dt=1e-4, callback=cbs; ) # Fixed timestepping
+    # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
+    # sol = solve(prob, SSPRK43(), callback=cb2; ) # No reinit
     return Dict("ϕsol"=>sol)
 end
 

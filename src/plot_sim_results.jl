@@ -34,6 +34,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     local pl = plot(aspect_ratio=:equal)
     plot_cylheat(heatvar_vals, dom; maxT=maxT)
     plot_cylcont(ϕ, dom, c=:white)
+    # Plots.contour!(dom.rgrid, dom.zgrid, ϕ')
     plot!(title="timestep=$tr")
     return pl
 end

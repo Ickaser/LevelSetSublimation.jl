@@ -39,6 +39,35 @@ function compute_Qice(u, T, p, dom::Domain, params)
     return Qbot + Qrad + Qvol + Qsub
 end
 
+
+"""
+    compute_Qice_noflow(u, dom::Domain, params)
+
+Compute heat delivery to ice, assuming mass flow is zero.
+"""
+function compute_Qice_noflow(u, dom::Domain, params)
+
+    @unpack Q_sh, Q_ic, Q_gl, Q_ck, ΔH= params
+    ϕ, Tf = ϕ_T_from_u(u, dom)
+
+    # Heat flux from shelf, at bottom of vial
+    # botsurf = compute_icesh_area(ϕ, dom)
+    # Qbot = botsurf * Q_sh
+    Qbot = π*dom.rmax^2 * Q_sh
+
+    # Heat flux from glass, at outer radius
+    # radsurf = compute_icegl_area(ϕ, dom)
+    # Qrad = radsurf * Q_gl
+    Qrad = 2π*dom.rmax*dom.zmax * Q_gl
+
+    # Volumetric heat in cake and ice
+    icevol = compute_icevol(ϕ, dom)
+    dryvol = π*dom.rmax^2*dom.zmax - icevol
+    Qvol = icevol * Q_ic + dryvol * Q_ck
+
+    return Qbot + Qrad + Qvol
+end
+
 """
     compute_topmassflux(ϕ, T, p, dom::Domain, params)
 """

@@ -29,9 +29,6 @@ If `κ=0`, no spatial variation due to pressure occurs.
 """
 function eval_b(T, p, params)
     @unpack ϵ, l, κ, R, Mw, μ = params
-    if minimum(T) <= 0
-        @info "weird" T p
-    end
     b = @. 1/R/T/Mw * (l*sqrt(R*max(T,1)/Mw) + κ/μ*p)
 end
 
@@ -366,12 +363,12 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 θr = pϕ / (pϕ - eϕ)
                 if θr >= dr
                     pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/(θr+1)
-                    wc += bp*(0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
+                    wc += -bp*(0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
                     rhs[imx] -= p_sub*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else
                     # @info "hmm, east" θr dr ir iz
                     pc += -2bp*dr2 # Regular
-                    wc += (bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1)
+                    wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                     rhs[imx] -= p_sub*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
             elseif wϕ <= 0 # West ghost cell across front
@@ -383,8 +380,8 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 else # Very small θ
                     # @info "hmm, west" θr dr ir iz
                     pc += -2bp*dr2 # Regular
-                    ec += (bp*(dr1*r1 + 2θr*dr2) + dbr*dr1)/(θr+1)
-                    rhs[imx] -= p_sub*(bp*(2dr2-dr1*r1)-dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1)
+                    rhs[imx] -= p_sub*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
 
             else # Bulk, not at front 
@@ -434,7 +431,7 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
             if nϕ <= 0 # North ghost cell
                 θz = pϕ / (pϕ - nϕ)
                 if θz > dz
-                    pc += (0.5dbz*(θz-1)*dz1 - bp*(θz+1)*dz2 )/θz
+                    pc += (dbz*(θz-1)*dz1 - bp*(θz+1)*dz2 )/θz
                     sc += bp*dz2 - dbz*0.5*dz1
                     rhs[imx] -= p_sub*(bp*dz2 + dbz*0.5*dz1)/θz
                 else
@@ -477,9 +474,15 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
     psol = reshape(sol, nr, nz)
 end
 
-function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit=10, reltol=1e-6) where G<:AbstractArray
+function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit=20, reltol=1e-6) where G<:AbstractArray
     ϕ, Tf = ϕ_T_from_u(u, dom)
     p_sub = calc_psub(Tf)
+    if minimum(T) <= 0
+        @info "weird" T
+        pl1 = heat(T, dom)
+        display(pl1)
+        # display(
+    end
 
     if p0 === nothing
         # meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
@@ -497,10 +500,16 @@ function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit
         relerr = maximum(abs.(p⁺ .- p0) ./ p⁺)
         # @info "Maximum relative error in p after $i iterations:" relerr
         if relerr < reltol
+            # @info "Number of p iterations: $i"
             return p⁺
         end
         p0 = p⁺
     end
-    @info "Reached maximum iterations in p:" relerr maxit
+    @info "Reached maximum iterations in p:" relerr maxit p⁺ T 
+    pl1 = heat(T, dom)
+    plot_contour(ϕ, dom)
+    pl2 = heat(p⁺, dom)
+    plot_contour(ϕ, dom)
+    display(plot(pl1, pl2))
     return p⁺
 end
