@@ -227,7 +227,7 @@ Using fast marching, instead of the PDE-based approach, to get second order accu
 TODO: improve performance. Currently makes a lot of allocations, I think.
 """
 function extrap_v_fastmarch(u, T, p, dom::Domain, params)
-    ϕ, Tf = ϕ_T_from_u(u, dom)
+    ϕ = ϕ_T_from_u(u, dom)[1]
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
     Γ⁺ = [c for c in Γ if ϕ[c]>0]
@@ -238,32 +238,18 @@ function extrap_v_fastmarch(u, T, p, dom::Domain, params)
     Ω⁻ = findall(ϕ⁻)
     Ω⁺ = findall(ϕ⁻ .⊽ Γf ) # Exclude Γ⁺
 
-    # vf = fill(0.0, dom.nr, dom.nz, 2)
-
-    # Qice = compute_Qice(ϕ, dom, params)
-    # icesurf = compute_icesurf(ϕ, dom)
-    # Qice_per_surf = Qice / icesurf
-
     # Accepted set
     acc = fill(false, dom.nr, dom.nz)
 
-
     # First, compute velocity on Γ⁺
-    # for c in Γ⁺
-    #     vf[c, :] .= compute_frontvel_withT(ϕ, T, Tuple(c)..., dom, params, Qice_per_surf)
-    #     acc[c] = true
-    # end
     vf  = compute_frontvel_mass(u, T, p, dom, params)
     acc[Γ⁺] .= true
 
-    # Second, fastmarch in positive half of B
-
+    # Second, fastmarch in positive half of Ω
     fastmarch_v!(vf, acc, Ω⁺, ϕ, dom)
-    # fastmarch_v!(vf, acc, B⁺, ϕ, dom)
 
-    # Finally, fastmarch in negative half of B
+    # Finally, fastmarch in negative half of Ω
     fastmarch_v!(vf, acc, Ω⁻, ϕ, dom)
-    # fastmarch_v!(vf, acc, B⁻, ϕ, dom)
 
     vf
 end

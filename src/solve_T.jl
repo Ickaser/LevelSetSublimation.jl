@@ -28,8 +28,8 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 function solve_T(u, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Q_gl, Q_sh, Q_ck, k = params
-    ϕ, Tf = ϕ_T_from_u(u, dom)
+    @unpack Kgl, Kv, Q_ck, k, Tsh = params
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
     if minimum(ϕ) > 0
@@ -109,30 +109,29 @@ function solve_T(u, dom::Domain, params)
                 rhs[imx] += 0 # r=0, so 1/r = NaN
             end
         elseif ir == nr
-            # Constant flux BC
-            BC2 = Q_gl
+            # Robin BC: glass
             wϕ = ϕ[ir-1, iz]
             if wϕ < 0 # Front is within a cell of boundary
                 # p. 119 of project notes
                 θr = pϕ/(pϕ-wϕ)
                 if θr >= θ_thresh
-                    pc += -2k*dr2/θr
-                    rhs[imx] -= 2Tf*k*dr2/θr + BC2*(r1 + 2dr1)
+                    pc += -2k*dr2/θr - Kgl*(r1 + 2dr1)
+                    rhs[imx] -= 2Tf*k*dr2/θr + Kgl*Tgl*(r1 + 2dr1)
                 else #p. 65 of project notes
                     # Have an exact value given by Neumann BC + front
                     # Can't safely extrapolate to produce ghost cell, so only treat BC: not bulk eq
                     add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    rhs[imx] = Tf + θr*dr*BC2/k
+                    rhs[imx] = (k*Tf + Tgl*Kgl*θr*dr) / (k + Kgl*θr*dr)
                     continue
                 end
 
             else
-                # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
+                # Using Robin boundary to define ghost point: east T= west T + 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2dr2
+                pc += -2dr2 - Kgl*(r1 + 2dr1)
                 wc +=  2dr2
-                rhs[imx] += BC2*(-2*dr1 - r1)
+                rhs[imx] -= Kgl*Tgl*(2dr1 + r1)
             end
 
         else # r direction bulk
@@ -176,8 +175,7 @@ function solve_T(u, dom::Domain, params)
 
         # z direction boundaries
         if iz == 1
-            # Constant flux BC
-            BC3 = Q_sh
+            # Robin BC: shelf
             nϕ = ϕ[ir, iz+1]
             # Check for Stefan front
             if nϕ < 0 # Front is within a cell of boundary
@@ -185,21 +183,22 @@ function solve_T(u, dom::Domain, params)
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
                 if θz > θ_thresh
-                    pc += -2k*dz2/θz
-                    rhs[imx] -= 2*Tf*k*dz2/θz + 2*BC3*dz1
+                    pc += -2k*dz2/θz - 2Kv*dz1
+                    rhs[imx] -= 2*Tf*k*dz2/θz + 2Kv*Tsh*dz1
                 else
                     # Have an exact value given by BC + front
                     add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    rhs[imx] = Tf + θz*BC3*dz
+                    rhs[imx] = (k*Tf + Kv*Tsh*θz*dz) / (k + Kv*θz*dz)
                     continue
                 end
                 # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
                 # p. 65, 66 of project notes
-                pc += -k*2dz2
+                # FINISH THIS: NOT CORRECT
+                pc += -k*2dz2 - 2Kv*dz1
                 nc +=  k*2dz2
-                rhs[imx] += -2k*BC3*dz1
+                rhs[imx] -= 2Tsh*Kv*dz1
             end
         elseif iz == nz
             # Adiabatic BC

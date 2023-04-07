@@ -4,10 +4,17 @@ export ϕevol_RHS, ϕ_T_from_u
 
 # --------- Convenience functions that need a home
 
+"""
+    ϕ_T_from_u(u, dom)
+
+Take the current system state `u` and break it into `ϕ`, `Tf`, and `Tgl`.
+Nothing too fancy--just to avoid rewriting the same logic everywhere
+"""
 function ϕ_T_from_u(u, dom)
     ϕ = reshape(u[1:dom.ntot], size(dom))
     Tf = u[dom.ntot+1]
-    return ϕ, Tf
+    Tgl = u[dom.ntot+2]
+    return ϕ, Tf, Tgl
 end
 
 # ---------- Fully adaptive time stepping functions
@@ -30,41 +37,42 @@ function ϕevol_RHS!(du, u, integ_pars, t)
     p_last = integ_pars[3]
     ntot = dom.ntot
     dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
-    ϕ, Tf = ϕ_T_from_u(u, dom)
-    u[dom.ntot+1] = clamp(Tf, 200, 700) # Prevent crazy temperatures from getting passed through to other functions
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    u[dom.ntot+1] = clamp(Tf, 200, 350)  # Prevent crazy temperatures from getting passed through to other functions
+    u[dom.ntot+2] = clamp(Tgl, 200, 400) # Prevent crazy temperatures from getting passed through to other functions
+    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
+
+    T = solve_T(u, dom, params)
 
     p_sub = calc_psub(Tf) 
     if p_sub < params[:p_ch] # No driving force for mass transfer: no ice loss, just temperature change
-        Qice = compute_Qice_noflow(u, dom, params)
-        @unpack ρf, Cpf = params
-        dTdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
-        du[1:ntot] .= 0.0
-        du[ntot+1] = dTdt
+        Qice, Qgl = compute_Qice_noflow(u, T, dom, params)
+        dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+        dTgldt =  (Q_gl_RF - Qgl) / m_cp_gl
+        dϕ .= 0.0
+        du[ntot+1] = dTfdt
+        du[ntot+2] = dTgldt
         return nothing
     end
 
-    T = solve_T(u, dom, params)
     p = solve_p(u, T, dom, params, p0 = p_last)
     integ_pars[3] .= p # Cache current state of p as a guess for next timestep
     vf = extrap_v_fastmarch(u, T, p, dom, params)
     vr = @view vf[:,:,1]
     vz = @view vf[:,:,2]
     
-    Qice = compute_Qice(u, T, p, dom, params)
-    @unpack ρf, Cpf = params
-    dTdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
-    du[ntot+1] = dTdt
+    Qice, Qgl = compute_Qice(u, T, p, dom, params)
+    dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+    dTgldt = - Qgl / m_cp_gl
+    du[ntot+1] = dTfdt
+    du[ntot+2] = dTgldt
 
-
-
+    # Compute dϕ/dt = - v ⋅ ∇ ϕ
     indmin = CI(1, 1)
     indmax = CI(dom.nr, dom.nz)
     rshift = [CI(i, 0) for i in -3:3]
     zshift = [CI(0, i) for i in -3:3]
     for ind in CartesianIndices(ϕ)
-    # for iz in 1:dom.nz, ir in 1:dom.nr
-        # irs = max.(1, min.(dom.nr, ir-3:ir+3)) # Pad with boundary values
-        # izs = max.(1, min.(dom.nz, iz-3:iz+3))
         rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
         zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
         dϕdr_w, dϕdr_e = wenodiffs_local(ϕ[rst]..., dom.dr)
@@ -89,13 +97,7 @@ function ϕevol_RHS!(du, u, integ_pars, t)
         rcomp = dϕdr*vr[ind]
         zcomp = dϕdz*vz[ind]
         dϕ[ind] = -rcomp - zcomp
-        # if isnan(dϕ[ir, iz])
-        #     println("Here be NaN: t=$t, ir=$ir, iz=$iz")
-        #     @show vr[ir,iz] vz[ir,iz]
-        # end
-        # @info "check" ind rcomp zcomp vz[ind] dϕdz_s dϕdz_n
     end
-    # @info "eval derivatives" Tf p_sub-params[:p_ch] extrema(dϕ) extrema(T) extrema(p)
     return nothing
 end
 
@@ -157,8 +159,8 @@ function next_reinit_time(integ)
 
     # The main region of concern is the frozen region near interface
     # Find the largest value of dϕdt in that region
-    ϕ, Tf = ϕ_T_from_u(integ.u, dom)
-    dϕ, dTfdt = ϕ_T_from_u(du, dom)
+    ϕ, Tf, Tgl = ϕ_T_from_u(integ.u, dom)
+    dϕ, dTfdt, dTgldt = ϕ_T_from_u(du, dom)
     B = identify_B(ϕ, dom)
     B⁻ = B .& (ϕ .<= 0)
     max_dϕdt = maximum(abs.(dϕ[B⁻]))
@@ -189,7 +191,7 @@ end
 
 function cond_reinit(u, t, integ)
     dom = integ.p[1]
-    ϕ, Tf = ϕ_T_from_u(u, size(dom))
+    ϕ = ϕ_T_from_u(u, size(dom))[1]
     err = sdf_err_L1(ϕ, dom)
     tol = 1e-5 # Roughly dx^4
     @info "error from sdf" err-tol
@@ -208,10 +210,15 @@ Maximum simulation time is specified by `tf`.
 - `ϕ0type`, types listed for [`make_ϕ0`](@ref)
 - `dom`, an instance of [`Domain`](@ref)
 - `Tf0`, an initial ice temperature
+- `Tgl0`, an initial glass temperature (if the same as Tf0, can leave this out)
+- `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
+- `Q_RF_gl`, glass RF heating. Scalar or array, like Tsh
+- `t_samp`, sampled measurement times. Needed only if `T_sh` and `Q_RF_gl` are arrays
 - `cparams`, which in turn has fields
-    - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
+    - `Kgl`, `Kv` : heat transfer coefficients from glass and shelf, respectively
     - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
     - `k`: thermal conductivity of cake
+    - `m_cp_gl` total thermal mass of ice, relevant to heating/cooling of glass wall
     - `ρf`: density of ice
     - `Cpf`: heat capacity of ice
     - `ΔH` : heat of sublimation of ice
@@ -223,8 +230,9 @@ Maximum simulation time is specified by `tf`.
     - `Mw`: molecular weight of species (water), with appropriate units
     - `μ` : dynamic viscosity of species (water), with appropriate units
 
-If you are getting a warning about instability, it can often be fixed by tinkering with the reinitialization behavior.
-That shouldn't be true but it seems like it is.
+If you pass in an array of values for multiple of `Tsh`, `Q_RF_gl`, or others, they must all have the same length as `t_samp`.
+
+If you are getting a warning about instability, it can sometimes be fixed by tinkering with the reinitialization behavior.
 
 
 """
@@ -233,6 +241,7 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     # ------------------- Get simulation parameters
 
     @unpack cparams, ϕ0type, dom, Tf0 = fullconfig
+    Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
 
     params = deepcopy(cparams)
 
@@ -241,10 +250,11 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     ϕ0_flat = reshape(ϕ0, :)
 
     
-    # Full array of starting state variables
-    u0 = similar(ϕ0_flat, dom.ntot+1) # Add 1 to length: Tf
+    # Full array of starting state variables ------------
+    u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tgl
     u0[1:dom.ntot] .= ϕ0_flat
     u0[dom.ntot+1] = Tf0 
+    u0[dom.ntot+2] = Tgl0 
     p_sub = calc_psub(Tf0)
     @info "Initial Tf:" Tf0 p_sub
 
@@ -276,6 +286,19 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     # ContinuousCallback gets thrown when `cond` evaluates to 0
     # `terminate!` ends the solve there
     cb2 = ContinuousCallback(cond_end, terminate!)
+
+    # ------- Measured value callback, if necessary
+    t_samp = get(fullconfig, :t_samp, 0.0)
+    if length(t_samp) > 1
+        # Callbacks!!!!
+        # Callback will change values in params at each ti in t_samp
+    else
+        if length(fullconfig[:Q_gl_RF]) > 1 || length(fullconfig[:Tsh]) > 1
+            @error "Need to pass `t_samp` if you have array of T_sh or Q_gl_RF" 
+        end
+        params[:Q_gl_RF] = fullconfig[:Q_gl_RF]
+        params[:Tsh] = fullconfig[:Tsh]
+    end
 
     # --- Put callbacks together
     cbs = CallbackSet(cb1, cb2)

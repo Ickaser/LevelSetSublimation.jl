@@ -88,11 +88,12 @@ function make_artificial_params()
             
     # Very artificial parameters
     # Heat transfer
-    Q_gl = 1.0
-    Q_sh = 1.0
+    Kgl = 1.0
+    Kv = 1.0
     Q_ic = 1.0
     Q_ck = 0.0
     k = 1.0
+    m_cp_gl = 5.0
 
     # Mass transfer
     p_ch = 5 # 100 mTorr is about 13 Pa
@@ -114,7 +115,7 @@ function make_artificial_params()
 
 
     params = Dict{Symbol, Any}()
-    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, ΔH, ρf, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
+    @pack! params = Kgl, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, ρf, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
     return params
 end
 

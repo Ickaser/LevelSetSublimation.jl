@@ -4,7 +4,7 @@ export compute_frontvel_withT, compute_frontvel_mass, plot_frontvel
 """
     function compute_Qice(ϕ, T, p, dom::Domain, params)
 
-Compute the total heat input into frozen domain.
+Compute the total heat input into frozen domain. Also passes glass-ice heat as separate return.
 
 See p. 112-113 from paperlike notes. At pseudosteady conditions, all heat getting added to the system goes to the frozen domain,
 so we don't actually need to treat different areas of the surface.
@@ -13,59 +13,49 @@ In addition, the sublimation flux is simply evaluated on the top surface.
 """
 function compute_Qice(u, T, p, dom::Domain, params)
 
-    @unpack Q_sh, Q_ic, Q_gl, Q_ck, ΔH= params
-    ϕ, Tf = ϕ_T_from_u(u, dom)
+    @unpack ΔH= params
+    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)[1]
 
-    # Heat flux from shelf, at bottom of vial
-    # botsurf = compute_icesh_area(ϕ, dom)
-    # Qbot = botsurf * Q_sh
-    Qbot = π*dom.rmax^2 * Q_sh
-
-    # Heat flux from glass, at outer radius
-    # radsurf = compute_icegl_area(ϕ, dom)
-    # Qrad = radsurf * Q_gl
-    Qrad = 2π*dom.rmax*dom.zmax * Q_gl
-
-    # Volumetric heat in cake and ice
-    icevol = compute_icevol(ϕ, dom)
-    dryvol = π*dom.rmax^2*dom.zmax - icevol
-    Qvol = icevol * Q_ic + dryvol * Q_ck
+    Q_glshvol, Qgl = compute_Qice_noflow(u, T, dom, params)
 
     # Sublimation rate
     md = compute_topmassflux(u, T, p, dom, params)
-    # @info "mass flow" md/params[:ρf]
     Qsub = - md * ΔH
 
-    return Qbot + Qrad + Qvol + Qsub
+    return Q_glshvol + Qsub, Qgl
 end
 
 
 """
     compute_Qice_noflow(u, dom::Domain, params)
 
-Compute heat delivery to ice, assuming mass flow is zero.
+Compute heat delivery to ice, assuming mass flow is zero. Also passes glass-ice heat as separate return.
 """
-function compute_Qice_noflow(u, dom::Domain, params)
+function compute_Qice_noflow(u, T, dom::Domain, params)
 
-    @unpack Q_sh, Q_ic, Q_gl, Q_ck, ΔH= params
-    ϕ, Tf = ϕ_T_from_u(u, dom)
+    @unpack Kv, Kgl, Q_ic, Q_ck, ΔH, Tsh= params
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
     # botsurf = compute_icesh_area(ϕ, dom)
     # Qbot = botsurf * Q_sh
-    Qbot = π*dom.rmax^2 * Q_sh
+    rweights = ones(Float64, dom.nr)
+    rweights[begin] = rweights[end] = 0.5
+    Qsh = 2π* Kv * sum(rweights .* dom.rgrid .* (T[:,1] .- Tsh))
 
     # Heat flux from glass, at outer radius
     # radsurf = compute_icegl_area(ϕ, dom)
     # Qrad = radsurf * Q_gl
-    Qrad = 2π*dom.rmax*dom.zmax * Q_gl
+    zweights = ones(Float64, dom.nz)
+    zweights[begin] = zweights[end] = 0.5
+    Qgl = 2π*dom.rmax * Kgl * sum(zweights .* (T[end,:] .- Tgl))
 
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
     dryvol = π*dom.rmax^2*dom.zmax - icevol
     Qvol = icevol * Q_ic + dryvol * Q_ck
 
-    return Qbot + Qrad + Qvol
+    return Qsh + Qgl + Qvol, Qgl
 end
 
 """
@@ -365,7 +355,7 @@ The distinction between this and `compute_Tderiv` is just in boundary values.
 function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack p_ch = params
-    ϕ, Tf = ϕ_T_from_u(u, dom)
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     p_sub = calc_psub(Tf)
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
@@ -481,7 +471,7 @@ Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on 
 function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
 
     @unpack k, ΔH, ρf, ϵ = params
-    ϕ, Tf = ϕ_T_from_u(u, dom)
+    ϕ = ϕ_T_from_u(u, dom)[1]
 
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
