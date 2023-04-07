@@ -15,6 +15,19 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     @unpack ϕsol = simresults
     @unpack dom, cparams = simconfig
     params = deepcopy(cparams)
+
+    t_samp = get(simconfig, :t_samp, 0.0)
+    if length(t_samp) > 1
+        # Interpolation here
+        # Callback will change values in params at each ti in t_samp
+    else
+        if length(simconfig[:Q_gl_RF]) > 1 || length(simconfig[:Tsh]) > 1
+            @error "Need to pass `t_samp` if you have array of T_sh or Q_gl_RF" 
+        end
+        params[:Q_gl_RF] = simconfig[:Q_gl_RF]
+        params[:Tsh] = simconfig[:Tsh]
+    end
+    
     u = ϕsol(t)
     ϕ = ϕ_T_from_u(u, dom)[1]
     # p_sub = calc_psub(Tf)
