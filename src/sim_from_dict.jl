@@ -63,9 +63,10 @@ function ϕevol_RHS!(du, u, integ_pars, t)
     
     Qice, Qgl = compute_Qice(u, T, p, dom, params)
     dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
-    dTgldt = - Qgl / m_cp_gl
+    dTgldt = (Q_gl_RF - Qgl) / m_cp_gl
     du[ntot+1] = dTfdt
     du[ntot+2] = dTgldt
+    # @info "glass heating?" dTgldt Qgl
 
     # Compute dϕ/dt = - v ⋅ ∇ ϕ
     indmin = CI(1, 1)
@@ -164,9 +165,10 @@ function next_reinit_time(integ)
     B = identify_B(ϕ, dom)
     B⁻ = B .& (ϕ .<= 0)
     max_dϕdt = maximum(abs.(dϕ[B⁻]))
-    if max_dϕdt == 0 # If no sublimation is happening...
+    @unpack p_ch = integ.p[2]
+    # if max_dϕdt == 0 # If no sublimation is happening...
+    if calc_psub(Tf) < p_ch
         # Guess when it will start
-        @unpack p_ch = integ.p[2]
         # Find temperature such that p_sub = p_ch
         Tstart = Tf
         for i in 1:5
@@ -174,9 +176,10 @@ function next_reinit_time(integ)
             dpdT = pg - calc_psub(Tstart - 1)
             dT = -(pg-p_ch)/dpdT
             Tstart += dT
-            @info "Newton iter" Tstart i
+            # @info "Newton iter" Tstart i
         end
-        dt = (Tstart - Tf)/dTfdt * 1.05 # Overshoot slightly, to get into real drying behavior before next check time
+        dt = abs((Tstart - Tf)/dTfdt) * 1.05 # Overshoot slightly, to get into real drying behavior before next check time
+        @info "Sublimation stopped, estimating reinit." calc_psub(Tstart) calc_psub(Tf) p_ch dt dTfdt
         return integ.t + dt
     end
 
@@ -196,6 +199,20 @@ function cond_reinit(u, t, integ)
     tol = 1e-5 # Roughly dx^4
     @info "error from sdf" err-tol
     return err-tol
+end
+
+function input_measurements!(integ, t_samp, keys, simconfig)
+    if length(keys) == 0
+        return
+    end
+    ti = argmin(abs.(t_samp .- integ.t))
+    if !(integ.t ≈ t_samp[ti])
+        @error "Issue with time sampling"
+    end
+    params = integ.p[2]
+    for key in keys
+        params[key] = simconfig[key][ti]
+    end
 end
 
 """
@@ -289,25 +306,35 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
 
     # ------- Measured value callback, if necessary
     t_samp = get(fullconfig, :t_samp, 0.0)
+    @unpack Q_gl_RF, Tsh = fullconfig
     if length(t_samp) > 1
-        # Callbacks!!!!
-        # Callback will change values in params at each ti in t_samp
+        if length(Q_gl_RF) == length(t_samp) && length(Tsh) == length(t_samp)
+            keys = [:T_sh, :Q_gl_RF]
+        elseif length(Q_gl_RF) == length(t_samp)
+            keys = [:Q_gl_RF]
+        elseif length(Tsh) == length(t_samp)
+            keys = [:Tsh]
+        else
+            keys = []
+        end
+        meas_affect!(integ) = input_measurements(integ, t_samp, keys, fullconfig)
+
+
+        cb_meas = PresetTimeCallback(t_samp, meas_affect!, filter_stops=false)
+        cbs = CallbackSet(cb1, cb2, cb_meas)
     else
-        if length(fullconfig[:Q_gl_RF]) > 1 || length(fullconfig[:Tsh]) > 1
+        if length(Q_gl_RF) > 1 || length(Tsh) > 1
             @error "Need to pass `t_samp` if you have array of T_sh or Q_gl_RF" 
         end
         params[:Q_gl_RF] = fullconfig[:Q_gl_RF]
         params[:Tsh] = fullconfig[:Tsh]
+        cbs = CallbackSet(cb1, cb2)
     end
-
-    # --- Put callbacks together
-    cbs = CallbackSet(cb1, cb2)
 
     # --- Solve
     sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     # sol = solve(prob, SSPRK33(), dt=1e-4, callback=cbs; ) # Fixed timestepping
     # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
-    # sol = solve(prob, SSPRK43(), callback=cb2; ) # No reinit
     return Dict("ϕsol"=>sol)
 end
 

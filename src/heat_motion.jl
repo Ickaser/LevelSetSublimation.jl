@@ -41,7 +41,7 @@ function compute_Qice_noflow(u, T, dom::Domain, params)
     # Qbot = botsurf * Q_sh
     rweights = ones(Float64, dom.nr)
     rweights[begin] = rweights[end] = 0.5
-    Qsh = 2π* Kv * sum(rweights .* dom.rgrid .* (T[:,1] .- Tsh))
+    Qsh = 2π* Kv * sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
 
     # Heat flux from glass, at outer radius
     # radsurf = compute_icegl_area(ϕ, dom)
