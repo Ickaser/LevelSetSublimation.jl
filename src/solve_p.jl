@@ -2,14 +2,6 @@
 export solve_p_given_b
 export solve_p
 
-" Takes T as Kelvin, returns P in Pa"
-function calc_psub(T)
-    ai = [-0.212144006e2,  0.273203819e2,  -0.610598130e1]
-    bi = [0.333333333e-2,  0.120666667e1,  0.170333333e1]
-    θ = T/275.16
-    lnπ = sum(ai .* θ .^bi) / θ
-    exp(lnπ)*611.657
-end
 
 """
     eval_b(T, p, params)

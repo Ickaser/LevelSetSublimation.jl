@@ -201,18 +201,20 @@ function cond_reinit(u, t, integ)
     return err-tol
 end
 
-function input_measurements!(integ, t_samp, keys, simconfig)
-    if length(keys) == 0
-        return
-    end
+
+function input_measurements!(integ, meas_keys::Vector, controls)
+    t_samp = controls[:t_samp]
     ti = argmin(abs.(t_samp .- integ.t))
     if !(integ.t ≈ t_samp[ti])
-        @error "Issue with time sampling"
+        @error "Issue with time sampling" integ.t t_samp[ti]
     end
     params = integ.p[2]
-    for key in keys
-        params[key] = simconfig[key][ti]
+    for key in meas_keys
+        params[key] = controls[key][ti]
     end
+end
+
+function input_measurements!(integ, meas_keys::Nothing, controls)
 end
 
 """
@@ -228,24 +230,28 @@ Maximum simulation time is specified by `tf`.
 - `dom`, an instance of [`Domain`](@ref)
 - `Tf0`, an initial ice temperature
 - `Tgl0`, an initial glass temperature (if the same as Tf0, can leave this out)
-- `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
-- `Q_RF_gl`, glass RF heating. Scalar or array, like Tsh
-- `t_samp`, sampled measurement times. Needed only if `T_sh` and `Q_RF_gl` are arrays
+- `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
+    - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
+    - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
+    - `Q_RF_gl`, glass RF heating. Scalar or array, like Tsh
+    - `Q_ic`, ice RF heating. 
+    - `p_ch` : pressure at top of cake
 - `cparams`, which in turn has fields
-    - `Kgl`, `Kv` : heat transfer coefficients from glass and shelf, respectively
-    - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
+    - `Kgl`, 
+    - `Kv` : heat transfer coefficients shelf
+    - `Q_ck` : volumetric heating in ice and cake, respectively
     - `k`: thermal conductivity of cake
     - `m_cp_gl` total thermal mass of ice, relevant to heating/cooling of glass wall
     - `ρf`: density of ice
     - `Cpf`: heat capacity of ice
     - `ΔH` : heat of sublimation of ice
-    - `p_ch` : pressure at top of cake
     - `ϵ` : porosity of porous medium
     - `l` : dusty gas model constant: characteristic length for Knudsen diffusion
     - `κ` : dusty gas model constant: length^2 corresponding loosely to Darcy's Law permeability
-    - `R` : universal gas constant, with appropriate units 
     - `Mw`: molecular weight of species (water), with appropriate units
     - `μ` : dynamic viscosity of species (water), with appropriate units
+
+During simulation, at each value of `t_samp`, the values of any `controls` which are arrays will be added to an internal dict called `params`.
 
 If you pass in an array of values for multiple of `Tsh`, `Q_RF_gl`, or others, they must all have the same length as `t_samp`.
 
@@ -257,10 +263,9 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack cparams, ϕ0type, dom, Tf0 = fullconfig
+    @unpack cparams, ϕ0type, dom, Tf0, controls = fullconfig
     Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
 
-    params = deepcopy(cparams)
 
     ϕ0 = make_ϕ0(ϕ0type, dom)
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000) # Don't reinit if using IterativeCallback
@@ -278,10 +283,13 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     # Cached array for using last pressure state as guess
     p_last = fill(p_sub, size(dom))
 
+    # ----- Set up parameters dictionary and measurement callback
+    params, meas_keys = params_setup(cparams, controls)
+    meas_affect!(integ) = input_measurements!(integ, meas_keys, fullconfig)
+    cb_meas = PresetTimeCallback(controls[:t_samp], meas_affect!, filter_tstops=false)
+
     # ---- Set up ODEProblem
-    # prob_pars = (dom, params)
     prob_pars = (dom, params, p_last)
-    # @info "check" prob_pars[3]
     tspan = (0, tf)
     prob = ODEProblem(ϕevol_RHS!, u0, tspan, prob_pars)
 
@@ -289,12 +297,11 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
 
     # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
     if verbose
-        cb1 = IterativeCallback(next_reinit_time, x->reinit_wrap(x, verbose=true),  initial_affect = true)
+        cb_reinit = IterativeCallback(next_reinit_time, x->reinit_wrap(x, verbose=true),  initial_affect = true)
     else
-        cb1 = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
+        cb_reinit = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
     end
 
-    # cb1 = ContinuousCallback(cond_reinit, reinit_wrap)
 
     # --- Set up simulation end callback
 
@@ -302,34 +309,10 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     cond_end(u, t, integ) = minimum(u) 
     # ContinuousCallback gets thrown when `cond` evaluates to 0
     # `terminate!` ends the solve there
-    cb2 = ContinuousCallback(cond_end, terminate!)
+    cb_end = ContinuousCallback(cond_end, terminate!)
 
-    # ------- Measured value callback, if necessary
-    t_samp = get(fullconfig, :t_samp, 0.0)
-    @unpack Q_gl_RF, Tsh = fullconfig
-    if length(t_samp) > 1
-        if length(Q_gl_RF) == length(t_samp) && length(Tsh) == length(t_samp)
-            keys = [:T_sh, :Q_gl_RF]
-        elseif length(Q_gl_RF) == length(t_samp)
-            keys = [:Q_gl_RF]
-        elseif length(Tsh) == length(t_samp)
-            keys = [:Tsh]
-        else
-            keys = []
-        end
-        meas_affect!(integ) = input_measurements(integ, t_samp, keys, fullconfig)
-
-
-        cb_meas = PresetTimeCallback(t_samp, meas_affect!, filter_stops=false)
-        cbs = CallbackSet(cb1, cb2, cb_meas)
-    else
-        if length(Q_gl_RF) > 1 || length(Tsh) > 1
-            @error "Need to pass `t_samp` if you have array of T_sh or Q_gl_RF" 
-        end
-        params[:Q_gl_RF] = fullconfig[:Q_gl_RF]
-        params[:Tsh] = fullconfig[:Tsh]
-        cbs = CallbackSet(cb1, cb2)
-    end
+    # ------- Put together callbacks 
+    cbs = CallbackSet(cb_reinit, cb_end, cb_meas)
 
     # --- Solve
     sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default

@@ -13,19 +13,19 @@ If given, `maxT` sets an upper limit for the associated colorbar.
 """
 function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
     @unpack ϕsol = simresults
-    @unpack dom, cparams = simconfig
-    params = deepcopy(cparams)
+    @unpack dom, cparams, controls = simconfig
+    
+    params, meas_keys = params_setup(cparams, controls)
 
-    t_samp = get(simconfig, :t_samp, 0.0)
-    if length(t_samp) > 1
+    t_samp = get(controls, :t_samp, 0.0)
+    if meas_keys !== nothing
         # Interpolation here
-        # Callback will change values in params at each ti in t_samp
-    else
-        if length(simconfig[:Q_gl_RF]) > 1 || length(simconfig[:Tsh]) > 1
-            @error "Need to pass `t_samp` if you have array of T_sh or Q_gl_RF" 
+        tip = findfirst(t_samp .> t)
+        tip = clamp(tip, 2, length(t_samp))
+        tim = tip - 1
+        for ki in meas_keys
+            params[ki] = (controls[ki][tip] - controls[ki][tim]) / (t_samp[tip] - t_samp[tim]) * (t - t_samp[tim])
         end
-        params[:Q_gl_RF] = simconfig[:Q_gl_RF]
-        params[:Tsh] = simconfig[:Tsh]
     end
     
     u = ϕsol(t)

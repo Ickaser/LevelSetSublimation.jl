@@ -1,5 +1,6 @@
 export make_artificial_params, make_decent_params
 export make_ϕ0
+export params_setup
 
 """
     make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
@@ -44,6 +45,32 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
 end
 
 """
+    params_setup(cparams, controls)
+    
+Return a copied `params` dictionary and list of keys from `controls` 
+to be updated at each time sampled point.
+"""
+function params_setup(cparams, controls)
+    params = deepcopy(cparams)
+    arr_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])>1)]
+    sc_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])==1)]
+    for ki in sc_keys
+        params[ki] = controls[ki]
+    end
+    for ki in arr_keys
+        if length(controls[ki]) != length(controls[:t_samp])
+            @error "Improper length of measurement vector. Must match time vector length." ki length(controls[ki]) length(controls[:t_samp])
+        end
+        params[ki] = controls[ki][1]
+    end
+    if length(arr_keys) == 0
+        arr_keys = nothing
+    end
+    return params, arr_keys
+end
+
+
+"""
     make_decent_params()
 
 Return a dictionary of `params`, with values corresponding to SI units
@@ -52,29 +79,6 @@ In theory, gives physical values of parameters. Haven't actually done that, thou
 Also, currently broken.
 """
 function make_decent_params()
-    Q_gl = 2.0  # heat flux from glass
-    Q_sh = 1.0  # heat flux from shelf
-    Q_ic = 1.0  # volumetric heat in ice
-    Q_ck = 0.0  # volumetric heat in cake
-    k = 1.0     # cake thermal conductivity
-    Tf = 250.0  # constant ice temperature
-    ΔH = 10.0   # heat of sublimation
-    # ΔHsub = 678.0 # u"cal/g"
-    # ΔHsub = 2.837e9 # u"J/kg"
-    ρf = 920    # density of ice
-    params = Dict{Symbol, Any}()
-    " Takes T as Kelvin, returns P in Pa"
-    function calc_psub(T)
-        ai = [-0.212144006e2,  0.273203819e2,  -0.610598130e1]
-        bi = [0.333333333e-2,  0.120666667e1,  0.170333333e1]
-        θ = T/275.16
-        lnπ = sum(ai .* θ .^bi) / θ
-        exp(lnπ)*611.657
-    end
-    Rw = 8.3145 / .018 # J/molK * mol/kg
-    calc_ρvap(T) = calc_psub(T)/Rw/T # compute density of vapor
-    @pack! params = Q_gl, Q_sh, Q_ic, Q_ck, k, Tf, ΔH, ρf
-    return params
 end
         
 """

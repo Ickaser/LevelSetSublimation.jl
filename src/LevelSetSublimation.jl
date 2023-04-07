@@ -5,6 +5,7 @@ using DrWatson, Reexport
 @reexport using DifferentialEquations
 @reexport using Contour  
 @reexport using Plots
+@reexport using Unitful
 
 export contour
 if !isdefined(LevelSetSublimation, :contour)
@@ -19,6 +20,7 @@ include(srcdir("levelset_plots.jl"))
 include(srcdir("levelset_reinit.jl"))
 include(srcdir("levelset_advect.jl"))
 include(srcdir("solve_T.jl"))
+include(srcdir("physical_data.jl"))
 include(srcdir("solve_p.jl"))
 include(srcdir("heat_motion.jl"))
 include(srcdir("sim_setup.jl"))
