@@ -113,7 +113,7 @@ function ϕevol_RHS!(du, u, integ_pars, t)
         dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
     end
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" -Qgl Tf-Tgl dTgldt Qice
+    # @info "prog: t=$t, dryfrac=$dryfrac" maximum(dϕ)
     return nothing
 end
 
@@ -182,7 +182,7 @@ next_reinit_time(integ)
 Compute the next time reinitialization should be necessary, given the current integrator state.
 Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 """
-function next_reinit_time(integ)
+function next_reinit_time(integ; verbose=false)
     dom = integ.p[1]
     du = similar(integ.u)
     ϕevol_RHS!(du, integ.u, integ.p, integ.t)
@@ -218,11 +218,21 @@ function next_reinit_time(integ)
     end
 
     # Reinit next when interface should have moved across half of band around interface 
-    domfrac = min(0.5 * dom.bwfrac, 0.1) # Minimum of 0.5 of the band, or 0.1 of domain size.
-    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax, integ.t*max_dϕdt + dom.dz)  # Also: at early times, do more often
-    dt = minlen / max_dϕdt 
+    domfrac = 0.1 # Should reinit roughly 10-15 times during simulation
+    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax)  # Also: at early times, do more often
+    dt = minlen / max_dϕdt
+    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    if dryfrac < domfrac || integ.t < 1000
+        # dt = dt^(1//3) # Reinit more often in early stages
+        dt = clamp(dt, 1, 100)
+    end
     # dt = 0.5 * minlen / max_dϕdt 
     # @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+    if verbose
+        # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tgl minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+    end
+
     return integ.t + dt
 end
 
@@ -295,7 +305,7 @@ If you are getting a warning about instability, it can sometimes be fixed by tin
 
 
 """
-function sim_from_dict(fullconfig; tf=100, verbose=false)
+function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # ------------------- Get simulation parameters
 
@@ -333,7 +343,7 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     u0[dom.ntot+1] = Tf0 
     u0[dom.ntot+2] = Tgl0 
     p_sub = calc_psub(Tf0)
-    @info "Initial Tf:" Tf0 p_sub
+    # @info "Initial Tf:" Tf0 p_sub
 
     # Cached array for using last pressure state as guess
     p_last = fill(p_sub, size(dom))
@@ -350,11 +360,12 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     # --- Set up reinitialization callback
 
     # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
-    if verbose
-        cb_reinit = IterativeCallback(next_reinit_time, x->reinit_wrap(x, verbose=true),  initial_affect = true)
-    else
-        cb_reinit = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
-    end
+    cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose=verbose), reinit_wrap,  initial_affect = true)
+    # if verbose
+    #     cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose), x->reinit_wrap(x, verbose=true),  initial_affect = true)
+    # else
+    #     cb_reinit = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
+    # end
 
 
     # --- Set up simulation end callback

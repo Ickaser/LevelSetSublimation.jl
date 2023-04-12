@@ -126,7 +126,7 @@ function make_default_params()
             
     # Very artificial parameters
     # Heat transfer
-    Kgl = 1e3 *u"W/K/m^2" # 1/(Contact resistance 1e-4 + cylindrical resistance from outer wall 1e-3 to 1e-5)
+    Kgl = 1e2 *u"W/K/m^2" # 1/(Contact resistance 1e-4 + cylindrical resistance from outer wall 1e-3 to 1e-5)
     Kv = 20 * u"W/K/m^2"
     Q_ic = 0.3u"W/cm^3"
     Q_ck = 0.0u"W/m^3"

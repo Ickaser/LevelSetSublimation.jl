@@ -52,7 +52,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     tr = round(t, sigdigits=3)
     local pl = plot(aspect_ratio=:equal)
     plot_cylheat(heatvar_vals, dom; maxT=maxT)
-    cont_c = (argmin(heatvar_vals) > argmax(heatvar_vals)) ? :white : :black
+    cont_c = (argmin(heatvar_vals) > argmax(heatvar_vals)) ? :black : :white
     plot_cylcont(ϕ, dom, c=cont_c)
     # Plots.contour!(dom.rgrid, dom.zgrid, ϕ')
     plot!(title="timestep=$tr")

@@ -319,10 +319,10 @@ function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit
         p0 = p⁺
     end
     @info "Reached maximum iterations in p:" relerr maxit p⁺ T 
-    pl1 = heat(T, dom)
-    plot_contour(ϕ, dom)
-    pl2 = heat(p⁺, dom)
-    plot_contour(ϕ, dom)
-    display(plot(pl1, pl2))
+    # pl1 = heat(T, dom)
+    # plot_contour(ϕ, dom)
+    # pl2 = heat(p⁺, dom)
+    # plot_contour(ϕ, dom)
+    # display(plot(pl1, pl2))
     return p⁺
 end
