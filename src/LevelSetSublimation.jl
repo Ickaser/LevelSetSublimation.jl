@@ -6,6 +6,8 @@ using DrWatson, Reexport
 @reexport using Contour  
 @reexport using Plots
 @reexport using Unitful
+using CSV
+using ProgressMeter
 
 export contour
 if !isdefined(LevelSetSublimation, :contour)
@@ -16,6 +18,7 @@ const CI = CartesianIndex
 # Export statements belong in each source file below.
 
 include(srcdir("structs.jl"))
+include(srcdir("get_vial_dims.jl"))
 include(srcdir("levelset_plots.jl"))
 include(srcdir("levelset_reinit.jl"))
 include(srcdir("levelset_advect.jl"))

@@ -52,6 +52,7 @@ function ϕevol_RHS!(du, u, integ_pars, t)
         dϕ .= 0.0
         du[ntot+1] = dTfdt
         du[ntot+2] = dTgldt
+        # @info "prog nosub"  Tgl Qgl Q_gl_RF dTgldt t
         return nothing
     end
 
@@ -97,8 +98,10 @@ function ϕevol_RHS!(du, u, integ_pars, t)
 
         rcomp = dϕdr*vr[ind]
         zcomp = dϕdz*vz[ind]
-        dϕ[ind] = -rcomp - zcomp
+        dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
     end
+    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    @info "prog: t=$t, dryfrac=$dryfrac, minmax=$(extrema(dϕ))" 
     return nothing
 end
 
@@ -109,7 +112,7 @@ end
     
 Compute the time derivative of `u` with given parameters.
 
-`u` has `dom.ntot` entries for `ϕ` and one for `Tf`.
+`u` has `dom.ntot` entries for `ϕ` and one each for `Tf` and `Tgl`.
 
 Wraps a call on `ϕevol_RHS!`, for convenience in debugging and elsewhere that efficiency is less important
 """
@@ -125,8 +128,22 @@ function ϕevol_RHS(u, dom::Domain, params)
     ϕevol_RHS!(du, u, integ_pars, 0.0)
     return du
 end
-function ϕevol_RHS(u, config)
-    ϕevol_RHS(u, config[:dom], config[:params])
+function ϕevol_RHS(u, config, t=0)
+    @unpack vialsize, fillvol = config
+    simgridsize = get(config, :simgridsize, (51,51))
+
+    # --------- Set up simulation domain
+    r_vial = get_vial_rad(vialsize)
+    z_fill = fillvol / π / r_vial^2
+
+    rmax = ustrip(u"m", r_vial)
+    zmax = ustrip(u"m", z_fill)
+
+    dom = Domain(simgridsize..., rmax, zmax)
+
+    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
+
+    ϕevol_RHS(u, dom, params)
 end
 
 """
@@ -164,7 +181,12 @@ function next_reinit_time(integ)
     dϕ, dTfdt, dTgldt = ϕ_T_from_u(du, dom)
     B = identify_B(ϕ, dom)
     B⁻ = B .& (ϕ .<= 0)
-    max_dϕdt = maximum(abs.(dϕ[B⁻]))
+    # @info "something's up" ϕ dϕ B sum(B⁻)
+    if sum(B⁻) > 0
+        max_dϕdt = maximum(abs.(dϕ[B⁻]))
+    else
+        max_dϕdt = maximum(abs.(dϕ))
+    end
     @unpack p_ch = integ.p[2]
     # if max_dϕdt == 0 # If no sublimation is happening...
     if calc_psub(Tf) < p_ch
@@ -188,7 +210,7 @@ function next_reinit_time(integ)
     minlen = min(domfrac*dom.rmax , domfrac*dom.zmax, integ.t*max_dϕdt + dom.dz)  # Also: at early times, do more often
     dt = minlen / max_dϕdt 
     # dt = 0.5 * minlen / max_dϕdt 
-    # @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+    @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
     return integ.t + dt
 end
 
@@ -220,26 +242,28 @@ end
 """
     sim_from_dict(fullconfig; tf=100, verbose=false)
 
-Given a simulation configuration `fullconfig`, run a simulation
+Given a simulation configuration `fullconfig`, run a simulation.
 
 Maximum simulation time is specified by `tf`.
 `verbose=true` will put out some info messages about simulation progress, i.e. at each reinitialization.
 
 `fullconfig` should have the following fields:
 - `ϕ0type`, types listed for [`make_ϕ0`](@ref)
-- `dom`, an instance of [`Domain`](@ref)
-- `Tf0`, an initial ice temperature
+- `fillvol`, fill volume with Unitful units (e.g. `3u"mL"`)
+- `vialsize`, a string (e.g. `"2R"`) giving vial size
+- `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
+- `Tf0`, an initial ice temperature with Unitful units 
 - `Tgl0`, an initial glass temperature (if the same as Tf0, can leave this out)
 - `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
     - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
     - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
-    - `Q_RF_gl`, glass RF heating. Scalar or array, like Tsh
+    - `Q_gl_RF`, glass RF heating. Scalar or array, like Tsh
     - `Q_ic`, ice RF heating. 
     - `p_ch` : pressure at top of cake
-- `cparams`, which in turn has fields
+- `cparams`, which in turn has fields with Unitful units
     - `Kgl`, 
     - `Kv` : heat transfer coefficients shelf
-    - `Q_ck` : volumetric heating in ice and cake, respectively
+    - `Q_ck` : volumetric heating in cake 
     - `k`: thermal conductivity of cake
     - `m_cp_gl` total thermal mass of ice, relevant to heating/cooling of glass wall
     - `ρf`: density of ice
@@ -253,7 +277,7 @@ Maximum simulation time is specified by `tf`.
 
 During simulation, at each value of `t_samp`, the values of any `controls` which are arrays will be added to an internal dict called `params`.
 
-If you pass in an array of values for multiple of `Tsh`, `Q_RF_gl`, or others, they must all have the same length as `t_samp`.
+If you pass in an array of values for multiple of `Tsh`, `Q_gl_RF`, or others, they must all have the same length as `t_samp`.
 
 If you are getting a warning about instability, it can sometimes be fixed by tinkering with the reinitialization behavior.
 
@@ -263,8 +287,27 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack cparams, ϕ0type, dom, Tf0, controls = fullconfig
+    @unpack cparams, ϕ0type, Tf0, controls, vialsize, fillvol = fullconfig
+
+    # Default values for non-essential parameters
     Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    simgridsize = get(fullconfig, :simgridsize, (51,51))
+
+    # --------- Set up simulation domain
+    r_vial = get_vial_rad(vialsize)
+    z_fill = fillvol / π / r_vial^2
+
+    rmax = ustrip(u"m", r_vial)
+    zmax = ustrip(u"m", z_fill)
+
+    dom = Domain(simgridsize..., rmax, zmax)
+
+    # ----- Nondimensionalize everything
+
+    Tf0 = ustrip(u"K", Tf0)
+    Tgl0 = ustrip(u"K", Tgl0)
+    params, meas_keys, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
+    
 
 
     ϕ0 = make_ϕ0(ϕ0type, dom)
@@ -284,9 +327,8 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     p_last = fill(p_sub, size(dom))
 
     # ----- Set up parameters dictionary and measurement callback
-    params, meas_keys = params_setup(cparams, controls)
-    meas_affect!(integ) = input_measurements!(integ, meas_keys, fullconfig)
-    cb_meas = PresetTimeCallback(controls[:t_samp], meas_affect!, filter_tstops=false)
+    meas_affect!(integ) = input_measurements!(integ, meas_keys, ncontrols)
+    cb_meas = PresetTimeCallback(ncontrols[:t_samp], meas_affect!, filter_tstops=true)
 
     # ---- Set up ODEProblem
     prob_pars = (dom, params, p_last)
@@ -318,7 +360,7 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     # sol = solve(prob, SSPRK33(), dt=1e-4, callback=cbs; ) # Fixed timestepping
     # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
-    return Dict("ϕsol"=>sol)
+    return @strdict sol dom
 end
 
 

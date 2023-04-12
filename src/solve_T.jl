@@ -138,7 +138,13 @@ function solve_T(u, dom::Domain, params)
             # Check for Stefan boundary
             eϕ = ϕ[ir+1, iz]
             wϕ = ϕ[ir-1, iz]
-            if eϕ <= 0 # East ghost cell, across front
+            if eϕ <= 0 && wϕ <= 0
+                # Pretend in bulk, rather than treat two ghost cells. THis is a rare case
+                ec +=  k*(1.0dr2 + 0.5dr1*r1)
+                pc += -k*(2.0dr2)
+                wc +=  k*(1.0dr2 - 0.5dr1*r1)
+                rhs[imx] += 0
+            elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
                 if θr >= θ_thresh
                     pc += -2k*dr2 # Regular 
@@ -229,7 +235,13 @@ function solve_T(u, dom::Domain, params)
         else # Bulk in z, still need to check for Stefan front
             nϕ = ϕ[ir, iz+1]
             sϕ = ϕ[ir, iz-1]
-            if nϕ <= 0
+            if nϕ <= 0 && sϕ <= 0
+                # Pretend in bulk, rather than treat two ghost cells. Rare case
+                sc +=  k*1.0dz2
+                pc += -k*2.0dz2
+                nc +=  k*1.0dz2
+                rhs[imx] += 0
+            elseif nϕ <= 0
                 # stefan_debug = true
                 θz = pϕ / (pϕ - nϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, north")

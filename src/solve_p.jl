@@ -21,7 +21,7 @@ If `κ=0`, no spatial variation due to pressure occurs.
 """
 function eval_b(T, p, params)
     @unpack ϵ, l, κ, R, Mw, μ = params
-    b = @. 1/R/T/Mw * (l*sqrt(R*max(T,1)/Mw) + κ/μ*p)
+    b = @. Mw/R/T * (l*sqrt(R*max(T,1)/Mw) + κ/μ*p)
 end
 
 """
@@ -150,10 +150,18 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
             dbr = (b[ir+1, iz]-b[ir-1, iz])*0.5*dr1
             eϕ = ϕ[ir+1, iz]
             wϕ = ϕ[ir-1, iz]
-            if eϕ <= 0 # East ghost cell, across front
+            if eϕ <= 0 && wϕ <= 0
+                # Pretend is in bulk, rather than treating with two ghost cells
+                ec +=  bp*(1.0dr2 + 0.5dr1*r1) + dbr*0.5dr1
+                pc += -bp*(2.0dr2)
+                wc +=  bp*(1.0dr2 - 0.5dr1*r1) - dbr*0.5dr1
+                rhs[imx] += 0
+
+            elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
                 if θr >= θ_thresh
-                    pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/(θr+1)
+                    # @info "hmm, east" θr dr ir iz
+                    pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/θr
                     wc += -bp*(0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
                     rhs[imx] -= p_sub*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else
@@ -224,7 +232,13 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
             nϕ = ϕ[ir, iz+1]
             sϕ = ϕ[ir, iz-1]
             dbz = (b[iz+1]-b[iz-1])*0.5*dz1
-            if nϕ <= 0 # North ghost cell
+            if nϕ <= 0 && sϕ <= 0
+                # Pretend is in bulk, rather than two ghost cells
+                sc +=  bp*(1.0dz2) - dbz*0.5dz1
+                pc += -bp*(2.0dz2) 
+                nc +=  bp*(1.0dz2) + dbz*0.5dz1
+                rhs[imx] += 0
+            elseif nϕ <= 0 # North ghost cell
                 θz = pϕ / (pϕ - nϕ)
                 if θz >= θ_thresh
                     pc += (dbz*(θz-1)*dz1 - bp*(θz+1)*dz2 )/θz
@@ -243,7 +257,6 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                     nc += bp*dz2 + dbz*0.5dz1
                     rhs[imx] -= p_sub*(bp*dz2 - dbz*0.5dz1)/θz
                 else
-                    # @info "hmm, south" θz dz ir iz
                     pc += -2bp*dz2
                     nc += (2*bp*θz*dz2 + dbz*dz1)/(θz+1)
                     rhs[imx] -= p_sub*(2bp*dz2 - dbz*dz1)/(θz+1)

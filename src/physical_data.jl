@@ -29,7 +29,7 @@ From Feistel and Wagner, 2006
 """
 function calc_psub(T)
     if clamp(T, 20.0, 273.0) != T
-        @warn "Invalid temperature for sublimation pressure correlation. Should be between 20 and 273 K" T
+        # @warn "Invalid temperature for sublimation pressure correlation. Should be between 20 and 273 K" T
     end
     η = sum(psub_ei .* (T/psub_Tt) .^ (0:6))
     lnπ = 1.5log(T/psub_Tt) + (1 - psub_Tt/T) * η
@@ -39,7 +39,7 @@ end
 # Heat of sublimation ----------
 # Approximate: coresponds to 254K or 225K
 # From Feistel and Wagner, 2006
-const ΔH = 2.838e4 * u"kJ/kg"
+const ΔH = 2838.0 * u"kJ/kg"
 
 # Water vapor viscosity in dilute limit ---------------
 # From Hellmann and Vogel, 2015
@@ -86,7 +86,7 @@ const k_gl = 1.0u"W/m/K"
 
 # Glass heat capacity
 # Rough estimate from Bansal and Doremus 1986, "Handbook of Glass Properties
-const cp_gl = 8.0u"W/kg/K"
+const cp_gl = 8.0u"J/kg/K"
 
 # Typical value of porosity, heuristically
 const ϵ_typical = 0.92

@@ -1,4 +1,4 @@
-export compute_Qice, compute_icesurf
+export compute_Qice, compute_icesurf, compute_icevol
 export compute_frontvel_withT, compute_frontvel_mass, plot_frontvel
 
 """
@@ -22,6 +22,8 @@ function compute_Qice(u, T, p, dom::Domain, params)
     md = compute_topmassflux(u, T, p, dom, params)
     Qsub = - md * ΔH
 
+    # @info "Q" Q_glshvol Qgl Qsub
+
     return Q_glshvol + Qsub, Qgl
 end
 
@@ -39,21 +41,23 @@ function compute_Qice_noflow(u, T, dom::Domain, params)
     # Heat flux from shelf, at bottom of vial
     # botsurf = compute_icesh_area(ϕ, dom)
     # Qbot = botsurf * Q_sh
-    rweights = ones(Float64, dom.nr)
+    rweights = ones(Float64, dom.nr) 
     rweights[begin] = rweights[end] = 0.5
-    Qsh = 2π* Kv * sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
+    Qsh = 2π* Kv * dom.dr* sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
 
     # Heat flux from glass, at outer radius
     # radsurf = compute_icegl_area(ϕ, dom)
     # Qrad = radsurf * Q_gl
-    zweights = ones(Float64, dom.nz)
+    zweights = ones(Float64, dom.nz) 
     zweights[begin] = zweights[end] = 0.5
-    Qgl = 2π*dom.rmax * Kgl * sum(zweights .* (T[end,:] .- Tgl))
+    Qgl = 2π*dom.rmax * Kgl * dom.dz * sum(zweights .* ( Tgl .- T[end,:]))
 
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
     dryvol = π*dom.rmax^2*dom.zmax - icevol
     Qvol = icevol * Q_ic + dryvol * Q_ck
+    
+    # @info "Q" Tsh Tf Qsh Qgl Qvol icevol
 
     return Qsh + Qgl + Qvol, Qgl
 end
@@ -63,8 +67,9 @@ end
 """
 function compute_topmassflux(u, T, p, dom::Domain, params)
     dpdz = [compute_pderiv(u, p, ir, dom.nz, dom, params)[4] for ir in 1:dom.nr]
-    b = eval_b(T, p, params)[:,1]
+    b = eval_b(T, p, params)[:,end] # all r, top of z
     md = - 2π * sum(dpdz .*b .* dom.rgrid) * dom.dr
+    # @info "massflux" dpdz b md 1/dom.dz
     return md
 end
 
@@ -114,7 +119,7 @@ function compute_icegl_area(ϕ, dom::Domain)
             outsurf += outcoeff
         elseif (seg[1] <= 0) ⊻ (seg[2] <= 0)  # ⊻ xor: part of segment in ice
             ϕneg, ϕpos = minmax(seg...)
-            θ = ϕpos / (ϕpos - ϕneg)
+            θ = ϕneg / (ϕneg - ϕpos) # Inverted from our ghost cells- we want the negative part
             outsurf += θ*outcoeff
         end
     end
@@ -152,8 +157,19 @@ function compute_icevol(ϕ, dom::Domain)
             # Compute volume of cone slice: cone minus the top chunk
             rmin, rmax = minmax(r1, r2)
             dr = rmax - rmin # Absoluate value
-            h = abs(zs[i+1] - zs[i])
-            vol = 2π*h*(dr^2/3 + dr*rmin + rmax^2)
+            if dr != 0 # Cone
+                h = abs(z2 - z1)
+                H = rmax*h/dr
+                vol = π/3 * (H*rmax^2 - (H-h)*rmin^2)
+            else # Cylinder
+                vol = π*rmax^2*abs(z2-z1)
+            end
+
+
+            # dr = r2 - r1
+            # dz = z2 - z1
+            # vol = abs(π*dz*(dr^2 *1/3 + dr*r1 + r1^2))
+
 
             # If cone contains ice, add to volume.
             # If cone contains air, subtract, because surrounded by other ice.
@@ -182,12 +198,13 @@ function compute_icevol(ϕ, dom::Domain)
                         totvol -= vol
                     end
                 else   # Case 5: left to right, slope matters for in or out
-                    slope = (r2-r1)/(z2-z1)
+                    slope = (z2-z1)/(r2-r1)
                     totvol += vol * sign(ϕ[mi] * slope)
                 end
             else
                 @warn "Didn't get a case match for volume" ij1 ij2 vol
             end
+            # @info "during" totvol vol m mi r1 r2 z1 z2
         end
     end
     return totvol

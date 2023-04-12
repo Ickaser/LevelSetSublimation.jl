@@ -12,23 +12,23 @@ Unpack simulation results and plot the state at time `t`.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
 function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
-    @unpack ϕsol = simresults
-    @unpack dom, cparams, controls = simconfig
+    @unpack sol, dom = simresults
+    @unpack cparams, controls = simconfig
     
-    params, meas_keys = params_setup(cparams, controls)
+    params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
 
-    t_samp = get(controls, :t_samp, 0.0)
+    t_samp = get(ncontrols, :t_samp, 0.0)
     if meas_keys !== nothing
         # Interpolation here
         tip = findfirst(t_samp .> t)
         tip = clamp(tip, 2, length(t_samp))
         tim = tip - 1
         for ki in meas_keys
-            params[ki] = (controls[ki][tip] - controls[ki][tim]) / (t_samp[tip] - t_samp[tim]) * (t - t_samp[tim])
+            params[ki] = (ncontrols[ki][tip] - ncontrols[ki][tim]) / (t_samp[tip] - t_samp[tim]) * (t - t_samp[tim])
         end
     end
     
-    u = ϕsol(t)
+    u = sol(t)
     ϕ = ϕ_T_from_u(u, dom)[1]
     # p_sub = calc_psub(Tf)
     T = solve_T(u, dom, params)
@@ -49,7 +49,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     plot_cylcont(ϕ, dom, c=:white)
     # Plots.contour!(dom.rgrid, dom.zgrid, ϕ')
     plot!(title="timestep=$tr")
-    return pl
+    return pl, extrema(heatvar_vals)
 end
 
 """
@@ -57,26 +57,38 @@ end
 
 Return a 2x3 plot of simulation results from start to finish.
 
-`simresults` should have a field `"ϕsol"` , which is passed to `get_ϕ(ϕsol, t, dom::Domain)` .  
+`simresults` should have a field `"sol"` , which is passed to `get_ϕ(sol, t, dom::Domain)` .  
 `heatvar` determines what is plotted as a heatmap in the results (`:T` or `:ϕ`, currently.)
 """
 function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
-    @unpack ϕsol = simresults
-    @unpack dom, cparams= simconfig
+    @unpack sol = simresults
 
-    tf = ϕsol.t[end]
+    tf = sol.t[end]
 
     plots = []
     nplots = prod(layout)
     frames = range(0.0, tf, length=nplots)
 
-    # T_nm1 = solve_T(ϕsol(frames[end-1]), dom, cparams)
+    max_heat = 250.0
+    min_heat = 250.0
+
+    # T_nm1 = solve_T(sol(frames[end-1]), dom, cparams)
     # maxT = maximum(T_nm1)
 
     for f in frames
         # p = plotframe(f, simresults, simconfig, maxT=maxT, heatvar=heatvar)
-        p = plotframe(f, simresults, simconfig, heatvar=heatvar)
+        p, ext_heat = plotframe(f, simresults, simconfig, heatvar=heatvar)
+        if f == 0
+            min_heat, max_heat = ext_heat
+        else
+            min_heat = min(min_heat, ext_heat[1])
+            max_heat = max(max_heat, ext_heat[2])
+        end
         push!(plots, p)
+    end
+
+    for p_i in plots
+        plot!(p_i, clims=(min_heat, max_heat))
     end
 
     bigplot = plot(plots..., size=(500*layout[2], 200*layout[1]), layout=layout)
@@ -89,34 +101,17 @@ Generate a .gif of the given simresults, with filename `casename_heatvar_evol.gi
 
 Pass either `:p` or `:T` as `heatvar`. Passing `ϕ` will probably cause filename problems
 
-TODO: generate names in the style of `produce_or_load`.
 """
 function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T)
-    @unpack ϕsol = simresults
-    @unpack dom, cparams= simconfig
+    @unpack sol, dom = simresults
+    @unpack cparams= simconfig
 
-    tf = ϕsol.t[end]
-
-    # Maximum T for plotting
-    # ϕ = reshape(ϕsol(0.9*tf), dom.nr, dom.nz)
-    # T = solve_T(ϕ, dom, params)
-    # maxT = maximum(T)
+    tf = sol.t[end]
 
     fps = 30
     frames = range(0, tf, length=seconds_length*fps)
-    # freshplot()
-    # plot!(size=(800,500))
     anim = @animate for ti ∈ frames
-        # freshplot()
         p = plotframe(ti, simresults, simconfig, heatvar=heatvar)
-        # plot(aspect_ratio=:equal, size=(800,500))
-        # ϕ = reshape(ϕsol(ti), dom.nr, dom.nz)
-        # T = solve_T(ϕ, dom, params)
-        # tr = round(ti, sigdigits=3)
-        # plot!(title="timestep=$tr")
-        # # plot_cylheat(T, dom, maxT=maxT)
-        # plot_cylheat(T, dom)
-        # plot_cylcont(ϕ, dom, c=:white)
     end
 
     # fps = ceil(Int, nt/2)  # nt/x makes x-second long animation
