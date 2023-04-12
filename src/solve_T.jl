@@ -4,6 +4,13 @@ export solve_T, solve_T_original
 
 # Construct sparse array with rows, cols, vals format, then construct sparse matrix
 
+function radial_Tf(u, dom, params) 
+    @unpack dr, dz, dr1, dz1, dr2, dz2, 
+            rgrid, zgrid, nr, nz, ntot = dom
+    @unpack Kgl, Kv, Q_ck, k, Tsh = params
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+end 
+
 """
     solve_T(u, dom::Domain, params)
 
@@ -115,14 +122,13 @@ function solve_T(u, dom::Domain, params)
                 # p. 119 of project notes
                 θr = pϕ/(pϕ-wϕ)
                 if θr >= θ_thresh
-                    pc += -2k*dr2/θr - Kgl*(r1 + 2dr1)
+                    pc += -2k*dr2/θr - Kgl*(r1 + 2dr1*θr)
                     rhs[imx] -= 2Tf*k*dr2/θr + Kgl*Tgl*(r1 + 2dr1)
-                else #p. 65 of project notes
-                    # Have an exact value given by Neumann BC + front
-                    # Can't safely extrapolate to produce ghost cell, so only treat BC: not bulk eq
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    rhs[imx] = (k*Tf + Tgl*Kgl*θr*dr) / (k + Kgl*θr*dr)
-                    continue
+                else 
+                    # First, use Robin BC to define an east ghost cell
+                    # THen, extrapolate across Stefan boundary using east ghost & Stefan
+                    pc += (Kgl*(-r1 -2dr1*θr) + k*(r1*dr1 - 2dr2))/(θr+1)
+                    rhs[imx] -= (Tf*k*(2dr2-r1*dr1) + Tgl*Kgl*(r1+2dr1*θr))/(θr+1)
                 end
 
             else
@@ -218,11 +224,13 @@ function solve_T(u, dom::Domain, params)
                     pc += -2*k*dz2/θz
                     rhs[imx] -= 2*Tf*k*dz2/θz + BC4*2*dz1
                 else
-                    # Have an exact value given by BC + front
-                    # No way to treat other equations, so add to matrix and stop here
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    rhs[imx] = Tf + θz*BC4*dz
-                    continue
+                    # # Have an exact value given by BC + front
+                    # # No way to treat other equations, so add to matrix and stop here
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    # rhs[imx] = Tf + θz*BC4*dz
+                    # continue
+                    pc += -2k*dz2/(θz+1)
+                    rhs[imx] -= 2Tf*k*dz2/(θz+1) 
                 end
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr

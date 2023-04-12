@@ -242,14 +242,28 @@ function extrap_v_fastmarch(u, T, p, dom::Domain, params)
     acc = fill(false, dom.nr, dom.nz)
 
     # First, compute velocity on Γ⁺
-    vf  = compute_frontvel_mass(u, T, p, dom, params)
+
+
+
+    vf, dϕdx_all = compute_frontvel_mass(u, T, p, dom, params)
+
+    # pl1 = heat(vf[:,:,1], dom)
+    # plot_contour(ϕ, dom)
     acc[Γ⁺] .= true
 
     # Second, fastmarch in positive half of Ω
     fastmarch_v!(vf, acc, Ω⁺, ϕ, dom)
+    # pl2 = heat(vf[:,:,1], dom)
 
     # Finally, fastmarch in negative half of Ω
     fastmarch_v!(vf, acc, Ω⁻, ϕ, dom)
+    # pl3 = heat(vf[:,:,1], dom)
 
-    vf
+    # pl4 = heat(ϕ, dom)
+    # plot_contour(ϕ, dom)
+
+    # display(plot(pl1, pl2, pl3, pl4))
+    # @info "extrap" argmin(vf[:,:,1])
+
+    vf, dϕdx_all
 end

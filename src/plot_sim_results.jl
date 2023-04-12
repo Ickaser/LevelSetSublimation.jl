@@ -20,11 +20,17 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     t_samp = get(ncontrols, :t_samp, 0.0)
     if meas_keys !== nothing
         # Interpolation here
-        tip = findfirst(t_samp .> t)
-        tip = clamp(tip, 2, length(t_samp))
-        tim = tip - 1
-        for ki in meas_keys
-            params[ki] = (ncontrols[ki][tip] - ncontrols[ki][tim]) / (t_samp[tip] - t_samp[tim]) * (t - t_samp[tim])
+        if t > t_samp[end] # Past end of sampling interval
+            for ki in meas_keys
+                params[ki] = ncontrols[ki][end]
+            end
+        else
+            tip = findfirst(t_samp .> t)
+            tip = clamp(tip, 2, length(t_samp))
+            tim = tip - 1
+            for ki in meas_keys
+                params[ki] = (ncontrols[ki][tip] - ncontrols[ki][tim]) / (t_samp[tip] - t_samp[tim]) * (t - t_samp[tim]) + ncontrols[ki][tim]
+            end
         end
     end
     
@@ -46,7 +52,8 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     tr = round(t, sigdigits=3)
     local pl = plot(aspect_ratio=:equal)
     plot_cylheat(heatvar_vals, dom; maxT=maxT)
-    plot_cylcont(ϕ, dom, c=:white)
+    cont_c = (argmin(heatvar_vals) > argmax(heatvar_vals)) ? :white : :black
+    plot_cylcont(ϕ, dom, c=cont_c)
     # Plots.contour!(dom.rgrid, dom.zgrid, ϕ')
     plot!(title="timestep=$tr")
     return pl, extrema(heatvar_vals)
@@ -87,9 +94,9 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
         push!(plots, p)
     end
 
-    for p_i in plots
-        plot!(p_i, clims=(min_heat, max_heat))
-    end
+    # for p_i in plots
+    #     plot!(p_i, clims=(min_heat, max_heat))
+    # end
 
     bigplot = plot(plots..., size=(500*layout[2], 200*layout[1]), layout=layout)
 end
@@ -111,7 +118,10 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=
     fps = 30
     frames = range(0, tf, length=seconds_length*fps)
     anim = @animate for ti ∈ frames
-        p = plotframe(ti, simresults, simconfig, heatvar=heatvar)
+        p, heat_ex = plotframe(ti, simresults, simconfig, heatvar=heatvar)
+        # heat_p_min = heat_ex[1] - 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
+        # heat_p_max = heat_ex[2] + 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
+        # plot!(p, clims=(heat_p_min, heat_p_max))
     end
 
     # fps = ceil(Int, nt/2)  # nt/x makes x-second long animation

@@ -128,12 +128,12 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 if θr >= θ_thresh
                     pc += -2bp*dr2/θr
                     rhs[imx] -= 2p_sub*bp*dr2/θr + BC2*(r1 + 2dr1)
-                else #p. 65 of project notes
-                    # Have an exact value given by BC + front
-                    # No way to treat other equations, so add to matrix and stop here
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    rhs[imx] = p_sub + θr*BC2*dr
-                    continue
+                else 
+                    # First: use Neumann BC to get ghost cell left
+                    # Second: extrapolate using left ghost cell across front
+                    
+                    pc += -2bp*dr2/(θr+1)
+                    rhs[imx] -= 2p_sub*bp*dr2/(θr+1) + BC2*(r1 + 2dr1)
                 end
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
@@ -162,7 +162,7 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 if θr >= θ_thresh
                     # @info "hmm, east" θr dr ir iz
                     pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/θr
-                    wc += -bp*(0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
+                    wc +=  bp*(-0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
                     rhs[imx] -= p_sub*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else
                     # @info "hmm, east" θr dr ir iz
@@ -207,10 +207,11 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                     pc += -2bp*dz2/θz
                     rhs[imx] -= 2*p_sub*bp*dz2/θz + 2*BC3*dz1
                 else
-                    # Have an exact value given by BC + front
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    rhs[imx] = p_sub + θz*BC3*dz
-                    continue
+                    # First: use Neumann BC to get ghost cell left
+                    # Second: extrapolate using left ghost cell across front
+                    
+                    pc += -2bp*dz2/(θz+1)
+                    rhs[imx] -= 2p_sub*dz2*bp/(θz+1)
                 end
                 # No way to treat other equations, so cut it here
             else
@@ -276,6 +277,9 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
         wc != 0 && add_to_vcr!(vcr, dom, imx, (-1, 0), wc)
         nc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 1), nc)
         sc != 0 && add_to_vcr!(vcr, dom, imx, ( 0,-1), sc)
+        # if (ir, iz) == (49, 36) || (ir, iz) == (49, 49)
+        #     @info "psolve" ir iz pc ec wc nc sc rhs[imx]
+        # end
 
     end
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)

@@ -58,9 +58,15 @@ function ϕevol_RHS!(du, u, integ_pars, t)
 
     p = solve_p(u, T, dom, params, p0 = p_last)
     integ_pars[3] .= p # Cache current state of p as a guess for next timestep
-    vf = extrap_v_fastmarch(u, T, p, dom, params)
+    vf, dϕdx_all = extrap_v_fastmarch(u, T, p, dom, params)
     vr = @view vf[:,:,1]
     vz = @view vf[:,:,2]
+    # pl1 = heat(p, dom)
+    # plot_contour(ϕ, dom)
+    # pl2 = heat(vz, dom)
+    # plot_contour(ϕ, dom)
+    # display(plot(pl1, pl2))
+    # @info "test" p[25:35,40:51] vr[25:35,40:51] vz[25:35,40:51]
     
     Qice, Qgl = compute_Qice(u, T, p, dom, params)
     dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
@@ -70,30 +76,36 @@ function ϕevol_RHS!(du, u, integ_pars, t)
     # @info "glass heating?" dTgldt Qgl
 
     # Compute dϕ/dt = - v ⋅ ∇ ϕ
-    indmin = CI(1, 1)
-    indmax = CI(dom.nr, dom.nz)
-    rshift = [CI(i, 0) for i in -3:3]
-    zshift = [CI(0, i) for i in -3:3]
+    # indmin = CI(1, 1)
+    # indmax = CI(dom.nr, dom.nz)
+    # rshift = [CI(i, 0) for i in -3:3]
+    # zshift = [CI(0, i) for i in -3:3]
+    # dϕdr_e = zeros(Float64, size(dom))
+    # dϕdr_w = zeros(Float64, size(dom))
+    # dϕdz_n = zeros(Float64, size(dom))
+    # dϕdz_s = zeros(Float64, size(dom))
+    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all
     for ind in CartesianIndices(ϕ)
-        rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        dϕdr_w, dϕdr_e = wenodiffs_local(ϕ[rst]..., dom.dr)
-        dϕdz_s, dϕdz_n = wenodiffs_local(ϕ[zst]..., dom.dz)
-        # Boundary cases: use internal derivative
-        if rst[5] == ind # Right boundary
-            dϕdr = dϕdr_w
-        elseif rst[3] == ind # Left boundary
-            dϕdr = dϕdr_e
+        ir, iz = Tuple(ind)
+    #     rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+    #     zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+    #     dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(ϕ[rst]..., dom.dr)
+    #     dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(ϕ[zst]..., dom.dz)
+    #     # Boundary cases: use internal derivative
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[ind]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[ind]
         else
-            dϕdr = (vr[ind] > 0 ? dϕdr_w : dϕdr_e)
+            dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
         end
         # Boundary cases: use internal derivative
-        if zst[5] == ind # Top boundary
-            dϕdz = dϕdz_s
-        elseif zst[3] == ind # Bottom boundary
-            dϕdz = dϕdz_n
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[ind]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[ind]
         else
-            dϕdz = (vz[ind] > 0 ? dϕdz_s : dϕdz_n)
+            dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
         end
 
         rcomp = dϕdr*vr[ind]
@@ -101,7 +113,7 @@ function ϕevol_RHS!(du, u, integ_pars, t)
         dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
     end
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    @info "prog: t=$t, dryfrac=$dryfrac, minmax=$(extrema(dϕ))" 
+    # @info "prog: t=$t, dryfrac=$dryfrac" -Qgl Tf-Tgl dTgldt Qice
     return nothing
 end
 
@@ -201,7 +213,7 @@ function next_reinit_time(integ)
             # @info "Newton iter" Tstart i
         end
         dt = abs((Tstart - Tf)/dTfdt) * 1.05 # Overshoot slightly, to get into real drying behavior before next check time
-        @info "Sublimation stopped, estimating reinit." calc_psub(Tstart) calc_psub(Tf) p_ch dt dTfdt
+        # @info "Sublimation stopped, estimating reinit." calc_psub(Tstart) calc_psub(Tf) p_ch dt dTfdt
         return integ.t + dt
     end
 
@@ -210,7 +222,7 @@ function next_reinit_time(integ)
     minlen = min(domfrac*dom.rmax , domfrac*dom.zmax, integ.t*max_dϕdt + dom.dz)  # Also: at early times, do more often
     dt = minlen / max_dϕdt 
     # dt = 0.5 * minlen / max_dϕdt 
-    @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+    # @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
     return integ.t + dt
 end
 

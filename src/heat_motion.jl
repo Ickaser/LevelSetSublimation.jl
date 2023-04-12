@@ -66,7 +66,7 @@ end
     compute_topmassflux(ϕ, T, p, dom::Domain, params)
 """
 function compute_topmassflux(u, T, p, dom::Domain, params)
-    dpdz = [compute_pderiv(u, p, ir, dom.nz, dom, params)[4] for ir in 1:dom.nr]
+    dpdz = [compute_pderiv(u, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
     b = eval_b(T, p, params)[:,end] # all r, top of z
     md = - 2π * sum(dpdz .*b .* dom.rgrid) * dom.dr
     # @info "massflux" dpdz b md 1/dom.dz
@@ -262,6 +262,8 @@ Compute `∂ϕ/∂r`, `∂T/∂r`, `∂ϕ/∂z` and `∂T/∂z` at point `(ir, i
 
 Quadratic ghost cell extrapolation (into frozen domain), second order finite differences, for T.
 For ϕ derivatives, simple second order finite differences (one-sided at boundaries).
+
+BROKEN: doesn't use Robin BCs.
 """
 function compute_Tderiv(ϕ, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
@@ -396,7 +398,7 @@ function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
         pp = p[ir, iz]
         pe = p[ir+1, iz]
         pw = p[ir-1, iz]
-        dpr = (pe - pw)
+        dpr = (pe - pw) * 0.5dr1
         if wϕ <= 0 && eϕ <= 0 # West and east ghost cell
             θr1 = ϕp/(ϕp - eϕ)
             θr2 = ϕp/(ϕp - wϕ)
@@ -418,6 +420,9 @@ function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
         else # No ghost cells
             dpr = (pe - pw) * 0.5*dr1 # Centered difference
         end
+        # if (ir, iz) == (43, 38)
+        # @info "pderiv" ir iz wϕ ϕp eϕ  pw pp pe dpr dϕr
+        # end
 
     end
             
@@ -476,7 +481,7 @@ function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
     # @show ngradϕ dϕr dϕz
     dϕr /= ngradϕ
     dϕz /= ngradϕ
-    return dϕr, dpr, dϕz, dpz
+    return dpr, dpz
 end
 
 
@@ -497,27 +502,58 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
      
     vf = zeros(Float64, dom.nr, dom.nz, 2)
     
-    # @info "Inside frontvel" params[:p_sub]
+    # --- Compute ϕ derivatives with WENO
+    indmin = CI(1, 1)
+    indmax = CI(dom.nr, dom.nz)
+    rshift = [CI(i, 0) for i in -3:3]
+    zshift = [CI(0, i) for i in -3:3]
+    
+    dϕdr_e = zeros(Float64, size(dom))
+    dϕdr_w = zeros(Float64, size(dom))
+    dϕdz_n = zeros(Float64, size(dom))
+    dϕdz_s = zeros(Float64, size(dom))
+    for ind in CartesianIndices(ϕ)
+        rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+        zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+        dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(ϕ[rst]..., dom.dr)
+        dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(ϕ[zst]..., dom.dz)
+
+    end
 
     for c in Γ⁺
         ir, iz = Tuple(c)
         # dϕr, dTr, dϕz, dTz = compute_Tderiv(ϕ, T, ir, iz, dom, params)
-        dϕr, dpr, dϕz, dpz = compute_pderiv(u, p, ir, iz, dom, params)
-    
-        # qloc = k*dTr*dϕr + k*dTz*dϕz + Qice_per_surf
+        dpr, dpz = compute_pderiv(u, p, ir, iz, dom, params)
+
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[c]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[c]
+        else
+            dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        end
+        # Boundary cases: use internal derivative
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[c]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[c]
+        else
+            dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
+        end
         
         # Normal is out of the ice
         # md = -b∇p⋅∇ϕ , >0 for sublimation occurring
         # v = md/ρ * -∇ϕ
-        md_l = -b[c] * (dpr*dϕr + dpz * dϕz)
+        md_l = -b[c] * (dpr*dϕdr + dpz * dϕdz)
         vtot = md_l / ρf / ϵ 
-        vf[c,1] = -vtot * dϕr
-        vf[c,2] = -vtot * dϕz
-        # @info "vtot" vtot md_l c vf[c,1] vf[c,2] dϕr dϕz
+        vf[c,1] = -vtot * dϕdr
+        vf[c,2] = -vtot * dϕdz
 
     end
     
-    return vf
+    dϕdx_all = (dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s)
+    return vf, dϕdx_all
+
 
 end
 
