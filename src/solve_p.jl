@@ -300,9 +300,10 @@ function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit
     if p0 === nothing
         # meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
         # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
-        b = eval_b(T, 0, params)
+        b = eval_b(T, params[:p_ch], params)
         p0 = solve_p_given_b(ϕ, b, p_sub, dom, params)
     end
+    pl1 = heat(p0, dom)
 
     relerr::Float64 = 0.0
     p⁺ = copy(p0)
@@ -316,10 +317,10 @@ function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit
             # @info "Number of p iterations: $i"
             return p⁺
         end
-        p0 = p⁺
+        p0 = abs.(p⁺)
     end
     @info "Reached maximum iterations in p:" relerr maxit p⁺ T 
-    # pl1 = heat(T, dom)
+    # pl1 = heat(b, dom)
     # plot_contour(ϕ, dom)
     # pl2 = heat(p⁺, dom)
     # plot_contour(ϕ, dom)

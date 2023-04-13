@@ -131,7 +131,8 @@ Implementation of Eq. 22 in Hartmann 2010, scheme HCR-2.
 TODO: switch to Eq. 23 to minimize allocations? Can eliminate F, rhs that way
 
 """
-function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 20, tol=1e-4)
+function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4)
+
     Γ = Γ_cells(ϕ, dom)
     dx = sqrt(dom.dr*dom.dz) # Geometric mean grid spacing
     Cv = Γ
@@ -143,7 +144,8 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 20, tol=1e-4)
     rij_list, Sij_list = calc_rij_Sij(ϕ, Γ)
     # sdf_err_L1 = 
     for v in 1:maxsteps
-        if sdf_err_L1(ϕ, dom) < tol
+        # if sdf_err_L1(ϕ, dom) < tol
+        if sdf_err_L∞(ϕ, dom) < tol
             # @info "End reinit early" sdf_err_L1(ϕ, dom) v
             break
         end
@@ -155,6 +157,7 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 20, tol=1e-4)
             signs_Sij = (ϕ[c] .* ϕ[Sij]) .<= 0
             # If a neighbor no longer has opposite sign, skip this cell
             if sum(signs_Sij) < length(Sij) 
+                @info "Cell skipped" c signs_Sij
                 continue
             end
             # Eq. 21b
@@ -169,7 +172,7 @@ end
 """
     LD{T}
 
-    A "little difference", to make Godunov's scheme in [𝒢](@ref) easier to read.
+    A "little difference", to make Godunov's scheme in [𝒢_weno](@ref) easier to read.
 For a = LD(x::T), 
 - a.p = max(x, 0)
 - a.m = min(x, 0)
@@ -282,22 +285,23 @@ Described in [hartmannAccuracyEfficiencyConstrained2009](@cite), eq. 6 to eq. 9.
 Let all ghost cells equal the function value at boundary; I think this is equivalent to using homogeneous Neumann boundaries.
 """
 function 𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
-    irs = max.(1, min.(dom.nr, ir-3:ir+3)) # Pad with boundary values
-    izs = max.(1, min.(dom.nz, iz-3:iz+3))
+    return 𝒢_weno(ϕ, CI(ir, iz), dom)
+    # irs = max.(1, min.(dom.nr, ir-3:ir+3)) # Pad with boundary values
+    # izs = max.(1, min.(dom.nz, iz-3:iz+3))
 
-    ar, br = wenodiffs_local(ϕ[irs, iz]..., dom.dr)
-    az, bz = wenodiffs_local(ϕ[ir, izs]..., dom.dz)
+    # ar, br = wenodiffs_local(ϕ[irs, iz]..., dom.dr)
+    # az, bz = wenodiffs_local(ϕ[ir, izs]..., dom.dz)
 
-    ar = LD(ar)
-    br = LD(br)
-    az = LD(az)
-    bz = LD(bz)
+    # ar = LD(ar)
+    # br = LD(br)
+    # az = LD(az)
+    # bz = LD(bz)
 
-    if ϕ[ir,iz] >= 0
-        return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
-    else
-        return sqrt(max(ar.m^2, br.p^2) + max(az.m^2, bz.p^2))
-    end
+    # if ϕ[ir,iz] >= 0
+    #     return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
+    # else
+    #     return sqrt(max(ar.m^2, br.p^2) + max(az.m^2, bz.p^2))
+    # end
     
 end
 

@@ -28,11 +28,11 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
                 for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :ell_bub
         @unpack rmax, zmax = dom
-        ϕ0 = [1.5rmax * r^2 + 6zmax*(z-0.5zmax)^2 - 1.0 
+        ϕ0 = [1.5* r^2 + 6*(z-0.5zmax)^2 - 1.0 
                 for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :circ
-        ϕ0 = [1.1r^2 / dom.rmax^2 + 1.1z^2 / (dom.zmax)^2   - 1.0 
-                for r in dom.rgrid, z in dom.zgrid] .* (dom.rmax*dom.zmax)^2
+        ϕ0 = [sqrt(1.1r^2 / dom.rmax^2 + 1.1z^2 / (dom.zmax)^2 )   - 1.0 
+                for r in dom.rgrid, z in dom.zgrid] .*sqrt(dom.rmax*dom.zmax)
     elseif ϕtype == :tinycirc
         ϕ0 = [dom.rmax * r^2 + dom.zmax * z^2 - 0.11 
                 for r in dom.rgrid, z in dom.zgrid]

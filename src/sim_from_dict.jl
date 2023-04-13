@@ -110,7 +110,8 @@ function ϕevol_RHS!(du, u, integ_pars, t)
 
         rcomp = dϕdr*vr[ind]
         zcomp = dϕdz*vz[ind]
-        dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
+        # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
+        dϕ[ind] = -rcomp - zcomp 
     end
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
     # @info "prog: t=$t, dryfrac=$dryfrac" maximum(dϕ)
@@ -173,7 +174,16 @@ function reinit_wrap(integ; verbose=false)
 dom = integ.p[1]
 ϕ = reshape((@view integ.u[1:dom.ntot]), dom.nr, dom.nz)
 # reinitialize_ϕ!(ϕ, dom) 
-reinitialize_ϕ_HCR!(ϕ, dom, tol=1e-6) 
+ϕa = copy(ϕ)
+reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=100, tol=1/max(dom.nr, dom.nz)) 
+# pl1 = Plots.contour(dom.rgrid, dom.zgrid, ϕa', aspect_ratio=:equal)
+# pl2 = Plots.contour(dom.rgrid, dom.zgrid, ϕ' , aspect_ratio=:equal)
+# pl3 = heat(𝒢_weno_all(ϕa, dom), dom)
+# plot_contour(ϕa, dom)
+# pl4 = heat(𝒢_weno_all(ϕ, dom), dom)
+# plot_contour(ϕ, dom)
+# # display(plot(pl1, pl2))
+# savefig(plot(pl1, pl2, pl3, pl4, size=(800,800)), plotsdir("reinit_testing", "reinit_snap_$(round(integ.t)).png"))
 end
 
 """
@@ -229,8 +239,9 @@ function next_reinit_time(integ; verbose=false)
     # dt = 0.5 * minlen / max_dϕdt 
     # @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
     if verbose
+        reinit_err = sdf_err_L∞(ϕ, dom)
         # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-        @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tgl minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+        @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tgl reinit_err #, next at t=$(integ.t+dt)" 
     end
 
     return integ.t + dt
@@ -333,7 +344,12 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
 
     ϕ0 = make_ϕ0(ϕ0type, dom)
-    reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000) # Don't reinit if using IterativeCallback
+    if verbose
+        @info "Initializing ϕ"
+    end
+    # Make sure that the starting profile is very well-initialized
+    # The chosen tolerance is designed to the error almost always seen in norm of the gradient
+    reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=10000, tol=1.25/max(dom.nr,dom.nz)) 
     ϕ0_flat = reshape(ϕ0, :)
 
     

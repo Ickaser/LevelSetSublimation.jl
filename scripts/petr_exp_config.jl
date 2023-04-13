@@ -25,7 +25,6 @@ l_bulk = upreferred(l_bulk)
 l_surf = upreferred(l_surf)
 
 
-cparams[:l] = l_arr
 
 ϕ0type = :circ
 
@@ -70,6 +69,8 @@ cparams[:Kgl] = 380.0u"W/m^2/K"
 
 l_arr = fill(l_bulk, simgridsize)
 l_arr[:,end-1:end] .= l_surf # At surface, very low radius, to get us an effective R0
+
+cparams[:l] = l_arr
 
 p_ch = 100u"mTorr"
 
