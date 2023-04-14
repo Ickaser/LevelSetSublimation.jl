@@ -389,16 +389,13 @@ function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
 
     # Enforce BCs explicitly for boundary cells
     if ir == 1 
-        dϕr = (-0.5ϕ[ir+2, iz] +2ϕ[ir+1, iz] - 1.5ϕp) * dr1 # 2nd order 
         dpr = 0
     elseif ir == nr
-        dϕr = (1.5ϕp - 2ϕ[ir-1, iz] + 0.5ϕ[ir-2,iz]) * dr1 # 2nd order
         dpr = 0
     else 
         # Bulk
         eϕ = ϕ[ir+1, iz]
         wϕ = ϕ[ir-1, iz]
-        dϕr = (eϕ - wϕ) * 0.5dr1
         pp = p[ir, iz]
         pe = p[ir+1, iz]
         pw = p[ir-1, iz]
@@ -433,25 +430,24 @@ function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
             
     if iz == 1 
         # Enforce BCs explicitly for Neumann boundary cells
-        dϕz = (-0.5ϕ[ir, iz+2] +2ϕ[ir, iz+1] - 1.5ϕp) * dz1 # 2nd order 
         dpz = 0
-    elseif iz == nz # Behaves like bulk--we have a Dirichlet condition here, not Neumann
-        sϕ = ϕ[ir, iz-1]
-        if sϕ <= 0 # South ghost cell
-            θz = ϕp /(ϕp - sϕ)
-            dpz = (pp - p_sub)*dz1/θz # Employ Dirichlet condition
-            dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
-        elseif ϕ[ir, iz-2] <= 0 # Use one cell
-            dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
-            dpz = (pp - p[ir, iz-1]) * dz1 # 1st order
-        else # 2nd order
-            dϕz = (1.5ϕp - 2ϕ[ir, iz-1] + 0.5ϕ[ir,iz-2]) * dz1 # 2nd order
-            dpz = (1.5pp - 2p[ir, iz-1] + 0.5p[ir,iz-2]) * dz1 # 2nd order
-        end
+    elseif iz == nz # Robin boundary condition: employ explicitly
+        dpz = Rp0/bp*(p_ch - p[ir,iz]) 
+        # sϕ = ϕ[ir, iz-1]
+        # if sϕ <= 0 # South ghost cell
+        #     θz = ϕp /(ϕp - sϕ)
+        #     dpz = (pp - p_sub)*dz1/θz # Employ Dirichlet condition
+        #     dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
+        # elseif ϕ[ir, iz-2] <= 0 # Use one cell
+        #     dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
+        #     dpz = (pp - p[ir, iz-1]) * dz1 # 1st order
+        # else # 2nd order
+        #     dϕz = (1.5ϕp - 2ϕ[ir, iz-1] + 0.5ϕ[ir,iz-2]) * dz1 # 2nd order
+        #     dpz = (1.5pp - 2p[ir, iz-1] + 0.5p[ir,iz-2]) * dz1 # 2nd order
+        # end
     else # Bulk
         nϕ = ϕ[ir, iz+1]
         sϕ = ϕ[ir, iz-1]
-        dϕz = (nϕ - sϕ) * 0.5dz1
         pp = p[ir, iz]
         pn = p[ir, iz+1]
         ps = p[ir, iz-1]
@@ -482,10 +478,7 @@ function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
     end
 
     # @info "pderiv" dpr dpz ir iz
-    ngradϕ = hypot(dϕr, dϕz)
     # @show ngradϕ dϕr dϕz
-    dϕr /= ngradϕ
-    dϕz /= ngradϕ
     return dpr, dpz
 end
 

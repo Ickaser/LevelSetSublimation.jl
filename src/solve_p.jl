@@ -246,12 +246,11 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 end
                 # No way to treat other equations, so cut it here
             else
-                # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
+                # Using Robin boundary to define ghost point: north p= south T - 2dz/bp*Rp0*(pi - p_ch)
                 # p. 65, 66 of project notes
-                # For gradient of conductivity: multiplied by gradient, which is BC, which is 0
-                pc += -2bp*dz2
-                nc +=  2bp*dz2
-                rhs[imx] += -2*bp*BC3*dz1
+                pc += -2bp*dz2 - Rp0*(2*dz1 + dbz/bp)
+                sc +=  2bp*dz2
+                rhs[imx] += Rp0*p_ch*(dbz/bp + 2dz1)
             end
             #
             # BC4 = p_ch
