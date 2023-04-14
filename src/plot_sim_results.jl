@@ -1,13 +1,19 @@
-export summaryplot, resultsanim, plotframe,  gen_sumplot
+export summaryplot, resultsanim, plotframe,  gen_sumplot, gen_anim
 export get_subf_z, get_subf_r, get_ϕ
 
 
 function gen_sumplot(config, var=:T, casename="test")
-    
     pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
     @time simres, simdatfile = produce_or_load(sim_from_dict, config,
             datadir("sims", casename); pol_kwargs...)
     summaryplot(simres, config, heatvar=var)
+end
+function gen_anim(config, var=:T, casename="test")
+    pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
+    @time simres, simdatfile = produce_or_load(sim_from_dict, config,
+            datadir("sims", casename); pol_kwargs...)
+    resultsanim(simres, config, casename, heatvar=var)
+    return simres
 end
 
 
@@ -95,9 +101,7 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
 
     # T_nm1 = solve_T(sol(frames[end-1]), dom, cparams)
     # maxT = maximum(T_nm1)
-    if heatvar == :p
-        heatvals = fill(0.0, size(simresults["dom"]))
-    end
+    heatvals = fill(0.0, size(simresults["dom"]))
 
     for f in frames
         # p = plotframe(f, simresults, simconfig, maxT=maxT, heatvar=heatvar)
@@ -135,9 +139,9 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=
 
     fps = 30
     frames = range(0, tf, length=seconds_length*fps)
-    if heatvar == :p
-        heatvals = fill(0.0, size(dom))
-    end
+    # if heatvar == :p
+    heatvals = fill(0.0, size(dom))
+    # end
     anim = @animate for ti ∈ frames
         pl, heatvals = plotframe(ti, simresults, simconfig, heatvar=heatvar, p0=heatvals)
         # heat_p_min = heat_ex[1] - 0.1*max(1e-3, heat_ex[2]-heat_ex[1])

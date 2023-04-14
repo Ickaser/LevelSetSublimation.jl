@@ -10,7 +10,8 @@ fillvol = 5u"mL"
 simgridsize = (51, 51)
 
 # R_p values to mass transfer
-R0 = 1.4u"cm^2*hr*Torr/g"
+Rp0 = 1.4u"cm^2*hr*Torr/g"
+@pack! cparams = Rp0
 A1 = 16u"cm*hr*Torr/g"
 Tguess = 260u"K"
 l_bulk = sqrt(cparams[:R]*Tguess/cparams[:Mw]) / A1
@@ -19,14 +20,13 @@ r_vial = get_vial_rad(vialsize)
 L = fillvol / π/r_vial^2
 dz_approx = L / simgridsize[2]
 # l_surf = l_bulk * (A1 / (R0/dz_approx ))
-l_surf = l_bulk * .05 # Experimental fit attempt
+# l_surf = l_bulk * .05 # Experimental fit attempt
 
 l_bulk = upreferred(l_bulk)
-l_surf = upreferred(l_surf)
 
 
 
-ϕ0type = :circ
+ϕ0type = :flat
 
 # Shortly after ramp stops, no more t_samp: no need for callback to interfere
 t_samp = range(0, 2, step=1//60) .* u"hr"
@@ -67,10 +67,9 @@ cparams[:Kgl] = 380.0u"W/m^2/K"
 
 # -------------------------
 
-l_arr = fill(l_bulk, simgridsize)
-l_arr[:,end-1:end] .= l_surf # At surface, very low radius, to get us an effective R0
+# l_arr = fill(l_bulk, simgridsize)
 
-cparams[:l] = l_arr
+cparams[:l] = l_bulk
 
 p_ch = 100u"mTorr"
 

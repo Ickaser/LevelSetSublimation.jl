@@ -157,7 +157,7 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4)
             signs_Sij = (ϕ[c] .* ϕ[Sij]) .<= 0
             # If a neighbor no longer has opposite sign, skip this cell
             if sum(signs_Sij) < length(Sij) 
-                @info "Cell skipped" c signs_Sij
+                # @info "Cell skipped" c signs_Sij v
                 continue
             end
             # Eq. 21b

@@ -111,6 +111,7 @@ pbu = params_base_units = Dict{Symbol, Any}(
     :μ => u"Pa*s",
     :R => u"J/mol/K",
     :Mw => u"kg/mol",
+    :Rp0 => u"m/s",
 
     :t_samp => u"s",
 )
@@ -138,6 +139,7 @@ function make_default_params()
     ϵ = 0.9 # 90% porosity
     l = 1e-6u"m" # ~size of a pore
     κ = 1e-10u"m^2" # ~size^2 of a pore
+    Rp0 = 1.4u"cm^2*Torr*hr/g" # R0 from Rp: guess from thin-film thickness & pore size?
     R = 8.3145u"J/mol/K"
     Mw = .018u"kg/mol" #mol/kg
     μ = LevelSetSublimation.μ

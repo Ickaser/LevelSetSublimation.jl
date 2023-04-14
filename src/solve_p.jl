@@ -44,7 +44,7 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params) 
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack p_ch = params
+    @unpack Rp0, p_ch = params
 
     # To prevent blowup, artificially add some corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
@@ -103,9 +103,11 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                     rhs[imx] -= 2bp*p_sub*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within dr/r cells of boundary
                     # Have an exact value given by BC + front
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    rhs[imx] = p_sub - θr*BC1*dr
-                    continue
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    # rhs[imx] = p_sub - θr*BC1*dr
+                    # continue
+                    pc += -2bp*dr2/(θr+1)
+                    rhs[imx] -= 2p_sub*bp*dr2/(θr+1) 
                 end
                 # No way to treat other equations, so cut it here
             else
@@ -223,16 +225,44 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 rhs[imx] += -2*bp*BC3*dz1
             end
         elseif iz == nz
-            # Dirichlet BC
-            BC4 = p_ch
-            add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-            rhs[imx] = BC4
-            continue
+            # Robin BC
+
+            sϕ = ϕ[ir, iz-1]
+            dbz = (b[ir, iz]-b[ir, iz-1])*dz1
+            # Check for Stefan front
+            if sϕ < 0 # Front is within a cell of boundary
+                # stefan_debug = true
+                # p. 65 of project notes
+                θz = pϕ/(pϕ-sϕ)
+                if θz > θ_thresh
+                    pc += -2bp*dz2/θz -2Rp0*dz1 - Rp0*dbz/bp
+                    rhs[imx] -= 2*p_sub*bp*dz2/θz + p_ch*Rp0*(dbz/bp + 2dz1)
+                else
+                    # First: use Neumann BC to get ghost cell left
+                    # Second: extrapolate using left ghost cell across front
+                    
+                    pc += (-2bp*dz2 + dbz*dz1 - Rp0*(dbz/bp + 2*θz*dz1))/(θz+1)
+                    rhs[imx] -= (p_sub*(2dz2*bp - dbz*dz1) + p_ch*Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
+                end
+                # No way to treat other equations, so cut it here
+            else
+                # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
+                # p. 65, 66 of project notes
+                # For gradient of conductivity: multiplied by gradient, which is BC, which is 0
+                pc += -2bp*dz2
+                nc +=  2bp*dz2
+                rhs[imx] += -2*bp*BC3*dz1
+            end
+            #
+            # BC4 = p_ch
+            # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+            # rhs[imx] = BC4
+            # continue
 
         else # Bulk in z, still need to check for Stefan front
             nϕ = ϕ[ir, iz+1]
             sϕ = ϕ[ir, iz-1]
-            dbz = (b[iz+1]-b[iz-1])*0.5*dz1
+            dbz = (b[ir,iz+1]-b[ir, iz-1])*0.5*dz1
             if nϕ <= 0 && sϕ <= 0
                 # Pretend is in bulk, rather than two ghost cells
                 sc +=  bp*(1.0dz2) - dbz*0.5dz1

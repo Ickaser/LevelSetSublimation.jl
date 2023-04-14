@@ -199,9 +199,13 @@ function solve_T(u, dom::Domain, params)
                     rhs[imx] -= 2*Tf*k*dz2/θz + 2Kv*Tsh*dz1
                 else
                     # Have an exact value given by BC + front
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    rhs[imx] = (k*Tf + Kv*Tsh*θz*dz) / (k + Kv*θz*dz)
-                    continue
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    # rhs[imx] = (k*Tf + Kv*Tsh*θz*dz) / (k + Kv*θz*dz)
+                    # continue
+                    # First Robin ghost defined, then Stefan ghost extrap
+                    pc += -2dz2 - 2Kv*dz1
+                    wc +=  2dz2
+                    rhs[imx] -= 2Kv*Tsh*dz1
                 end
                 # No way to treat other equations, so cut it here
             else
