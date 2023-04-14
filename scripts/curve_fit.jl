@@ -9,14 +9,14 @@ function match_Tgl(dat, initconfig)
     optimize(opt_f, init_x)
 end
 function match_Tgl_Tf(fdat, gldat, initconfig)
-    init_x = [100, .005, 1.5, .9]
+    init_x = [400, .02, 0.3]
     function opt_f(x)
-        return err_Tgl_Tf(x[1], x[2], x[3], x[4], fdat, gldat, initconfig)
+        return err_Tgl_Tf(x..., fdat, gldat, initconfig)
     end
     optimize(opt_f, init_x)
 end
 
-function err_Tgl_Tf(Kgl, Q_gl_RF, Q_ic, l_fac ,fdat, gldat, config)
+function err_Tgl_Tf(Kgl, Q_gl_RF, Q_ic ,fdat, gldat, config)
     tdatf = fdat["t"].*u"hr"   
     tdatgl = gldat["t"].*u"hr"   
     Tgl_dat = gldat["Tgl"].*u"°C"
@@ -30,7 +30,6 @@ function err_Tgl_Tf(Kgl, Q_gl_RF, Q_ic, l_fac ,fdat, gldat, config)
     Q_gl_RF *= u"W"
     Q_ic *= u"W/m^3"
     Kgl *= u"W/K/m^2"
-    config[:cparams][:l][:,end] .= config[:cparams][:l][1,1] .* l_fac
     @pack! config[:cparams] = Kgl  
     @pack! config[:controls] = Q_gl_RF, Q_ic
     @time res = sim_from_dict(config, verbose=false, tf=1e5)
@@ -55,9 +54,9 @@ function err_Tgl_Tf(Kgl, Q_gl_RF, Q_ic, l_fac ,fdat, gldat, config)
     err_f = sum(ustrip.(u"K", Tf_sim[ds_f] - Tf_dat[ds_f]).^2)  / sum(ds_f) # Average per data point
     err_t = (ustrip(u"hr", tf) - 11)^2 
 
-    @info "Optimization eval, with absolute value of Q_gl_RF and Q_ic:" Kgl Q_gl_RF Q_ic l_fac err_gl err_f 100err_t
+    @info "Optimization eval, with absolute value of Q_gl_RF and Q_ic:" Kgl Q_gl_RF Q_ic err_gl err_f 100err_t
     # K^2, K^2, hr^2: weight accordingly
-    return err_gl + err_f + 10err_t
+    return err_gl + err_f + 50err_t
 end
 
 # function err_Tgl(m_cp_gl, Kgl, Q_gl_RF,dat,  config)

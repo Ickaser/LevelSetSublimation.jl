@@ -66,7 +66,7 @@ end
     compute_topmassflux(ϕ, T, p, dom::Domain, params)
 """
 function compute_topmassflux(u, T, p, dom::Domain, params)
-    dpdz = [compute_pderiv(u, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
+    dpdz = [compute_pderiv(u, T, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
     b = eval_b(T, p, params)[:,end] # all r, top of z
     md = - 2π * sum(dpdz .*b .* dom.rgrid) * dom.dr
     # @info "massflux" dpdz b md 1/dom.dz
@@ -373,9 +373,9 @@ For ϕ derivatives, simple second order finite differences (one-sided at boundar
 
 The distinction between this and `compute_Tderiv` is just in boundary values.
 """
-function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
+function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack p_ch = params
+    @unpack p_ch, Rp0 = params
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     p_sub = calc_psub(Tf)
     pp = p[ir, iz]
@@ -431,18 +431,25 @@ function compute_pderiv(u, p, ir::Int, iz::Int, dom::Domain, params)
     if iz == 1 
         # Enforce BCs explicitly for Neumann boundary cells
         dpz = 0
-    elseif iz == nz # Robin boundary condition: employ explicitly
+    elseif iz == nz 
+        # Robin boundary condition: employ explicitly
+        b = eval_b(T[ir,iz], p[ir,iz], params)
+        if length(b) == 1
+            bp = b
+        else
+            bp = b[ir,iz]
+        end
         dpz = Rp0/bp*(p_ch - p[ir,iz]) 
+
+
+
         # sϕ = ϕ[ir, iz-1]
         # if sϕ <= 0 # South ghost cell
         #     θz = ϕp /(ϕp - sϕ)
-        #     dpz = (pp - p_sub)*dz1/θz # Employ Dirichlet condition
-        #     dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
+        #     dpz = (pp - p_sub)*dz1/θz # 
         # elseif ϕ[ir, iz-2] <= 0 # Use one cell
-        #     dϕz = (ϕp - ϕ[ir, iz-1]) * dz1 # 1st order
         #     dpz = (pp - p[ir, iz-1]) * dz1 # 1st order
         # else # 2nd order
-        #     dϕz = (1.5ϕp - 2ϕ[ir, iz-1] + 0.5ϕ[ir,iz-2]) * dz1 # 2nd order
         #     dpz = (1.5pp - 2p[ir, iz-1] + 0.5p[ir,iz-2]) * dz1 # 2nd order
         # end
     else # Bulk
@@ -521,7 +528,7 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
     for c in Γ⁺
         ir, iz = Tuple(c)
         # dϕr, dTr, dϕz, dTz = compute_Tderiv(ϕ, T, ir, iz, dom, params)
-        dpr, dpz = compute_pderiv(u, p, ir, iz, dom, params)
+        dpr, dpz = compute_pderiv(u, T, p, ir, iz, dom, params)
 
         if ir == dom.nr # Right boundary
             dϕdr = dϕdr_w[c]
