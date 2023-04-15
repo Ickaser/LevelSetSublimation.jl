@@ -6,7 +6,7 @@ function gen_sumplot(config, var=:T, casename="test")
     pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
     @time simres, simdatfile = produce_or_load(sim_from_dict, config,
             datadir("sims", casename); pol_kwargs...)
-    summaryplot(simres, config, heatvar=var)
+    summaryplot(simres, config, heatvar=var, layout=(4,1))
 end
 function gen_anim(config, var=:T, casename="test")
     pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
@@ -54,28 +54,41 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     T = solve_T(u, dom, params)
     p = solve_p(u, T, dom, params, p0=p0)
     if heatvar == :T 
-        heatvar_vals = T
-        clab = "T, Kelvin"
+        heatvar_vals = T .- 273.15
+        clab = " \nT, °C"
+        cmap = :thermal
     elseif heatvar == :ϕ 
         heatvar_vals = ϕ
         clab = "ϕ, m"
+        cmap = :algae
     elseif heatvar == :p
         heatvar_vals = ustrip.(u"mTorr", p.*u"Pa") # Either ϕ, 
         clab = "p, mTorr"
+        cmap = :ice
     else
         @warn "Invalid value of heatvar passed to `plotframe`. Should be :ϕ, :T, or :p." heatvar
     end
 
+    clims = extrema(heatvar_vals)
+    if clims[2] - clims[1] < 1e-4 && heatvar != :ϕ
+        clims = clims .+ (0, 0.10)
+    end
+
     tr = round(t/3600, digits=2)
     cont_c = (argmin(heatvar_vals) > argmax(heatvar_vals)) ? :black : :white
-    local pl = plot(aspect_ratio=:equal)
-    plot_cylheat(heatvar_vals, dom; maxT=maxT)
+    local pl = plot(aspect_ratio=:equal, xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
+    # plot_cylheat(heatvar_vals, dom; clims=clims)
+    heatmap!(dom.rgrid, dom.zgrid, heatvar_vals', c=cmap, clims=clims)
+    heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, heatvar_vals[end:-1:begin, :]', c=cmap) # plot reflected
     plot_cylcont(ϕ, dom, c=cont_c)
     if heatvar == :ϕ
         Plots.contour!(dom.rgrid, dom.zgrid, ϕ', color=:black)
     end
-    plot!(title="t = $tr hr")
+    plot!(xlabel="t = $tr hr")
     plot!(colorbar_title=clab)
+    plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], ["-R", "0", "R"]), )
+    plot!(y_ticks = ([0, dom.zmax], ["0", "L"]),  )
+    # plot!(x_ticks=[-dom.rmax, 0, dom.rmax], xlabel="radius")
     return pl, heatvar_vals
 end
 
@@ -88,13 +101,13 @@ Return a 2x3 plot of simulation results from start to finish.
 `heatvar` determines what is plotted as a heatmap in the results (`:T` or `:ϕ`, currently.)
 """
 function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
-    @unpack sol = simresults
+    @unpack sol, dom = simresults
 
     tf = sol.t[end]
 
     plots = []
     nplots = prod(layout)
-    frames = range(0.0, tf, length=nplots)
+    frames = range(0.0, tf*0.99, length=nplots)
 
     max_heat = 250.0
     min_heat = 250.0
@@ -119,8 +132,8 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
     # for p_i in plots
     #     plot!(p_i, clims=(min_heat, max_heat))
     # end
-
-    bigplot = plot(plots..., size=(500*layout[2], 200*layout[1]), layout=layout)
+    plsize = (1.25*(2*dom.rmax/dom.zmax)*200 * layout[2], 200*layout[1])
+    bigplot = plot(plots..., size=plsize, layout=layout)
 end
 
 """
