@@ -108,30 +108,44 @@ function reinitialize_ϕ_HCR(ϕ, dom::Domain)
     return ϕa
 end
 
-function sdf_err_L1(ϕ, dom)
-    Bf = identify_B(ϕ, dom)
-    B = findall(Bf)
-    𝒢 = 𝒢_weno.([ϕ], B, [dom])
+function sdf_err_L1(ϕ, dom; region=:B)
+    if region == :B
+        Bf = identify_B(ϕ, dom)
+        B = findall(Bf)
+        𝒢 = 𝒢_weno.([ϕ], B, [dom])
+    elseif region == :all
+        𝒢 = 𝒢_weno_all(ϕ, dom)
+    else
+        @error "Bad region to error calc; expect `:B` or `:all`." region
+    end
     err = sum(abs.(𝒢 .-1)) / length(B)
 end
-function sdf_err_L∞(ϕ, dom)
-    Bf = identify_B(ϕ, dom)
-    B = findall(Bf)
-    𝒢 = 𝒢_weno.([ϕ], B, [dom])
+function sdf_err_L∞(ϕ, dom; region=:B)
+    if region == :B
+        Bf = identify_B(ϕ, dom)
+        B = findall(Bf)
+        𝒢 = 𝒢_weno.([ϕ], B, [dom])
+    elseif region == :all
+        𝒢 = 𝒢_weno_all(ϕ, dom)
+    else
+        @error "Bad region to error calc; expect `:B` or `:all`." region
+    end
     err = maximum(abs.(𝒢 .-1)) 
 end
 
 """
-    reinitialize_ϕ_HCR2!(ϕ, dom::Domain; maxsteps = 20)
+    reinitialize_ϕ_HCR2!(ϕ, dom::Domain; maxsteps = 20, tol=1e-4, err_reg=:B)
 
 Reinitialize `ϕ` throughout the domain.
 
 Implementation of Eq. 22 in Hartmann 2010, scheme HCR-2.
 
+Checks L∞ error against `tol` either in band around interface (`err_reg=:B`) or throughout domain (`err_reg=:all`), and ends iteration early
+
 TODO: switch to Eq. 23 to minimize allocations? Can eliminate F, rhs that way
 
 """
-function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4)
+function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=:B)
 
     Γ = Γ_cells(ϕ, dom)
     dx = sqrt(dom.dr*dom.dz) # Geometric mean grid spacing
@@ -145,7 +159,7 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4)
     # sdf_err_L1 = 
     for v in 1:maxsteps
         # if sdf_err_L1(ϕ, dom) < tol
-        if sdf_err_L∞(ϕ, dom) < tol
+        if sdf_err_L∞(ϕ, dom, region=err_reg) < tol
             # @info "End reinit early" sdf_err_L1(ϕ, dom) v
             break
         end
@@ -286,23 +300,6 @@ Let all ghost cells equal the function value at boundary; I think this is equiva
 """
 function 𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
     return 𝒢_weno(ϕ, CI(ir, iz), dom)
-    # irs = max.(1, min.(dom.nr, ir-3:ir+3)) # Pad with boundary values
-    # izs = max.(1, min.(dom.nz, iz-3:iz+3))
-
-    # ar, br = wenodiffs_local(ϕ[irs, iz]..., dom.dr)
-    # az, bz = wenodiffs_local(ϕ[ir, izs]..., dom.dz)
-
-    # ar = LD(ar)
-    # br = LD(br)
-    # az = LD(az)
-    # bz = LD(bz)
-
-    # if ϕ[ir,iz] >= 0
-    #     return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
-    # else
-    #     return sqrt(max(ar.m^2, br.p^2) + max(az.m^2, bz.p^2))
-    # end
-    
 end
 
 

@@ -32,6 +32,9 @@ function err_Tgl_Tf(Kgl, Q_gl_RF, Q_ic ,fdat, gldat, config)
     Kgl *= u"W/K/m^2"
     @pack! config[:cparams] = Kgl  
     @pack! config[:controls] = Q_gl_RF, Q_ic
+
+    @info "Optimization eval, with absolute value of Q_gl_RF and Q_ic:" Kgl Q_gl_RF Q_ic 
+
     @time res = sim_from_dict(config, verbose=false, tf=1e5)
     @unpack sol, dom = res
 
@@ -54,7 +57,7 @@ function err_Tgl_Tf(Kgl, Q_gl_RF, Q_ic ,fdat, gldat, config)
     err_f = sum(ustrip.(u"K", Tf_sim[ds_f] - Tf_dat[ds_f]).^2)  / sum(ds_f) # Average per data point
     err_t = (ustrip(u"hr", tf) - 11)^2 
 
-    @info "Optimization eval, with absolute value of Q_gl_RF and Q_ic:" Kgl Q_gl_RF Q_ic err_gl err_f 100err_t
+    @info "Determined errors:" err_gl err_f err_t
     # K^2, K^2, hr^2: weight accordingly
     return err_gl + err_f + 50err_t
 end

@@ -51,17 +51,18 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     u = sol(t)
     ϕ = ϕ_T_from_u(u, dom)[1]
     # p_sub = calc_psub(Tf)
-    T = solve_T(u, dom, params)
-    p = solve_p(u, T, dom, params, p0=p0)
-    if heatvar == :T 
-        heatvar_vals = T .- 273.15
-        clab = " \nT, °C"
-        cmap = :thermal
-    elseif heatvar == :ϕ 
+    if heatvar == :ϕ 
         heatvar_vals = ϕ
         clab = "ϕ, m"
         cmap = :algae
+    elseif heatvar == :T 
+        T = solve_T(u, dom, params)
+        heatvar_vals = T .- 273.15
+        clab = " \nT, °C"
+        cmap = :thermal
     elseif heatvar == :p
+        T = solve_T(u, dom, params)
+        p = solve_p(u, T, dom, params, p0=p0)
         heatvar_vals = ustrip.(u"mTorr", p.*u"Pa") # Either ϕ, 
         clab = "p, mTorr"
         cmap = :ice

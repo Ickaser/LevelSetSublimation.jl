@@ -1,10 +1,11 @@
 export compute_Qice, compute_icesurf, compute_icevol
-export compute_frontvel_withT, compute_frontvel_mass, plot_frontvel
+export compute_frontvel_heat, compute_frontvel_mass, plot_frontvel
+export compute_frontvel_fixedspeed
 
 """
     function compute_Qice(ϕ, T, p, dom::Domain, params)
 
-Compute the total heat input into frozen domain. Also passes glass-ice heat as separate return.
+Compute the total heat input into frozen & dried domains. Also passes glass-ice heat as separate return.
 
 See p. 112-113 from paperlike notes. At pseudosteady conditions, all heat getting added to the system goes to the frozen domain,
 so we don't actually need to treat different areas of the surface.
@@ -29,25 +30,21 @@ end
 
 
 """
-    compute_Qice_noflow(u, dom::Domain, params)
+    compute_Qice_noflow(u, T, dom::Domain, params)
 
-Compute heat delivery to ice, assuming mass flow is zero. Also passes glass-ice heat as separate return.
+Compute the total heat input into frozen & dried domains, assuming mass flow is zero. Also passes glass-ice heat as separate return.
 """
 function compute_Qice_noflow(u, T, dom::Domain, params)
 
-    @unpack Kv, Kgl, Q_ic, Q_ck, ΔH, Tsh= params
+    @unpack Kv, Kgl, Q_ic, Q_ck, Tsh= params
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
-    # botsurf = compute_icesh_area(ϕ, dom)
-    # Qbot = botsurf * Q_sh
     rweights = ones(Float64, dom.nr) 
     rweights[begin] = rweights[end] = 0.5
     Qsh = 2π* Kv * dom.dr* sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
 
     # Heat flux from glass, at outer radius
-    # radsurf = compute_icegl_area(ϕ, dom)
-    # Qrad = radsurf * Q_gl
     zweights = ones(Float64, dom.nz) 
     zweights[begin] = zweights[end] = 0.5
     Qgl = 2π*dom.rmax * Kgl * dom.dz * sum(zweights .* ( Tgl .- T[end,:]))
@@ -60,6 +57,52 @@ function compute_Qice_noflow(u, T, dom::Domain, params)
     # @info "Q" Tsh Tf Qsh Qgl Qvol icevol
 
     return Qsh + Qgl + Qvol, Qgl
+end
+
+"""
+    compute_Qice_nodry(u, T, dom::Domain, params)
+
+Compute the total heat input into frozen domain from volumetric, shelf, and glass. 
+Contrast with compute_Qice_noflow and compute_Qice, which include heat to dried domain.
+"""
+function compute_Qice_nodry(u, T, dom::Domain, params)
+    @unpack Kv, Kgl, Q_ic, Q_ck, Tsh= params
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+
+    # Heat flux from shelf, at bottom of vial
+    rweights = zeros(Float64, dom.nr) 
+    for ir in 1:dom.nr-1
+        ϕl, ϕr = ϕ[ir:ir+1, 1]
+        if ϕl <= 0 && ϕr <= 0
+            rweights[ir:ir+1] .+= 0.5
+        elseif ϕl <= 0
+            rweights[ir] += (ϕl/(ϕl - ϕr))*0.5
+        elseif ϕr <= 0
+            rweights[ir+1] += (ϕr/(ϕr - ϕl))*0.5
+        # else # Nothing needed to do in this case
+        end
+    end
+    Qsh = 2π* Kv * dom.dr* sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
+
+    # Heat flux from glass, at outer radius
+    zweights = zeros(Float64, dom.nz) 
+    for iz in 1:dom.nz-1
+        ϕl, ϕr = ϕ[iz:iz+1, 1]
+        if ϕl <= 0 && ϕr <= 0
+            zweights[iz:iz+1] .+= 0.5
+        elseif ϕl <= 0
+            zweights[iz] += (ϕl/(ϕl - ϕr))*0.5
+        elseif ϕr <= 0
+            zweights[iz+1] += (ϕr/(ϕr - ϕl))*0.5
+        # else # Nothing needed to do in this case
+        end
+    end
+    Qgl = 2π*dom.rmax * Kgl * dom.dz * sum(zweights .* ( Tgl .- T[end,:]))
+
+    # Volumetric heat in cake and ice
+    icevol = compute_icevol(ϕ, dom)
+    Qvol = icevol * Q_ic 
+    return Qsh + Qgl + Qvol
 end
 
 """
@@ -156,7 +199,7 @@ function compute_icevol(ϕ, dom::Domain)
             z1, z2 = zs[i:i+1]
             # Compute volume of cone slice: cone minus the top chunk
             rmin, rmax = minmax(r1, r2)
-            dr = rmax - rmin # Absoluate value
+            dr = rmax - rmin # Absolute value
             if dr != 0 # Cone
                 h = abs(z2 - z1)
                 H = rmax*h/dr
@@ -164,13 +207,6 @@ function compute_icevol(ϕ, dom::Domain)
             else # Cylinder
                 vol = π*rmax^2*abs(z2-z1)
             end
-
-
-            # dr = r2 - r1
-            # dz = z2 - z1
-            # vol = abs(π*dz*(dr^2 *1/3 + dr*r1 + r1^2))
-
-
             # If cone contains ice, add to volume.
             # If cone contains air, subtract, because surrounded by other ice.
             # Six cases of possible edge connections in a box to consider; worked out in my tablet notes
@@ -204,7 +240,6 @@ function compute_icevol(ϕ, dom::Domain)
             else
                 @warn "Didn't get a case match for volume" ij1 ij2 vol
             end
-            # @info "during" totvol vol m mi r1 r2 z1 z2
         end
     end
     return totvol
@@ -223,8 +258,7 @@ function compute_icesurf(ϕ, dom::Domain)
         rs, zs = coordinates(line) # coordinates of this line segment
         for i in 1:length(rs)-1
             # Compute area: cone minus the top chunk
-            r2 = maximum(rs[i:i+1])
-            r1 = minimum(rs[i:i+1])
+            r1, r2 = extrema(rs[i:i+1])
             h = abs(zs[i+1] - zs[i])
             if h == 0 # Flat disk
                 A = π * (r2^2 -r1^2)
@@ -245,12 +279,6 @@ function compute_icesurf(ϕ, dom::Domain)
             end
             totsurf += A
         end
-        rmids = [rs[i+1] + rs[i] for i in 1:length(rs)-1] .* 0.5
-        dzs = abs.(zs[2:end] .- zs[1:end-1])
-        # For surfaces which are exactly flat, replace dz with dr to get rdr
-        # dzs[dzs .== 0] .= dr
-        surf = sum(@. 2π*dzs*rmids) # Take a sum of conical surfaces
-        totsurf += surf
     end
     return totsurf
 end
@@ -265,9 +293,11 @@ For ϕ derivatives, simple second order finite differences (one-sided at boundar
 
 BROKEN: doesn't use Robin BCs.
 """
-function compute_Tderiv(ϕ, T, ir::Int, iz::Int, dom::Domain, params)
+function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack k, Q_sh, Q_gl, Tf = params
+    @unpack k, Kv, Kgl, Tsh = params
+
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     pT = T[ir, iz]
     pϕ = ϕ[ir, iz]
     
@@ -278,26 +308,22 @@ function compute_Tderiv(ϕ, T, ir::Int, iz::Int, dom::Domain, params)
     θ_thresh = max(1/nr, 1/nz)
 
     # Enforce BCs explicitly for boundary cells
-    if ir == 1 
-        dϕr = (-0.5ϕ[ir+2, iz] +2ϕ[ir+1, iz] - 1.5pϕ) * dr1 # 2nd order 
+    if ir == 1 # Symmetry
         dTr = 0
-    elseif ir == nr
-        dϕr = (1.5pϕ - 2ϕ[ir-1, iz] + 0.5ϕ[ir-2,iz]) * dr1 # 2nd order
-        dTr = Q_gl / k
+    elseif ir == nr # Robin: glass
+        dTr = Kgl*(pT- Tgl)
     else 
         # Bulk
         eϕ = ϕ[ir+1, iz]
         wϕ = ϕ[ir-1, iz]
-        dϕr = (eϕ - wϕ) * 0.5dr1
 
         eT = T[ir+1, iz]
         wT = T[ir-1, iz]
         # West and east ghost cell: weird kink? Set to 0 and procrastinate
         if wϕ <= 0 && eϕ <= 0
-            dϕr = (eϕ - wϕ) * 0.5*dr1 # Centered difference
-            θr1 = pϕ/(pϕ - eϕ)
-            θr2 = pϕ/(pϕ - wϕ)
-            dTr = (Tf - pT)*(θr1 - θr2)/(θr2 * (2θr2-θr1))
+            θr1 = pϕ/(pϕ - wϕ)
+            θr2 = pϕ/(pϕ - eϕ)
+            dTr = 0.5*dr1*(Tf - pT)*(1/θr2 - 1/θr1)
         elseif wϕ <= 0 # West ghost cell
             θr = pϕ /(pϕ - wϕ)
             if θr > θ_thresh
@@ -308,7 +334,7 @@ function compute_Tderiv(ϕ, T, ir::Int, iz::Int, dom::Domain, params)
         elseif eϕ <= 0 # East ghost cell
             θr = pϕ /(pϕ - eϕ)
             if θr > θ_thresh
-                dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*(3θr+1)/(θr+1)*0.25) * dr1 # Quadratic extrapolation
+                dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*θr/(θr+1)) * dr1 # Quadratic extrapolation
             else
                 dTr = (Tf - wT)/(θr+1)*dr1 # Linear extrapolation from west
             end
@@ -318,26 +344,22 @@ function compute_Tderiv(ϕ, T, ir::Int, iz::Int, dom::Domain, params)
     end
             
     # Enforce BCs explicitly for boundary cells
-    if iz == 1 
-        dϕz = (-0.5ϕ[ir, iz+2] +2ϕ[ir, iz+1] - 1.5pϕ) * dz1 # 2nd order 
-        dTz = Q_sh / k
-    elseif iz == nz
-        dϕz = (1.5pϕ - 2ϕ[ir, iz-1] + 0.5ϕ[ir,iz-2]) * dz1 # 2nd order
+    if iz == 1 # Robin: shelf
+        dTz = Kv/k*(Tsh-pT)
+    elseif iz == nz # Adiabatic
         dTz = 0
     else 
         # Bulk
         nϕ = ϕ[ir, iz+1]
         sϕ = ϕ[ir, iz-1]
-        dϕz = (nϕ - sϕ) * 0.5dz1
 
         nT = T[ir, iz+1]
         sT = T[ir, iz-1]
         # North and south ghost cell: weird kink
         if sϕ <= 0 && nϕ <= 0
-            dϕz = (nϕ - sϕ) * 0.5*dz1 # Centered difference
             θz1 = pϕ/(pϕ - nϕ)
             θz2 = pϕ/(pϕ - sϕ)
-            dTz = (Tf - pT)*(θz1 - θz2)/(θz2 * (2θz2-θz1))
+            dTz = 0.5*dz1*(Tf - pT)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = pϕ /(pϕ - sϕ)
             if θz > θ_thresh
@@ -357,10 +379,7 @@ function compute_Tderiv(ϕ, T, ir::Int, iz::Int, dom::Domain, params)
         end
     end
 
-    ngradϕ = hypot(dϕr, dϕz)
-    dϕr /= ngradϕ
-    dϕz /= ngradϕ
-    return dϕr, dTr, dϕz, dTz
+    return dTr, dTz
 end
 
 """
@@ -402,9 +421,9 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         dpr = (pe - pw) * 0.5dr1
 
         if wϕ <= 0 && eϕ <= 0 # West and east ghost cell
-            θr1 = ϕp/(ϕp - eϕ)
-            θr2 = ϕp/(ϕp - wϕ)
-            dpr = (p_sub - pp)*(θr1 - θr2)/(θr2 * (2θr2-θr1))
+            θr1 = pϕ/(pϕ - wϕ)
+            θr2 = pϕ/(pϕ - eϕ)
+            dpr = k*0.5*dr1*(p_sub - pp)*(1/θr2 - 1/θr1)
         elseif wϕ <= 0 # West ghost cell
             θr = ϕp /(ϕp - wϕ)
             if θr > θ_thresh
@@ -440,18 +459,6 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
             bp = b[ir,iz]
         end
         dpz = Rp0/bp*(p_ch - p[ir,iz]) 
-
-
-
-        # sϕ = ϕ[ir, iz-1]
-        # if sϕ <= 0 # South ghost cell
-        #     θz = ϕp /(ϕp - sϕ)
-        #     dpz = (pp - p_sub)*dz1/θz # 
-        # elseif ϕ[ir, iz-2] <= 0 # Use one cell
-        #     dpz = (pp - p[ir, iz-1]) * dz1 # 1st order
-        # else # 2nd order
-        #     dpz = (1.5pp - 2p[ir, iz-1] + 0.5p[ir,iz-2]) * dz1 # 2nd order
-        # end
     else # Bulk
         nϕ = ϕ[ir, iz+1]
         sϕ = ϕ[ir, iz-1]
@@ -460,9 +467,9 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         ps = p[ir, iz-1]
         dpz = (pn - ps) * 0.5dz1
         if sϕ <= 0 && nϕ <= 0 # North and south ghost cell: weird kink
-            θz1 = ϕp/(ϕp - nϕ)
-            θz2 = ϕp/(ϕp - sϕ)
-            dpz = (p_sub - pp)*(θz1 - θz2)/(θz2 * (2θz2-θz1))
+            θz1 = pϕ/(pϕ - wϕ)
+            θz2 = pϕ/(pϕ - eϕ)
+            dpz = k*0.5*dz1*(p_sub - pp)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
             if θz >  θ_thresh
@@ -483,9 +490,6 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         end
 
     end
-
-    # @info "pderiv" dpr dpz ir iz
-    # @show ngradϕ dϕr dϕz
     return dpr, dpz
 end
 
@@ -505,29 +509,11 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
     Γ⁺ = [c for c in Γ if ϕ[c]>0]
     b = eval_b(T, p, params)
      
-    vf = zeros(Float64, dom.nr, dom.nz, 2)
-    
-    # --- Compute ϕ derivatives with WENO
-    indmin = CI(1, 1)
-    indmax = CI(dom.nr, dom.nz)
-    rshift = [CI(i, 0) for i in -3:3]
-    zshift = [CI(0, i) for i in -3:3]
-    
-    dϕdr_e = zeros(Float64, size(dom))
-    dϕdr_w = zeros(Float64, size(dom))
-    dϕdz_n = zeros(Float64, size(dom))
-    dϕdz_s = zeros(Float64, size(dom))
-    for ind in CartesianIndices(ϕ)
-        rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(ϕ[rst]..., dom.dr)
-        dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(ϕ[zst]..., dom.dz)
-
-    end
+    vf = zeros(eltype(ϕ), dom.nr, dom.nz, 2)
+    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
     for c in Γ⁺
         ir, iz = Tuple(c)
-        # dϕr, dTr, dϕz, dTz = compute_Tderiv(ϕ, T, ir, iz, dom, params)
         dpr, dpz = compute_pderiv(u, T, p, ir, iz, dom, params)
 
         if ir == dom.nr # Right boundary
@@ -556,10 +542,128 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
 
     end
     
-    dϕdx_all = (dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s)
     return vf, dϕdx_all
-
-
 end
 
+"""
+    compute_frontvel_heat(ϕ, T, p, dom::Domain, params; debug=false)
 
+Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on Γ with ϕ>0). 
+"""
+function compute_frontvel_heat(u, T, dom::Domain, params; debug=false)
+
+    @unpack k, ΔH, ρf, ϵ = params
+    ϕ = ϕ_T_from_u(u, dom)[1]
+
+    Γf = identify_Γ(ϕ, dom)
+    Γ = findall(Γf)
+    Γ⁺ = [c for c in Γ if ϕ[c]>0]
+     
+    vf = zeros(eltype(ϕ), dom.nr, dom.nz, 2)
+    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+
+    Qice = compute_Qice_nodry(u, T, dom, params)
+    Q_ice_per_surf = Qice / compute_icesurf(ϕ, dom)
+
+    for c in Γ⁺
+        ir, iz = Tuple(c)
+        dTr, dTz = compute_Tderiv(u, T, ir, iz, dom, params)
+
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[c]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[c]
+        else
+            dϕdr = (dTr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        end
+        # Boundary cases: use internal derivative
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[c]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[c]
+        else
+            dϕdz = (dTz < 0 ? dϕdz_s[c] : dϕdz_n[c])
+        end
+        
+        # Normal is out of the ice
+        # md =  , >0 for sublimation occurring
+        # v = md/ρ * -∇ϕ
+        q = ( k* (dTr*dϕdr + dTz * dϕdz) + Q_ice_per_surf)
+        md_l = q/ΔH
+        vtot = md_l / ρf / ϵ 
+        vf[c,1] = -vtot * dϕdr
+        vf[c,2] = -vtot * dϕdz
+
+    end
+    
+    return vf, dϕdx_all
+end
+
+"""
+    compute_frontvel_fixedspeed(v0, ϕ, dom::Domain)
+
+Compute speed `v0` times normal vector on Γ⁺, positive side of interface.
+"""
+function compute_frontvel_fixedspeed(v0, ϕ, dom::Domain)
+    Γf = identify_Γ(ϕ, dom)
+    Γ = findall(Γf)
+    Γ⁺ = [c for c in Γ if ϕ[c]>0]
+     
+    vf = zeros(eltype(ϕ), dom.nr, dom.nz, 2)
+    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+
+    for c in Γ⁺
+        ir, iz = Tuple(c)
+
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[c]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[c]
+        else
+            dϕdr = (dϕdr_w > 0 ? dϕdr_w[c] : dϕdr_e[c])
+        end
+        # Boundary cases: use internal derivative
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[c]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[c]
+        else
+            dϕdz = (dϕdz_s > 0 ? dϕdz_s[c] : dϕdz_n[c])
+        end
+        
+        vf[c,1] = -v0 * dϕdr
+        vf[c,2] = -v0 * dϕdz
+
+    end
+    
+    return vf, dϕdx_all
+end
+
+"""
+    dϕdx_all_WENO(ϕ, dom)
+
+Compute (`∂ϕ/∂r` east, `∂ϕ/∂r` west, `∂ϕ/∂r` north, `∂ϕ/∂r` south) using WENO derivatives.
+
+Beyond the boundaries of domain, ϕ is padded with the boundary value 
+(which I think is equivalent to a homogeneous Neumann condition? Or maybe Dirichlet?)
+"""
+function dϕdx_all_WENO(ϕ, dom)
+    # --- Compute ϕ derivatives with WENO
+    indmin = CI(1, 1)
+    indmax = CI(dom.nr, dom.nz)
+    rshift = [CI(i, 0) for i in -3:3]
+    zshift = [CI(0, i) for i in -3:3]
+    
+    dϕdr_e = zeros(Float64, size(dom))
+    dϕdr_w = zeros(Float64, size(dom))
+    dϕdz_n = zeros(Float64, size(dom))
+    dϕdz_s = zeros(Float64, size(dom))
+    for ind in CartesianIndices(ϕ)
+        rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+        zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+        dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(ϕ[rst]..., dom.dr)
+        dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(ϕ[zst]..., dom.dz)
+
+    end
+    return dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s
+end
