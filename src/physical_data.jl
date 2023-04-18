@@ -29,7 +29,8 @@ From Feistel and Wagner, 2006
 """
 function calc_psub(T)
     if clamp(T, 20.0, 273.0) != T
-        # @warn "Invalid temperature for sublimation pressure correlation. Should be between 20 and 273 K" T
+        @warn "Invalid temperature for sublimation pressure correlation. Clamped to 20 and 273 K" T
+        T = clamp(T, 20.0, 273.0)
     end
     η = sum(psub_ei .* (T/psub_Tt) .^ (0:6))
     lnπ = 1.5log(T/psub_Tt) + (1 - psub_Tt/T) * η

@@ -1,3 +1,4 @@
+using CSV
 
 # dom = Domain(51, 51, 1.0, 1.0)
 cparams = p = make_default_params()
@@ -45,9 +46,9 @@ Tsh[1:101] .-= range(50u"K", 0u"K", length=101) # Ramp from -40 to 10
 
 # With fixed vial mass including whole vial...
 cparams[:m_cp_gl] = 7.9u"g" * 840u"J/kg/K"
-Q_ic = 0.26u"W/cm^3"
+Q_ic = 0.16u"W/cm^3"
 Q_gl_RF = 0.13u"W" # = volumetric * relevant vial volume
-cparams[:Kgl] = 380.0u"W/m^2/K"
+cparams[:Kgl] = 100.0u"W/m^2/K"
 
 # With fixed vial mass, varying l_surf
 # cparams[:m_cp_gl] = 7.9u"g" * 840u"J/kg/K"
@@ -101,3 +102,10 @@ u0[dom.ntot+2] = ustrip(u"K", Tf0)
 reinitialize_ϕ_HCR!(ϕ0, dom)
 T0 = solve_T(u0, dom, params)
 p0 = solve_p(u0, T0, dom, params)
+
+
+
+exfname = datadir("exp_raw", "3_8_23_Man05_10C_constPower10W_17vials_5ml_6R", "TemperatureLog_030223.csv")
+exdat = CSV.File(exfname)
+t_ex = exdat["Elapsed [s]"]*u"s"
+T1_ex = exdat["T1 [C]"]*u"°C"
