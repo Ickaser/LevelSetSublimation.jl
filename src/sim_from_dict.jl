@@ -224,7 +224,10 @@ function cond_reinit(u, t, integ)
 end
 
 
-function input_measurements!(integ, meas_keys::Vector, controls)
+function input_measurements!(integ, meas_keys, controls)
+    if isnothing(meas_keys)
+        return
+    end
     t_samp = controls[:t_samp]
     ti = argmin(abs.(t_samp .- integ.t))
     if !(integ.t ≈ t_samp[ti])
@@ -236,8 +239,7 @@ function input_measurements!(integ, meas_keys::Vector, controls)
     end
 end
 
-function input_measurements!(integ, meas_keys::Nothing, controls)
-end
+# function input_measurements!(integ, meas_keys, controls) end
 
 """
     sim_from_dict(fullconfig; tf=1e5, verbose=false)
@@ -307,6 +309,9 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     Tf0 = ustrip(u"K", Tf0)
     Tgl0 = ustrip(u"K", Tgl0)
     params, meas_keys, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
+    if verbose
+        @info "Variables used in callback:" meas_keys
+    end
     
 
 
@@ -414,6 +419,8 @@ function uevol_heatonly!(du, u, integ_pars, t)
     # dTgldt = (Q_gl_RF - Qgl) / m_cp_gl
     # du[ntot+1] = dTfdt
     # du[ntot+2] = dTgldt
+    du[ntot+1] = 0
+    du[ntot+2] = 0
 
     dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all
     for ind in CartesianIndices(ϕ)
@@ -441,7 +448,7 @@ function uevol_heatonly!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp 
     end
     # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" maximum(dϕ)
+    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf Tgl
     return nothing
 end
 
@@ -481,6 +488,54 @@ function uevol_heatonly(u, config)
     uevol_heatonly(u, dom, params)
 end
 
+"""
+next_reinit_time_heatonly(integ)
+
+Compute the next time reinitialization should be necessary, given the current integrator state.
+Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
+"""
+function next_reinit_time_heatonly(integ; verbose=false)
+    dom = integ.p[1]
+    du = similar(integ.u)
+    uevol_heatonly!(du, integ.u, integ.p, integ.t)
+
+    # The main region of concern is the frozen region near interface
+    # Find the largest value of dϕdt in that region
+    ϕ, Tf, Tgl = ϕ_T_from_u(integ.u, dom)
+    dϕ, dTfdt, dTgldt = ϕ_T_from_u(du, dom)
+    B = identify_B(ϕ, dom)
+    B⁻ = B .& (ϕ .<= 0)
+    if sum(B⁻) > 0
+        max_dϕdt = maximum(abs.(dϕ[B⁻]))
+    else
+        max_dϕdt = maximum(abs.(dϕ))
+    end
+    @unpack p_ch = integ.p[2]
+    if max_dϕdt == 0 # If no sublimation is happening...
+        @info "Sublimation stopped, no way to estimate next reinit time so guessing dt=1.0 ." 
+        return integ.t + 1.0
+    end
+
+    # Reinit next when interface should have moved across half of band around interface 
+    domfrac = 0.1 # Should reinit roughly 10-15 times during simulation
+    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax)  # Also: at early times, do more often
+    dt = minlen / max_dϕdt
+    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    if dryfrac < domfrac #|| integ.t < 1000
+        # dt = clamp(dt, 1, )
+        # integ.t / dryfrac * 0.1 / 2
+        integ.t / dryfrac * 0.01 / 2
+        dt = max(1.0, integ.t / (dryfrac-1e-4) * 0.05) # Expect another .05 dryfrac
+    end
+    # @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+    if verbose
+        # reinit_err = sdf_err_L∞(ϕ, dom)
+        # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tgl integ.t/dryfrac #, next at t=$(integ.t+dt)" 
+    end
+
+    return integ.t + dt
+end
 
 """
     sim_heatonly(fullconfig; tf=1e5, verbose=false)
@@ -546,6 +601,9 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
     Tf0 = ustrip(u"K", Tf0)
     Tgl0 = ustrip(u"K", Tgl0)
     params, meas_keys, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
+    if verbose
+        @info "Variables used in callback:" meas_keys
+    end
     
 
 
@@ -556,6 +614,7 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
     # Make sure that the starting profile is very well-initialized
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=10000, tol=1.2/max(dom.nr,dom.nz), err_reg=:all) 
+
     ϕ0_flat = reshape(ϕ0, :)
 
     
@@ -580,7 +639,7 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     # --- Set up reinitialization callback
 
-    cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose=verbose), reinit_wrap,  initial_affect = true)
+    cb_reinit = IterativeCallback(x->next_reinit_time_heatonly(x, verbose=verbose), reinit_wrap,  initial_affect = true)
 
     # --- Set up simulation end callback
 

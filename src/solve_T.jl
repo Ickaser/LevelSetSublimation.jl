@@ -101,17 +101,19 @@ function solve_T(u, dom::Domain, params)
                     rhs[imx] -= 2k*Tf*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within dr/r cells of boundary
                     # Have an exact value given by BC + front
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    rhs[imx] = Tf - θr*BC1*dr
-                    continue
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    # rhs[imx] = Tf - θr*BC1*dr
+                    # continue
+                    pc += -2k*dr2/(θr+1)
+                    rhs[imx] -= 2Tf*k*dr2/(θr+1) 
                 end
                 # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2dr2
-                ec +=  2dr2
+                pc += -2k*dr2
+                ec +=  2k*dr2
                 # rhs[imx] += BC1*(2*dr1 - r1)
                 rhs[imx] += 0 # r=0, so 1/r = NaN
             end
@@ -135,8 +137,8 @@ function solve_T(u, dom::Domain, params)
                 # Using Robin boundary to define ghost point: east T= west T + 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2dr2 - Kgl*(r1 + 2dr1)
-                wc +=  2dr2
+                pc += -2k*dr2 - Kgl*(r1 + 2dr1)
+                wc +=  2k*dr2
                 rhs[imx] -= Kgl*Tgl*(2dr1 + r1)
             end
 
@@ -203,8 +205,8 @@ function solve_T(u, dom::Domain, params)
                     # rhs[imx] = (k*Tf + Kv*Tsh*θz*dz) / (k + Kv*θz*dz)
                     # continue
                     # First Robin ghost defined, then Stefan ghost extrap
-                    pc += -2dz2 - 2Kv*dz1
-                    wc +=  2dz2
+                    pc += -2k*dz2 - 2Kv*dz1
+                    nc +=  2k*dz2
                     rhs[imx] -= 2Kv*Tsh*dz1
                 end
                 # No way to treat other equations, so cut it here
@@ -295,9 +297,22 @@ function solve_T(u, dom::Domain, params)
 
         # Debug boundaries
         # if iz==1
-        #     # println("ir=$ir, iz=$iz, pc=$pc, nc=$nc, sc=$sc,  ec=$ec, wc=$wc, rhs=$(rhs[imx])") 
+        #     if sc != 0
+        #         @info "iz==1" ir pc nc sc ec wc rhs[imx]
+        #     end
         # elseif iz == nz
-        #     println("ir=$ir, iz=$iz, pc=$pc, nc=$nc, sc=$sc,  ec=$ec, wc=$wc, rhs=$(rhs[imx])") 
+        #     if nc != 0
+        #         @info "iz==nz" ir pc nc sc ec wc rhs[imx]
+        #     end
+        # end
+        # if ir==1
+        #     if wc != 0
+        #         @info "ir==1" ir pc nc sc ec wc rhs[imx]
+        #     end
+        # elseif ir == nr
+        #     if ec != 0
+        #         @info "ir==nr" ir pc nc sc ec wc rhs[imx]
+        #     end
         # end
 
         # Assign all computed stencil values into matrix

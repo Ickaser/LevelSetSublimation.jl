@@ -147,6 +147,10 @@ TODO: switch to Eq. 23 to minimize allocations? Can eliminate F, rhs that way
 """
 function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=:B)
 
+    if sum(0 .< extrema(ϕ)) != 1
+        @info "Attempted reinit when surface is not in domain. Skipping reinit." extrema(ϕ)
+        return nothing
+    end
     Γ = Γ_cells(ϕ, dom)
     dx = sqrt(dom.dr*dom.dz) # Geometric mean grid spacing
     Cv = Γ
@@ -160,7 +164,6 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
     for v in 1:maxsteps
         # if sdf_err_L1(ϕ, dom) < tol
         if sdf_err_L∞(ϕ, dom, region=err_reg) < tol
-            # @info "End reinit early" sdf_err_L1(ϕ, dom) v
             break
         end
         F .= 0

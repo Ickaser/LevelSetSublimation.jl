@@ -70,30 +70,58 @@ function compute_Qice_nodry(u, T, dom::Domain, params)
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
+
+    # Approximately compute area
+    # rweights = zeros(Float64, dom.nr) 
+    # for ir in 1:dom.nr-1
+    #     ϕl, ϕr = ϕ[ir:ir+1, 1]
+    #     if ϕl <= 0 && ϕr <= 0
+    #         rweights[ir:ir+1] .+= 0.5
+    #     elseif ϕl <= 0
+    #         rweights[ir] += -(ϕl/(ϕl - ϕr))*0.5
+    #     elseif ϕr <= 0
+    #         rweights[ir+1] += -(ϕr/(ϕr - ϕl))*0.5
+    #     # else # Nothing needed to do in this case
+    #     end
+    # end
+    # Qsh = 2π* Kv * dom.dr* sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
+
+    # Explicitly compute area
     rweights = zeros(Float64, dom.nr) 
     for ir in 1:dom.nr-1
         ϕl, ϕr = ϕ[ir:ir+1, 1]
         if ϕl <= 0 && ϕr <= 0
-            rweights[ir:ir+1] .+= 0.5
+            rmid = (dom.rgrid[ir] + dom.rgrid[ir+1])/2
+            rweights[ir] += rmid^2/2
+            rweights[ir+1] -= rmid^2/2
         elseif ϕl <= 0
-            rweights[ir] += (ϕl/(ϕl - ϕr))*0.5
+            θr = -(ϕl/(ϕl - ϕr))
+            rmid =dom.rgrid[ir] + dom.dr*θr
+            rweights[ir] += rmid^2/2
         elseif ϕr <= 0
-            rweights[ir+1] += (ϕr/(ϕr - ϕl))*0.5
+            θr = -(ϕr/(ϕr - ϕl))
+            rmid = dom.rgrid[ir+1] - dom.dr*θr
+            rweights[ir+1] -= rmid^2/2
         # else # Nothing needed to do in this case
         end
     end
-    Qsh = 2π* Kv * dom.dr* sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
+    if ϕ[dom.nr] <= 0
+        rweights[dom.nr] += dom.rmax^2/2
+    end
+
+    Qsh = 2π* Kv * sum(rweights .* (Tsh .- T[:,1] ))
+    
 
     # Heat flux from glass, at outer radius
     zweights = zeros(Float64, dom.nz) 
     for iz in 1:dom.nz-1
-        ϕl, ϕr = ϕ[iz:iz+1, 1]
+        ϕl, ϕr = ϕ[end, iz:iz+1]
         if ϕl <= 0 && ϕr <= 0
             zweights[iz:iz+1] .+= 0.5
         elseif ϕl <= 0
-            zweights[iz] += (ϕl/(ϕl - ϕr))*0.5
+            zweights[iz] += -(ϕl/(ϕl - ϕr))*0.5
         elseif ϕr <= 0
-            zweights[iz+1] += (ϕr/(ϕr - ϕl))*0.5
+            zweights[iz+1] += -(ϕr/(ϕr - ϕl))*0.5
         # else # Nothing needed to do in this case
         end
     end
@@ -102,6 +130,8 @@ function compute_Qice_nodry(u, T, dom::Domain, params)
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
     Qvol = icevol * Q_ic 
+
+    # @info "geom" icevol get_subf_r(ϕ, dom)
     return Qsh + Qgl + Qvol
 end
 
@@ -267,17 +297,18 @@ function compute_icesurf(ϕ, dom::Domain)
             elseif r1 == 0 # Cone outside
                 l = hypot(r2, h)
                 A = π*r2*l
-            elseif r1 == r2
-                A = π*r2*h
+            elseif (r2 - r1)/(h) < 1e-10 # Cylincrical, or at least nearly. Cone formula is singular here
+                A = 2*π*r2*h
             else # Cone minus the top chunk
-                h2 = h
-                h1 = h2/r2/(1/r1 + 1/r2)
-                h = h1 + h2
-                l1 = hypot(h1, r1)
-                l = hypot(h+h1, r2)
-                A = π * (r2*l - r1*l1)
+                # 1: top chunk
+                # 2: bottom chunk (part of interest)
+                l2 = hypot(r2-r1, h)
+                l1 = l2/r2 / (1/r1 - 1/r2)
+                l = l1 + l2
+                A = π * (r2*(l1+l2) - r1*l1)
             end
             totsurf += A
+            # @show A
         end
     end
     return totsurf
@@ -299,10 +330,11 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
 
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     pT = T[ir, iz]
-    pϕ = ϕ[ir, iz]
+    ϕp = ϕ[ir, iz]
+    r = dom.rgrid[ir]
     
-    if pϕ > 2dr || pϕ > 2dz || pϕ < -2dr || pϕ < -2dz
-        @debug "Computing heat flux for cell which may not be at front." ir iz pϕ
+    if ϕp > 2dr || ϕp > 2dz || ϕp < -2dr || ϕp < -2dz
+        @debug "Computing heat flux for cell which may not be at front." ir iz ϕp
     end
 
     θ_thresh = max(1/nr, 1/nz)
@@ -311,7 +343,7 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
     if ir == 1 # Symmetry
         dTr = 0
     elseif ir == nr # Robin: glass
-        dTr = Kgl*(pT- Tgl)
+        dTr = Kgl/k*(Tgl - pT)
     else 
         # Bulk
         eϕ = ϕ[ir+1, iz]
@@ -321,18 +353,18 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
         wT = T[ir-1, iz]
         # West and east ghost cell: weird kink? Set to 0 and procrastinate
         if wϕ <= 0 && eϕ <= 0
-            θr1 = pϕ/(pϕ - wϕ)
-            θr2 = pϕ/(pϕ - eϕ)
+            θr1 = ϕp/(ϕp - wϕ)
+            θr2 = ϕp/(ϕp - eϕ)
             dTr = 0.5*dr1*(Tf - pT)*(1/θr2 - 1/θr1)
         elseif wϕ <= 0 # West ghost cell
-            θr = pϕ /(pϕ - wϕ)
+            θr = ϕp /(ϕp - wϕ)
             if θr > θ_thresh
                 dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
             else 
                 dTr = (eT - Tf)/(θr+1)*dr1 # Linear extrapolation from east
             end
         elseif eϕ <= 0 # East ghost cell
-            θr = pϕ /(pϕ - eϕ)
+            θr = ϕp /(ϕp - eϕ)
             if θr > θ_thresh
                 dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*θr/(θr+1)) * dr1 # Quadratic extrapolation
             else
@@ -357,18 +389,18 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
         sT = T[ir, iz-1]
         # North and south ghost cell: weird kink
         if sϕ <= 0 && nϕ <= 0
-            θz1 = pϕ/(pϕ - nϕ)
-            θz2 = pϕ/(pϕ - sϕ)
+            θz1 = ϕp/(ϕp - nϕ)
+            θz2 = ϕp/(ϕp - sϕ)
             dTz = 0.5*dz1*(Tf - pT)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
-            θz = pϕ /(pϕ - sϕ)
+            θz = ϕp /(ϕp - sϕ)
             if θz > θ_thresh
                 dTz = (-Tf/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
             else
                 dTz = (nT - Tf)/(θz+1)*dz1
             end
         elseif nϕ <= 0 # North ghost cell
-            θz = pϕ /(pϕ - nϕ)
+            θz = ϕp /(ϕp - nϕ)
             if θz > θ_thresh
                 dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
             else
@@ -421,9 +453,9 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         dpr = (pe - pw) * 0.5dr1
 
         if wϕ <= 0 && eϕ <= 0 # West and east ghost cell
-            θr1 = pϕ/(pϕ - wϕ)
-            θr2 = pϕ/(pϕ - eϕ)
-            dpr = k*0.5*dr1*(p_sub - pp)*(1/θr2 - 1/θr1)
+            θr1 = ϕp/(ϕp - wϕ)
+            θr2 = ϕp/(ϕp - eϕ)
+            dpr = 0.5*dr1*(p_sub - pp)*(1/θr2 - 1/θr1)
         elseif wϕ <= 0 # West ghost cell
             θr = ϕp /(ϕp - wϕ)
             if θr > θ_thresh
@@ -467,8 +499,8 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         ps = p[ir, iz-1]
         dpz = (pn - ps) * 0.5dz1
         if sϕ <= 0 && nϕ <= 0 # North and south ghost cell: weird kink
-            θz1 = pϕ/(pϕ - wϕ)
-            θz2 = pϕ/(pϕ - eϕ)
+            θz1 = ϕp/(ϕp - wϕ)
+            θz2 = ϕp/(ϕp - eϕ)
             dpz = k*0.5*dz1*(p_sub - pp)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
@@ -588,8 +620,9 @@ function compute_frontvel_heat(u, T, dom::Domain, params; debug=false)
         # Normal is out of the ice
         # md =  , >0 for sublimation occurring
         # v = md/ρ * -∇ϕ
-        q = ( k* (dTr*dϕdr + dTz * dϕdz) + Q_ice_per_surf)
-        md_l = q/ΔH
+        q_grad = k* (dTr*dϕdr + dTz * dϕdz) 
+        # @info "aha"  q_grad Qice Q_ice_per_surf
+        md_l = (q_grad + Q_ice_per_surf)/ΔH
         vtot = md_l / ρf / ϵ 
         vf[c,1] = -vtot * dϕdr
         vf[c,2] = -vtot * dϕdz

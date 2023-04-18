@@ -20,9 +20,9 @@ Currently allowed setups:
 function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     ϵ *= sqrt(dom.rmax * dom.zmax)
     if ϕtype == :top || ϕtype == :flat
-        ϕ0 = [z - dom.zmax + ϵ for r in dom.rgrid, z in dom.zgrid]
+        ϕ0 = [z - dom.zmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :rad || ϕtype == :cyl
-        ϕ0 = [r - dom.rmax + ϵ for r in dom.rgrid, z in dom.zgrid]
+        ϕ0 = [r - dom.rmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :box
         ϕ0 = [max(r-dom.rmax, z-dom.zmax) + ϵ 
                 for r in dom.rgrid, z in dom.zgrid]
@@ -65,7 +65,9 @@ function params_nondim_setup(cparams, controls)
     for mk in keys(controls)
         nondim_controls[mk] = ustrip.(pbu[mk], controls[mk])
     end
-
+    if length(nondim_controls[:t_samp]) == 1
+        nondim_controls[:t_samp] = [0.0]
+    end
 
     arr_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])>1)]
     sc_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])==1)]
