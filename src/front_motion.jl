@@ -501,7 +501,7 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         if sϕ <= 0 && nϕ <= 0 # North and south ghost cell: weird kink
             θz1 = ϕp/(ϕp - wϕ)
             θz2 = ϕp/(ϕp - eϕ)
-            dpz = k*0.5*dz1*(p_sub - pp)*(1/θz2 - 1/θz1)
+            dpz = 0.5*dz1*(p_sub - pp)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
             if θz >  θ_thresh
