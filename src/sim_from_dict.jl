@@ -1,96 +1,142 @@
-export take_time_step, multistep
-export sim_from_dict_old, sim_from_dict
+export sim_from_dict, sim_heatonly
 
-export ϕevol_RHS
+export uevol_heatmass, uevol_heatonly, ϕ_T_from_u
 
+# --------- Convenience functions that need a home
+
+"""
+    ϕ_T_from_u(u, dom)
+
+Take the current system state `u` and break it into `ϕ`, `Tf`, and `Tgl`.
+Nothing too fancy--just to avoid rewriting the same logic everywhere
+"""
+function ϕ_T_from_u(u, dom)
+    ϕ = reshape(u[1:dom.ntot], size(dom))
+    Tf = u[dom.ntot+1]
+    Tgl = u[dom.ntot+2]
+    return ϕ, Tf, Tgl
+end
 
 # ---------- Fully adaptive time stepping functions
 
 """
-    ϕevol_RHS!(dϕ_flat, ϕ_flat, p, t)
+    uevol_heatmass!(du, u, p, t)
 
-Evaluate local time rate of change for `ϕ` (passed in flattened form as `ϕ_flat`), and put results in `dϕ_flat`.
+Evaluate local time rate of change for `u` and put results in `du`.
 
-Parameters `p` assumed to be `(dom::Domain, T_params)`
-This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing a temperature profilef
+`u` and `du` are both structured as follows:
+First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`, `dom.ntot+2` index is glass temperature `Tgl`
+
+Parameters `p` assumed to be `(dom::Domain, params)`
+This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
+using `compute_frontvel_mass`.
 """
-function ϕevol_RHS!(dϕ_flat, ϕ_flat, p, t)
-    dom = p[1]
-    T_params = p[2]
-    dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
-    ϕ = reshape(ϕ_flat, dom.nr, dom.nz)
-    # debug
-    # if isnan(sum(ϕ))
-    #     ϕ[isnan.(ϕ)] .= 1
-    #     @info "NaN in ϕ"
-    # end
+function uevol_heatmass!(du, u, integ_pars, t)
+    dom = integ_pars[1]
+    params = integ_pars[2]
+    p_last = integ_pars[3]
+    ntot = dom.ntot
+    dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    u[dom.ntot+1] = clamp(Tf, 200, 350)  # Prevent crazy temperatures from getting passed through to other functions
+    u[dom.ntot+2] = clamp(Tgl, 200, 400) # Prevent crazy temperatures from getting passed through to other functions
+    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
-    T = solve_T(ϕ, dom, T_params)
-    vf = extrap_v_fastmarch(ϕ, T, dom, T_params)
+    T = solve_T(u, dom, params)
+
+    p_sub = calc_psub(Tf) 
+    if p_sub < params[:p_ch] # No driving force for mass transfer: no ice loss, just temperature change
+        Qice, Qgl = compute_Qice_noflow(u, T, dom, params)
+        dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+        dTgldt =  (Q_gl_RF - Qgl) / m_cp_gl
+        dϕ .= 0.0
+        du[ntot+1] = dTfdt
+        du[ntot+2] = dTgldt
+        return nothing
+    end
+
+    p = solve_p(u, T, dom, params, p0 = p_last)
+    integ_pars[3] .= p # Cache current state of p as a guess for next timestep
+    vf, dϕdx_all = compute_frontvel_mass(u, T, p, dom, params)
+    extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:,:,1]
     vz = @view vf[:,:,2]
     
+    Qice, Qgl = compute_Qice(u, T, p, dom, params)
+    dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+    dTgldt = (Q_gl_RF - Qgl) / m_cp_gl
+    du[ntot+1] = dTfdt
+    du[ntot+2] = dTgldt
 
-    indmin = CI(1, 1)
-    indmax = CI(dom.nr, dom.nz)
-    rshift = [CI(i, 0) for i in -3:3]
-    zshift = [CI(0, i) for i in -3:3]
+    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all
     for ind in CartesianIndices(ϕ)
-    # for iz in 1:dom.nz, ir in 1:dom.nr
-        # irs = max.(1, min.(dom.nr, ir-3:ir+3)) # Pad with boundary values
-        # izs = max.(1, min.(dom.nz, iz-3:iz+3))
-        rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        dϕdr_w, dϕdr_e = wenodiffs_local(ϕ[rst]..., dom.dr)
-        dϕdz_s, dϕdz_n = wenodiffs_local(ϕ[zst]..., dom.dz)
+        ir, iz = Tuple(ind)
         # Boundary cases: use internal derivative
-        if rst[5] == ind # Right boundary
-            dϕdr = dϕdr_w
-        elseif rst[3] == ind # Left boundary
-            dϕdr = dϕdr_e
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[ind]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[ind]
         else
-            dϕdr = (vr[ind] > 0 ? dϕdr_w : dϕdr_e)
+            dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
         end
         # Boundary cases: use internal derivative
-        if zst[5] == ind # Top boundary
-            dϕdz = dϕdz_s
-        elseif zst[3] == ind # Bottom boundary
-            dϕdz = dϕdz_n
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[ind]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[ind]
         else
-            dϕdz = (vz[ind] > 0 ? dϕdz_s : dϕdz_n)
+            dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
         end
 
         rcomp = dϕdr*vr[ind]
         zcomp = dϕdz*vz[ind]
-        dϕ[ind] = -rcomp - zcomp
-        # if isnan(dϕ[ir, iz])
-        #     println("Here be NaN: t=$t, ir=$ir, iz=$iz")
-        #     @show vr[ir,iz] vz[ir,iz]
-        # end
-        # @info "check" ind rcomp zcomp vz[ind] dϕdz_s dϕdz_n
+        # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
+        dϕ[ind] = -rcomp - zcomp 
     end
+    # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    # @info "prog: t=$t, dryfrac=$dryfrac" maximum(dϕ)
     return nothing
 end
 
 
 """
-    ϕevol_RHS(ϕ, dom::Domain, T_params)
-    ϕevol_RHS(ϕ, config)
+    uevol_heatmass(u, dom::Domain, params)
+    uevol_heatmass(u, config)
     
-Compute the time derivative of `ϕ` with given parameters.
+Compute the time derivative of `u` with given parameters.
 
-Wraps a call on `ϕevol_RHS!`, for convenience in debugging and elsewhere that efficiency is less important
+`u` has `dom.ntot` entries for `ϕ` and one each for `Tf` and `Tgl`.
+
+Wraps a call on `uevol_heatmass!`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function ϕevol_RHS(ϕ, dom::Domain, T_params)
-    p = (dom, T_params)
-    dϕ = zeros(dom.nr, dom.nz)
-    dϕ_flat = reshape(dϕ, :)
-    ϕ_flat = reshape(ϕ, :)
-    ϕevol_RHS!(dϕ_flat, ϕ_flat, p, 0.0)
-    return dϕ
+function uevol_heatmass(u, dom::Domain, params)
+    integ_pars = (dom, params, zeros(Float64, size(dom)))
+    du = similar(u)
+    # dϕ = zeros(dom.nr, dom.nz)
+
+    # dϕ_flat = reshape(dϕ, :)
+    # u = similar(ϕ, dom.ntot+1)
+    # u[1:dom.ntot] .= reshape(ϕ, :)
+    # u[dom.ntot+1] = params[:Tf]
+    uevol_heatmass!(du, u, integ_pars, 0.0)
+    return du
 end
-function ϕevol_RHS(ϕ, config)
-    ϕevol_RHS(ϕ, config[:dom], config[:T_params])
+function uevol_heatmass(u, config, t=0)
+    @unpack vialsize, fillvol = config
+    simgridsize = get(config, :simgridsize, (51,51))
+
+    # --------- Set up simulation domain
+    r_vial = get_vial_rad(vialsize)
+    z_fill = fillvol / π / r_vial^2
+
+    rmax = ustrip(u"m", r_vial)
+    zmax = ustrip(u"m", z_fill)
+
+    dom = Domain(simgridsize..., rmax, zmax)
+
+    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
+
+    uevol_heatmass(u, dom, params)
 end
 
 """
@@ -106,101 +152,209 @@ function reinit_wrap(integ; verbose=false)
         @info "Reinit at t=$(integ.t)"
     end
     dom = integ.p[1]
-    ϕ = reshape(integ.u, dom.nr, dom.nz)
+    ϕ = reshape((@view integ.u[1:dom.ntot]), dom.nr, dom.nz)
     # reinitialize_ϕ!(ϕ, dom) 
-    reinitialize_ϕ_HCR!(ϕ, dom, tol=1e-6) 
+    reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=100, tol=1/max(dom.nr, dom.nz)) 
 end
 
 """
-    next_reinit_time(integ)
+next_reinit_time(integ)
 
 Compute the next time reinitialization should be necessary, given the current integrator state.
 Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 """
-function next_reinit_time(integ)
+function next_reinit_time(integ; verbose=false)
     dom = integ.p[1]
-    dϕ_flat = similar(integ.u)
-    ϕevol_RHS!(dϕ_flat, integ.u, integ.p, integ.t)
-
-    # B = identify_B(reshape(integ.u, dom.nr, dom.nz), dom)
-    # dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
-    # max_dϕdt = maximum(abs.(dϕ[B]))
+    du = similar(integ.u)
+    uevol_heatmass!(du, integ.u, integ.p, integ.t)
 
     # The main region of concern is the frozen region near interface
     # Find the largest value of dϕdt in that region
-    ϕ = reshape(integ.u, dom.nr, dom.nz)
-    dϕ = reshape(dϕ_flat, dom.nr, dom.nz)
+    ϕ, Tf, Tgl = ϕ_T_from_u(integ.u, dom)
+    dϕ, dTfdt, dTgldt = ϕ_T_from_u(du, dom)
     B = identify_B(ϕ, dom)
     B⁻ = B .& (ϕ .<= 0)
-    max_dϕdt = maximum(abs.(dϕ[B⁻]))
-
-    # max_dϕdt = maximum(abs.(dϕ_flat))
+    if sum(B⁻) > 0
+        max_dϕdt = maximum(abs.(dϕ[B⁻]))
+    else
+        max_dϕdt = maximum(abs.(dϕ))
+    end
+    @unpack p_ch = integ.p[2]
+    # if max_dϕdt == 0 # If no sublimation is happening...
+    if calc_psub(Tf) < p_ch
+        # Guess when it will start
+        # Find temperature such that p_sub = p_ch
+        Tstart = Tf
+        for i in 1:5
+            pg = calc_psub(Tstart)
+            dpdT = pg - calc_psub(Tstart - 1)
+            dT = -(pg-p_ch)/dpdT
+            Tstart += dT
+        end
+        dt = abs((Tstart - Tf)/dTfdt) * 1.05 # Overshoot slightly, to get into real drying behavior before next check time
+        # @info "Sublimation stopped, estimating reinit." calc_psub(Tstart) calc_psub(Tf) p_ch dt dTfdt
+        return integ.t + dt
+    end
 
     # Reinit next when interface should have moved across half of band around interface 
-    domfrac = min(0.5 * dom.bwfrac, 0.1) # Minimum of 0.5 of the band, or 0.1 of domain size.
-    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax, integ.t*max_dϕdt + dom.dz)  # Also: at early times, do more often
-    dt = minlen / max_dϕdt 
-    # dt = 0.5 * minlen / max_dϕdt 
-    # @info "Reinit at t=$(integ.t), dt=$dt"#, next at t=$(integ.t+dt)" 
+    domfrac = 0.1 # Should reinit roughly 10-15 times during simulation
+    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax)  # Also: at early times, do more often
+    dt = minlen / max_dϕdt
+    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    if dryfrac < domfrac || integ.t < 1000
+        dt = clamp(dt, 1, 100)
+    end
+    # @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+    if verbose
+        reinit_err = sdf_err_L∞(ϕ, dom)
+        # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tgl reinit_err #, next at t=$(integ.t+dt)" 
+    end
+
     return integ.t + dt
 end
 
 function cond_reinit(u, t, integ)
     dom = integ.p[1]
-    ϕ = reshape(u, size(dom))
+    ϕ = ϕ_T_from_u(u, size(dom))[1]
     err = sdf_err_L1(ϕ, dom)
     tol = 1e-5 # Roughly dx^4
     @info "error from sdf" err-tol
     return err-tol
 end
 
-"""
-    sim_from_dict(fullconfig; tf=100, verbose=false)
 
-Given a simulation configuration `fullconfig`, run a simulation
+function input_measurements!(integ, meas_keys, controls)
+    if isnothing(meas_keys)
+        return
+    end
+    t_samp = controls[:t_samp]
+    ti = argmin(abs.(t_samp .- integ.t))
+    if !(integ.t ≈ t_samp[ti])
+        @error "Issue with time sampling" integ.t t_samp[ti]
+    end
+    params = integ.p[2]
+    for key in meas_keys
+        params[key] = controls[key][ti]
+    end
+end
+
+# function input_measurements!(integ, meas_keys, controls) end
+
+"""
+    sim_from_dict(fullconfig; tf=1e5, verbose=false)
+
+Given a simulation configuration `fullconfig`, run a simulation.
 
 Maximum simulation time is specified by `tf`.
 `verbose=true` will put out some info messages about simulation progress, i.e. at each reinitialization.
 
 `fullconfig` should have the following fields:
 - `ϕ0type`, types listed for [`make_ϕ0`](@ref)
-- `dom`, an instance of [`Domain`](@ref)
-- `T_params`, which in turn has fields
-    - `Tf`: ice temperature
-    - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
-    - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
+- `fillvol`, fill volume with Unitful units (e.g. `3u"mL"`)
+- `vialsize`, a string (e.g. `"2R"`) giving vial size
+- `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
+- `Tf0`, an initial ice temperature with Unitful units 
+- `Tgl0`, an initial glass temperature (if the same as Tf0, can leave this out)
+- `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
+    - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
+    - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
+    - `Q_gl_RF`, glass RF heating. Scalar or array, like Tsh
+    - `Q_ic`, ice RF heating. 
+    - `p_ch` : pressure at top of cake
+- `cparams`, which in turn has fields with Unitful units
+    - `Kgl`, 
+    - `Kv` : heat transfer coefficients shelf
+    - `Q_ck` : volumetric heating in cake 
     - `k`: thermal conductivity of cake
+    - `m_cp_gl` total thermal mass of ice, relevant to heating/cooling of glass wall
+    - `ρf`: density of ice
+    - `Cpf`: heat capacity of ice
+    - `ΔH` : heat of sublimation of ice
+    - `ϵ` : porosity of porous medium
+    - `l` : dusty gas model constant: characteristic length for Knudsen diffusion
+    - `κ` : dusty gas model constant: length^2 corresponding loosely to Darcy's Law permeability
+    - `Mw`: molecular weight of species (water), with appropriate units
+    - `μ` : dynamic viscosity of species (water), with appropriate units
 
-If you are getting a warning about instability, it can often be fixed by tinkering with the reinitialization behavior.
-That shouldn't be true but it seems like it is.
+During simulation, at each value of `t_samp`, the values of any `controls` which are arrays will be added to an internal dict called `params`.
+
+If you pass in an array of values for multiple of `Tsh`, `Q_gl_RF`, or others, they must all have the same length as `t_samp`.
+
+If you are getting a warning about instability, it can sometimes be fixed by tinkering with the reinitialization behavior.
 
 
 """
-function sim_from_dict(fullconfig; tf=100, verbose=false)
+function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack T_params, ϕ0type, dom = fullconfig
+    @unpack cparams, ϕ0type, Tf0, controls, vialsize, fillvol = fullconfig
+
+    # Default values for non-essential parameters
+    Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    simgridsize = get(fullconfig, :simgridsize, (51,51))
+
+    # --------- Set up simulation domain
+    r_vial = get_vial_rad(vialsize)
+    z_fill = fillvol / π / r_vial^2
+
+    rmax = ustrip(u"m", r_vial)
+    zmax = ustrip(u"m", z_fill)
+
+    dom = Domain(simgridsize..., rmax, zmax)
+
+    # ----- Nondimensionalize everything
+
+    Tf0 = ustrip(u"K", Tf0)
+    Tgl0 = ustrip(u"K", Tgl0)
+    params, meas_keys, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
+    if verbose
+        @info "Variables used in callback:" meas_keys
+    end
+    
+
 
     ϕ0 = make_ϕ0(ϕ0type, dom)
-    reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000) # Don't reinit if using IterativeCallback
+    if verbose
+        @info "Initializing ϕ"
+    end
+    # Make sure that the starting profile is very well-initialized
+    # The chosen tolerance is designed to the error almost always seen in norm of the gradient
+    reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=10000, tol=1.25/max(dom.nr,dom.nz), err_reg=:all) 
     ϕ0_flat = reshape(ϕ0, :)
 
+    
+    # Full array of starting state variables ------------
+    u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tgl
+    u0[1:dom.ntot] .= ϕ0_flat
+    u0[dom.ntot+1] = Tf0 
+    u0[dom.ntot+2] = Tgl0 
+    p_sub = calc_psub(Tf0)
+    # @info "Initial Tf:" Tf0 p_sub
+
+    # Cached array for using last pressure state as guess
+    p_last = fill(p_sub, size(dom))
+
+    # ----- Set up parameters dictionary and measurement callback
+    meas_affect!(integ) = input_measurements!(integ, meas_keys, ncontrols)
+    cb_meas = PresetTimeCallback(ncontrols[:t_samp], meas_affect!, filter_tstops=true)
+
     # ---- Set up ODEProblem
-    prob_p = (dom, T_params)
+    prob_pars = (dom, params, p_last)
     tspan = (0, tf)
-    prob = ODEProblem(ϕevol_RHS!, ϕ0_flat, tspan, prob_p)
+    prob = ODEProblem(uevol_heatmass!, u0, tspan, prob_pars)
 
     # --- Set up reinitialization callback
 
     # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
-    if verbose
-        cb1 = IterativeCallback(next_reinit_time, x->reinit_wrap(x, verbose=false),  initial_affect = true)
-    else
-        cb1 = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
-    end
+    cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose=verbose), reinit_wrap,  initial_affect = true)
+    # if verbose
+    #     cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose), x->reinit_wrap(x, verbose=true),  initial_affect = true)
+    # else
+    #     cb_reinit = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
+    # end
 
-    # cb1 = ContinuousCallback(cond_reinit, reinit_wrap)
 
     # --- Set up simulation end callback
 
@@ -208,135 +362,302 @@ function sim_from_dict(fullconfig; tf=100, verbose=false)
     cond_end(u, t, integ) = minimum(u) 
     # ContinuousCallback gets thrown when `cond` evaluates to 0
     # `terminate!` ends the solve there
-    cb2 = ContinuousCallback(cond_end, terminate!)
+    cb_end = ContinuousCallback(cond_end, terminate!)
 
-    # --- Put callbacks together
-    cbs = CallbackSet(cb1, cb2)
+    # ------- Put together callbacks 
+    cbs = CallbackSet(cb_reinit, cb_end, cb_meas)
 
+    if verbose
+        @info "Beginning solve"
+    end
     # --- Solve
-    sol = solve(prob, SSPRK43(), callback=cbs; )
-    # sol = solve(prob, Tsit5(), callback=cbs; )
-    # sol = solve(prob, Tsit5(), callback=cb2; ) # No reinit
-    return Dict("ϕsol"=>sol)
+    sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+    # sol = solve(prob, SSPRK33(), dt=1e-4, callback=cbs; ) # Fixed timestepping
+    # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
+    return @strdict sol dom
 end
 
 
 
-# ------------ Semi-manual time stepping. Obsolete, I think  -------------------------
+# -------------------------- Heat transfer only functions
+
+
 """
-    take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
+    uevol_heatonly!(du, u, p, t)
 
-Return ``T_{i+1}, ϕ_{i+1}``, given ``T_i, ϕ_i``.
+Evaluate local time rate of change for `u` and put results in `du`.
 
-A fair amount of logic happens inside here. For example, the CFL condition is enforced 
-inside each of the separate time integrations. However, under high heating, it is
-possible to advect the interface past the edge of the band where the level set function 
-is maintained.
+This function leaves `Tf` and `Tgl` untouched, since there isn't a way to govern their dynamics without mass transfer.
+
+`u` and `du` are both structured as follows:
+First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`, `dom.ntot+2` index is glass temperature `Tgl`
+
+Parameters `p` assumed to be `(dom::Domain, params)`
+This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
+using `compute_frontvel_mass`.
 """
-function take_time_step(Ti, ϕi, dom::Domain, params, dt=1.0)
-    
-    prop_t = 1.0 # Time step for reinitialization and similar steps
+function uevol_heatonly!(du, u, integ_pars, t)
+    dom = integ_pars[1]
+    params = integ_pars[2]
+    p_last = integ_pars[3]
+    ntot = dom.ntot
+    dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    # u[dom.ntot+1] = clamp(Tf, 200, 350)  # Prevent crazy temperatures from getting passed through to other functions
+    # u[dom.ntot+2] = clamp(Tgl, 200, 400) # Prevent crazy temperatures from getting passed through to other functions
+    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
-    # --------- Extrapolation by PDE
-    # vf = extrap_v_pde(ϕi, Ti, dom, params)
+    T = solve_T(u, dom, params)
 
-    # ---------- Extrapolation by fast marching (more recent)
-    vf = extrap_v_fastmarch(ϕi, Ti, dom, params)
 
-    # ----------
+    vf, dϕdx_all = compute_frontvel_heat(u, T, dom, params)
+    extrap_v_fastmarch!(vf, u, dom)
+    vr = @view vf[:,:,1]
+    vz = @view vf[:,:,2]
     
-    ϕip1 = advect_ϕ(ϕi, vf, dom, dt)
+    # dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+    # dTgldt = (Q_gl_RF - Qgl) / m_cp_gl
+    # du[ntot+1] = dTfdt
+    # du[ntot+2] = dTgldt
+    du[ntot+1] = 0
+    du[ntot+2] = 0
+
+    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all
+    for ind in CartesianIndices(ϕ)
+        ir, iz = Tuple(ind)
+        # Boundary cases: use internal derivative
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[ind]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[ind]
+        else
+            dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
+        end
+        # Boundary cases: use internal derivative
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[ind]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[ind]
+        else
+            dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
+        end
+
+        rcomp = dϕdr*vr[ind]
+        zcomp = dϕdz*vz[ind]
+        # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
+        dϕ[ind] = -rcomp - zcomp 
+    end
+    # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf Tgl
+    return nothing
+end
+
+
+"""
+    uevol_heatonly(u, dom::Domain, params)
+    uevol_heatonly(u, config)
     
-    
-    if sum(ϕip1 .<= 0) == 0 # No ice cells left
-        # ϕip1[1,1] = 0 # Artifically add a tiny amount of ice
-        Tip1 = solve_T(ϕip1, dom, params)
-        return Tip1, ϕip1
+Compute the time derivative of `u` with given parameters.
+
+`u` has `dom.ntot` entries for `ϕ` and one each for `Tf` and `Tgl`.
+
+Wraps a call on `uevol_heatonly!`, for convenience in debugging and elsewhere that efficiency is less important
+"""
+function uevol_heatonly(u, dom::Domain, params)
+    integ_pars = (dom, params, zeros(Float64, size(dom)))
+    du = similar(u)
+    du[dom.ntot+1:end] .= 0
+    uevol_heatonly!(du, u, integ_pars, 0.0)
+    return du
+end
+function uevol_heatonly(u, config)
+    @unpack vialsize, fillvol = config
+    simgridsize = get(config, :simgridsize, (51,51))
+
+    # --------- Set up simulation domain
+    r_vial = get_vial_rad(vialsize)
+    z_fill = fillvol / π / r_vial^2
+
+    rmax = ustrip(u"m", r_vial)
+    zmax = ustrip(u"m", z_fill)
+
+    dom = Domain(simgridsize..., rmax, zmax)
+
+    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
+
+    uevol_heatonly(u, dom, params)
+end
+
+"""
+next_reinit_time_heatonly(integ)
+
+Compute the next time reinitialization should be necessary, given the current integrator state.
+Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
+"""
+function next_reinit_time_heatonly(integ; verbose=false)
+    dom = integ.p[1]
+    du = similar(integ.u)
+    uevol_heatonly!(du, integ.u, integ.p, integ.t)
+
+    # The main region of concern is the frozen region near interface
+    # Find the largest value of dϕdt in that region
+    ϕ, Tf, Tgl = ϕ_T_from_u(integ.u, dom)
+    dϕ, dTfdt, dTgldt = ϕ_T_from_u(du, dom)
+    B = identify_B(ϕ, dom)
+    B⁻ = B .& (ϕ .<= 0)
+    if sum(B⁻) > 0
+        max_dϕdt = maximum(abs.(dϕ[B⁻]))
+    else
+        max_dϕdt = maximum(abs.(dϕ))
+    end
+    @unpack p_ch = integ.p[2]
+    if max_dϕdt == 0 # If no sublimation is happening...
+        @info "Sublimation stopped, no way to estimate next reinit time so guessing dt=1.0 ." 
+        return integ.t + 1.0
     end
 
-
-
-    
-    reinitialize_ϕ!(ϕip1, dom, prop_t)
-    
-    Tip1 = solve_T(ϕip1, dom, params)
-    return Tip1, ϕip1
-end
-"""
-    multistep(n, dt, T0, ϕ0, dom::Domain, T_params)
-
-Return `Ti` and `ϕi` after `n` timesteps of `dt`.
-
-I anticipate this being useful mostly if the timestep for stability is small and don't need to store every time step.
-"""
-function multistep(n, dt, T0, ϕ0, dom::Domain, T_params)
-    Ti = copy(T0)
-    ϕi = copy(ϕ0)
-    for i in 1:n
-        Ti, ϕi = take_time_step(Ti, ϕi, dom, T_params, dt)
+    # Reinit next when interface should have moved across half of band around interface 
+    domfrac = 0.1 # Should reinit roughly 10-15 times during simulation
+    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax)  # Also: at early times, do more often
+    dt = minlen / max_dϕdt
+    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    if dryfrac < domfrac #|| integ.t < 1000
+        # dt = clamp(dt, 1, )
+        # integ.t / dryfrac * 0.1 / 2
+        integ.t / dryfrac * 0.01 / 2
+        dt = max(1.0, integ.t / (dryfrac-1e-4) * 0.05) # Expect another .05 dryfrac
     end
-    return Ti, ϕi
+    # @info "Reinit at t=$(integ.t), dt=$dt" minlen extrema(dϕ[B⁻])#, next at t=$(integ.t+dt)" 
+    if verbose
+        # reinit_err = sdf_err_L∞(ϕ, dom)
+        # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tgl integ.t/dryfrac #, next at t=$(integ.t+dt)" 
+    end
+
+    return integ.t + dt
 end
 
 """
-    sim_from_dict(fullconfig; maxsteps=1000)
+    sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
-Run a simulation from `fullconfig`, returning T and ϕ at each time step.
+Given a simulation configuration `fullconfig`, run a simulation.
 
-Implicitly, have maximum number of time steps of 1000.
+This simulation is stripped-down: no mass transfer, no variation in ice & glass temperature
+
+Maximum simulation time is specified by `tf`.
+`verbose=true` will put out some info messages about simulation progress, i.e. at each reinitialization.
+
 `fullconfig` should have the following fields:
 - `ϕ0type`, types listed for [`make_ϕ0`](@ref)
-- `dom`, an instance of [`Domain`](@ref)
-- `sim_dt`, simulation time step (used in advection only)
-- `T_params`, which in turn has fields
-    - `Tf`: ice temperature
-    - `Q_gl`, `Q_sh` : heat flux from glass and shelf, respectively
-    - `Q_ic`, `Q_ck` : volumetric heating in ice and cake, respectively
+- `fillvol`, fill volume with Unitful units (e.g. `3u"mL"`)
+- `vialsize`, a string (e.g. `"2R"`) giving vial size
+- `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
+- `Tf0`, an ice temperature with Unitful units 
+- `Tgl0`, a glass temperature (if the same as Tf0, can leave this out)
+- `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
+    - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
+    - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
+    - `Q_ic`, ice RF heating. 
+- `cparams`, which in turn has fields with Unitful units
+    - `Kgl`, 
+    - `Kv` : heat transfer coefficients shelf
+    - `Q_ck` : volumetric heating in cake 
     - `k`: thermal conductivity of cake
+    - `ρf`: density of ice
+    - `ΔH` : heat of sublimation of ice
+    - `ϵ` : porosity of porous medium
+
+Other parameters will be ignored.
+
+During simulation, at each value of `t_samp`, the values of any `controls` which are arrays will be added to an internal dict called `params`.
+
+If you pass in an array of values for multiple of `Tsh`, `Q_gl_RF`, or others, they must all have the same length as `t_samp`.
+
+If you are getting a warning about instability, it can sometimes be fixed by tinkering with the reinitialization behavior.
+
+
 """
-function sim_from_dict_old(fullconfig; maxsteps=1000)
+function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack T_params, ϕ0type, dom, sim_dt = fullconfig
+    @unpack cparams, ϕ0type, Tf0, controls, vialsize, fillvol = fullconfig
 
-    # println("Inside: dom.nr = $(dom.nr)")
-    ϕ0 = make_ϕ0(ϕ0type, dom)
+    # Default values for non-essential parameters
+    Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    simgridsize = get(fullconfig, :simgridsize, (51,51))
 
-    # ---------------------- Set up first step
-    reinitialize_ϕ!(ϕ0, dom, 1.0)
-    T0 = solve_T(ϕ0, dom, T_params)
+    # --------- Set up simulation domain
+    r_vial = get_vial_rad(vialsize)
+    z_fill = fillvol / π / r_vial^2
 
-    # maxsteps = 1000
+    rmax = ustrip(u"m", r_vial)
+    zmax = ustrip(u"m", z_fill)
 
-    full_T = fill(1.0, (maxsteps+1, dom.nr, dom.nz))
-    full_ϕ = fill(1.0, (maxsteps+1, dom.nr, dom.nz))
-    Ti = copy(T0)
-    ϕi = copy(ϕ0)
-    full_T[1,:,:] .= Ti
-    full_ϕ[1,:,:] .= ϕi
+    dom = Domain(simgridsize..., rmax, zmax)
 
+    # ----- Nondimensionalize everything
 
-    # println("Ready to start simulation")
-
-    # --------------- Run simulation
-
-    for i in 1:maxsteps
-        Ti, ϕi = take_time_step(Ti, ϕi, dom, T_params, sim_dt)
-        # @time Ti, ϕi = multistep(3, 10.0, Ti, ϕi)
-        
-        # Store solutions for later plotting
-        full_T[i+1,:,:] .= round.(Ti, sigdigits=10) # Get rid of numerical noise
-        full_ϕ[i+1,:,:] .= ϕi
-
-        # println("Completed: $i")
-        
-        if minimum(ϕi) > 0
-            println("Sublimation finished after $i timesteps")
-            full_T = full_T[1:i+1, :,:]
-            full_ϕ = full_ϕ[1:i+1, :,:]
-            break
-        end
+    Tf0 = ustrip(u"K", Tf0)
+    Tgl0 = ustrip(u"K", Tgl0)
+    params, meas_keys, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
+    if verbose
+        @info "Variables used in callback:" meas_keys
     end
-    @strdict full_T full_ϕ
+    
+
+
+    ϕ0 = make_ϕ0(ϕ0type, dom)
+    if verbose
+        @info "Initializing ϕ"
+    end
+    # Make sure that the starting profile is very well-initialized
+    # The chosen tolerance is designed to the error almost always seen in norm of the gradient
+    reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=10000, tol=1.2/max(dom.nr,dom.nz), err_reg=:all) 
+
+    ϕ0_flat = reshape(ϕ0, :)
+
+    
+    # Full array of starting state variables ------------
+    u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tgl
+    u0[1:dom.ntot] .= ϕ0_flat
+    u0[dom.ntot+1] = Tf0 
+    u0[dom.ntot+2] = Tgl0 
+    # @info "Initial Tf:" Tf0 p_sub
+
+    # Cached array for using last pressure state as guess
+    p_last = fill(0.0, size(dom))
+
+    # ----- Set up parameters dictionary and measurement callback
+    meas_affect!(integ) = input_measurements!(integ, meas_keys, ncontrols)
+    cb_meas = PresetTimeCallback(ncontrols[:t_samp], meas_affect!, filter_tstops=true)
+
+    # ---- Set up ODEProblem
+    prob_pars = (dom, params, p_last)
+    tspan = (0, tf)
+    prob = ODEProblem(uevol_heatonly!, u0, tspan, prob_pars)
+
+    # --- Set up reinitialization callback
+
+    cb_reinit = IterativeCallback(x->next_reinit_time_heatonly(x, verbose=verbose), reinit_wrap,  initial_affect = true)
+
+    # --- Set up simulation end callback
+
+    # When the minimum value of ϕ is 0, front has disappeared
+    cond_end(u, t, integ) = minimum(u) 
+    # ContinuousCallback gets thrown when `cond` evaluates to 0
+    # `terminate!` ends the solve there
+    cb_end = ContinuousCallback(cond_end, terminate!)
+
+    # ------- Put together callbacks 
+    cbs = CallbackSet(cb_reinit, cb_end, cb_meas)
+
+    if verbose
+        @info "Beginning solve"
+    end
+    # --- Solve
+    sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+    # sol = solve(prob, SSPRK33(), dt=1e-4, callback=cbs; ) # Fixed timestepping
+    # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
+    return @strdict sol dom
 end

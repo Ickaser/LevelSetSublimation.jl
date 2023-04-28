@@ -3,118 +3,20 @@ export solve_T, solve_T_original
 
 
 # Construct sparse array with rows, cols, vals format, then construct sparse matrix
-"""
-    solve_T_original(ϕ, dom::Domain, params)
 
-Compute 2D axisymmetric temperature profile for given level set function `ϕ`.
-
-`params` should have fields: `Q_gl`, `Q_sh`, `Q_ck`, `k`, `Tf`
-This implementation uses second-order finite differences, with constant extrapolation into Ω⁻.
-"""
-function solve_T_original(ϕ, dom::Domain, params)
+function radial_Tf(u, dom, params) 
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Q_gl, Q_sh, Q_ck, k, Tf = params
-    # To prevent blowup, artificially add some  corner ice if none is present
-    # This is by tampering with level set field, hopefully memory safe
-    if minimum(ϕ) > 0
-        @warn "Solving heat equation without any ice, artificially introducing some"
-        ϕ = copy(ϕ)
-        ϕ[1,2] = -max(dr, dz)
-        ϕ[2,1] = -max(dr, dz)
-    end
-    rows = Vector{Int}(undef, 0)
-    cols = Vector{Int}(undef, 0)
-    vals = Vector{Float64}(undef, 0)
-    rhs = fill(0.0, ntot)
-
-    for iz in 1:nz
-        for ir in 1:nr
-            # Get local r, z values
-            r = rgrid[ir]
-            r1 = 1/r
-            z = zgrid[iz]
-            
-            # Row position in matrix: r is small iteration, z is outer iteration
-            imx = ir + (iz-1)*nr
-
-            # Check if in frozen domain; if so, fix temperature
-            if ϕ[ir, iz] <= 0
-                push!(vals, 1.0); push!(cols, imx); push!(rows, imx)
-                rhs[imx] = Tf
-                continue
-            end
-            #
-
-            # Check if on Stefan boundary
-            # (actually I shouldn't need to do this but this is where I would do it if I did)
-            
-            # Check if on boundaries or in bulk, set up BC or diffeq  
-
-            # R direction boundaries
-            if ir == 1
-                # Symmetry BC
-                push!(vals, -1.5dr1); push!(cols, imx  ); push!(rows, imx) # P cell
-                push!(vals,  2.0dr1); push!(cols, imx+1); push!(rows, imx) # E cell
-                push!(vals, -0.5dr1); push!(cols, imx+2); push!(rows, imx) # E+ cell
-
-                rhs[imx] = 0.0
-                # No z component, to enforce BC
-                continue
-            elseif ir == nr
-                # Constant flux BC
-                push!(vals,  0.5dr1); push!(cols, imx-2); push!(rows, imx) # W- cell
-                push!(vals, -2.0dr1); push!(cols, imx-1); push!(rows, imx) # W cell
-                push!(vals,  1.5dr1); push!(cols, imx  ); push!(rows, imx) # P cell
-
-                rhs[imx] = Q_gl / k
-                # No z component, to enforce BC
-                continue
-            end
-            # z direction boundaries
-            if iz == 1
-                # # Constant flux BC
-                push!(vals, -1.5dz1); push!(cols, imx  ); push!(rows, imx) # P cell
-                push!(vals,  2.0dz1); push!(cols, imx+ nr); push!(rows, imx) # N cell
-                push!(vals, -0.5dz1); push!(cols, imx+2nr); push!(rows, imx) # N+ cell
-
-                rhs[imx] = -Q_sh / k
-
-                # No r component, to enforce BC
-                continue
-            elseif iz == nz
-                # Adiabatic BC
-                push!(vals,  0.5dz1); push!(cols, imx-2nr); push!(rows, imx) # S- cell
-                push!(vals, -2.0dz1); push!(cols, imx- nr); push!(rows, imx) # S cell
-                push!(vals,  1.5dz1); push!(cols, imx  ); push!(rows, imx) # P cell
-
-                rhs[imx] = 0.0
-                # No r component, to enforce BC
-                continue
-            end
-
-
-            # Bulk Eq: Cylindrical laplacian, second order finite diffs, d2/dr2 + 1/r d/dr + d2/dz2
-            if ir >= 2 && ir <= nr-1 && iz >= 2 && iz <= nr-1
-                push!(vals,                     1.0dz2); push!(cols, imx-nr); push!(rows, imx) # S cell
-                push!(vals,  1.0dr2 - 0.5dr1*r1       ); push!(cols, imx- 1); push!(rows, imx) # W cell
-                push!(vals, -2.0dr2            -2.0dz2); push!(cols, imx   ); push!(rows, imx) # P cell
-                push!(vals,  1.0dr2 + 0.5dr1*r1       ); push!(cols, imx+ 1); push!(rows, imx) # E cell
-                push!(vals,                     1.0dz2); push!(cols, imx+nr); push!(rows, imx) # N cell
-                rhs[imx] = - Q_ck / k
-            end
-        end
-    end
-    mat_lhs = sparse(rows, cols, vals, ntot, ntot)
-    sol = mat_lhs \ rhs
-    T = reshape(sol, nr, nz)
-end
-        
+    @unpack Kgl, Kv, Q_ck, k, Tsh = params
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+end 
 
 """
-    solve_T(ϕ, dom::Domain, params)
+    solve_T(u, dom::Domain, params)
 
-Compute 2D axisymmetric T profile, returning ghost cell values, for given level set function `ϕ`.
+Compute 2D axisymmetric T profile, returning ghost cell values, for given state `u`.
+
+`u` contains ϕ and Tf; unpacked with `ϕ_T_from_u`.
 
 Neumann boundary conditions on all rectangular boundaries; Dirichlet on zero-level set.
 `params` should have fields: 
@@ -130,10 +32,11 @@ Neumann boundaries use a ghost point & BC to define ghost cell, then use same st
 Coefficients computed in `gfm_extrap.ipynb`, using Sympy.  
 (For higher order, see Gibou and Fedkiw, 2005, "A fourth order accurate discretization ... Laplace ... ")  
 """
-function solve_T(ϕ, dom::Domain, params)
+function solve_T(u, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Q_gl, Q_sh, Q_ck, k, Tf = params
+    @unpack Kgl, Kv, Q_ck, k, Tsh = params
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
     if minimum(ϕ) > 0
@@ -147,6 +50,8 @@ function solve_T(ϕ, dom::Domain, params)
 
     vcr = (vals, cols, rows)
     rhs = fill(0.0, ntot)
+
+    θ_thresh = dr / dom.rmax
 
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration
@@ -191,78 +96,91 @@ function solve_T(ϕ, dom::Domain, params)
             if eϕ < 0 # Front is within a cell of boundary
                 # p. 65 of project notes
                 θr = pϕ/(pϕ-eϕ)
-                # Have an exact value given by BC + front
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = Tf - θr*BC1*dr
-                continue
+                if θr >= θ_thresh
+                    pc += -2k*dr2/θr
+                    rhs[imx] -= 2k*Tf*dr2/θr #+ BC1*(r1 - 2dr1)
+                else # Front is within dr/r cells of boundary
+                    # Have an exact value given by BC + front
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    # rhs[imx] = Tf - θr*BC1*dr
+                    # continue
+                    pc += -2k*dr2/(θr+1)
+                    rhs[imx] -= 2Tf*k*dr2/(θr+1) 
+                end
                 # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2dr2
-                ec +=  2dr2
+                pc += -2k*dr2
+                ec +=  2k*dr2
                 # rhs[imx] += BC1*(2*dr1 - r1)
                 rhs[imx] += 0 # r=0, so 1/r = NaN
             end
         elseif ir == nr
-            # Constant flux BC
-            BC2 = Q_gl
+            # Robin BC: glass
             wϕ = ϕ[ir-1, iz]
             if wϕ < 0 # Front is within a cell of boundary
-                # p. 65 of project notes
+                # p. 119 of project notes
                 θr = pϕ/(pϕ-wϕ)
-                # Have an exact value given by BC + front
-                # No way to treat other equations, so add to matrix and stop here
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = Tf + θr*BC2*dr
-                continue
+                if θr >= θ_thresh
+                    pc += -2k*dr2/θr - Kgl*(r1 + 2dr1*θr)
+                    rhs[imx] -= 2Tf*k*dr2/θr + Kgl*Tgl*(r1 + 2dr1)
+                else 
+                    # First, use Robin BC to define an east ghost cell
+                    # THen, extrapolate across Stefan boundary using east ghost & Stefan
+                    pc += (Kgl*(-r1 -2dr1*θr) + k*(r1*dr1 - 2dr2))/(θr+1)
+                    rhs[imx] -= (Tf*k*(2dr2-r1*dr1) + Tgl*Kgl*(r1+2dr1*θr))/(θr+1)
+                end
+
             else
-                # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
+                # Using Robin boundary to define ghost point: east T= west T + 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2dr2
-                wc +=  2dr2
-                rhs[imx] += BC2*(-2*dr1 - r1)
+                pc += -2k*dr2 - Kgl*(r1 + 2dr1)
+                wc +=  2k*dr2
+                rhs[imx] -= Kgl*Tgl*(2dr1 + r1)
             end
 
         else # r direction bulk
             # Check for Stefan boundary
             eϕ = ϕ[ir+1, iz]
             wϕ = ϕ[ir-1, iz]
-            if eϕ <= 0 # East ghost cell, across front
+            if eϕ <= 0 && wϕ <= 0
+                # Pretend in bulk, rather than treat two ghost cells. THis is a rare case
+                ec +=  k*(1.0dr2 + 0.5dr1*r1)
+                pc += -k*(2.0dr2)
+                wc +=  k*(1.0dr2 - 0.5dr1*r1)
+                rhs[imx] += 0
+            elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
-                if θr >= dr
+                if θr >= θ_thresh
                     pc += -2k*dr2 # Regular 
-                    pc += k*(θr-1)/θr*(0.5dr1*r1+ dr2) # Due to ghost cell extrapolation
+                    pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
                     rhs[imx] -= Tf*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
-                    # stefan_debug = true
-                    # println("east θ<dr, ir=$ir, iz=$iz")
                     pc += -2k*dr2 # Regular
-                    wc += k*(-0.5dr1*r1 + dr2) # Regular
-                    wc += k*(dr+2r)*(θr-1)*0.5dr2*r1/(θr+1) # Due to ghost cell extrapolation 
+                    wc += k*(-dr1*r1 + 2θr*dr2)/(θr+1)  
+                    rhs[imx] -= Tf*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
                 end
             elseif wϕ <= 0 # West ghost cell across front
-                # stefan_debug = true
                 θr = pϕ / (pϕ - wϕ)
-                if θr >= dr # Regular magnitude θ
+                if θr >= θ_thresh # Regular magnitude θ
                     pc += -2k*dr2 # Regular 
-                    pc += k*(-dr+2r)*(θr-1)*0.5dr2*r1/θr # Due to ghost cell extrapolation
+                    pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf*k*(-0.5dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
                 else # Very small θ
                     pc += -2k*dr2 # Regular
-                    ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    ec += k*(-dr+2r)*(θr-1)/(θr+1)*0.5dr2*r1 # Due to ghost cell extrapolation
-                    rhs[imx] -= Tf*k*(-dr+2r) *dr2 *r1/(θr+1) # Dirichlet BC in ghost cell extrap
+                    ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
+                    rhs[imx] -= Tf*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
 
             else # Bulk, not at front 
-                ec +=  1.0dr2 + 0.5dr1*r1
-                pc += -2.0dr2
-                wc +=  1.0dr2 - 0.5dr1*r1
+                ec +=  k*(1.0dr2 + 0.5dr1*r1)
+                pc += -k*(2.0dr2)
+                wc +=  k*(1.0dr2 - 0.5dr1*r1)
                 rhs[imx] += 0
             end
         end
@@ -271,25 +189,34 @@ function solve_T(ϕ, dom::Domain, params)
 
         # z direction boundaries
         if iz == 1
-            # Constant flux BC
-            BC3 = Q_sh
+            # Robin BC: shelf
             nϕ = ϕ[ir, iz+1]
             # Check for Stefan front
             if nϕ < 0 # Front is within a cell of boundary
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
-                # Have an exact value given by BC + front
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = Tf + θz*BC3*dz
-                continue
+                if θz > θ_thresh
+                    pc += -2k*dz2/θz - 2Kv*dz1
+                    rhs[imx] -= 2*Tf*k*dz2/θz + 2Kv*Tsh*dz1
+                else
+                    # Have an exact value given by BC + front
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    # rhs[imx] = (k*Tf + Kv*Tsh*θz*dz) / (k + Kv*θz*dz)
+                    # continue
+                    # First Robin ghost defined, then Stefan ghost extrap
+                    pc += -2k*dz2 - 2Kv*dz1
+                    nc +=  2k*dz2
+                    rhs[imx] -= 2Kv*Tsh*dz1
+                end
                 # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
                 # p. 65, 66 of project notes
-                pc += -2dz2
-                nc +=  2dz2
-                rhs[imx] += -2*BC3*dz1
+                # FINISH THIS: NOT CORRECT
+                pc += -k*2dz2 - 2Kv*dz1
+                nc +=  k*2dz2
+                rhs[imx] -= 2Tsh*Kv*dz1
             end
         elseif iz == nz
             # Adiabatic BC
@@ -299,27 +226,40 @@ function solve_T(ϕ, dom::Domain, params)
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-sϕ)
-                # Have an exact value given by BC + front
-                # No way to treat other equations, so add to matrix and stop here
-                add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                rhs[imx] = Tf + θz*BC4*dz
-                continue
+                if θz > θ_thresh
+                    pc += -2*k*dz2/θz
+                    rhs[imx] -= 2*Tf*k*dz2/θz + BC4*2*dz1
+                else
+                    # # Have an exact value given by BC + front
+                    # # No way to treat other equations, so add to matrix and stop here
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
+                    # rhs[imx] = Tf + θz*BC4*dz
+                    # continue
+                    pc += -2k*dz2/(θz+1)
+                    rhs[imx] -= 2Tf*k*dz2/(θz+1) 
+                end
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
                 # p. 65, 66 of project notes
-                pc += -2dr2
-                sc +=  2dr2
-                rhs[imx] += -2*BC4*dz1
+                pc += -2k*dr2
+                sc +=  2k*dr2
+                rhs[imx] += -2k*BC4*dz1
             end
 
         else # Bulk in z, still need to check for Stefan front
             nϕ = ϕ[ir, iz+1]
             sϕ = ϕ[ir, iz-1]
-            if nϕ <= 0
+            if nϕ <= 0 && sϕ <= 0
+                # Pretend in bulk, rather than treat two ghost cells. Rare case
+                sc +=  k*1.0dz2
+                pc += -k*2.0dz2
+                nc +=  k*1.0dz2
+                rhs[imx] += 0
+            elseif nϕ <= 0
                 # stefan_debug = true
                 θz = pϕ / (pϕ - nϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, north")
-                if θz > dz
+                if θz >= θ_thresh
                     pc += -k*dz2*(θz+1)/θz
                     sc += k*dz2
                     rhs[imx] -= Tf*k*dz2/θz
@@ -332,7 +272,7 @@ function solve_T(ϕ, dom::Domain, params)
                 # stefan_debug = true
                 θz = pϕ / (pϕ - sϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, south")
-                if θz > dz
+                if θz >= θ_thresh
                     pc += -k*dz2*(θz+1)/θz
                     nc += k*dz2
                     rhs[imx] -= Tf*k*dz2/θz
@@ -343,9 +283,9 @@ function solve_T(ϕ, dom::Domain, params)
                 end
 
             else # Bulk, no Stefan front
-                sc +=  1.0dz2
-                pc += -2.0dz2
-                nc +=  1.0dz2
+                sc +=  k*1.0dz2
+                pc += -k*2.0dz2
+                nc +=  k*1.0dz2
                 rhs[imx] += 0
             end
         end
@@ -357,9 +297,22 @@ function solve_T(ϕ, dom::Domain, params)
 
         # Debug boundaries
         # if iz==1
-        #     # println("ir=$ir, iz=$iz, pc=$pc, nc=$nc, sc=$sc,  ec=$ec, wc=$wc, rhs=$(rhs[imx])") 
+        #     if sc != 0
+        #         @info "iz==1" ir pc nc sc ec wc rhs[imx]
+        #     end
         # elseif iz == nz
-        #     println("ir=$ir, iz=$iz, pc=$pc, nc=$nc, sc=$sc,  ec=$ec, wc=$wc, rhs=$(rhs[imx])") 
+        #     if nc != 0
+        #         @info "iz==nz" ir pc nc sc ec wc rhs[imx]
+        #     end
+        # end
+        # if ir==1
+        #     if wc != 0
+        #         @info "ir==1" ir pc nc sc ec wc rhs[imx]
+        #     end
+        # elseif ir == nr
+        #     if ec != 0
+        #         @info "ir==nr" ir pc nc sc ec wc rhs[imx]
+        #     end
         # end
 
         # Assign all computed stencil values into matrix
