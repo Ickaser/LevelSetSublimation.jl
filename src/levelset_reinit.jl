@@ -334,8 +334,9 @@ end
 
 Compute the norm of the gradient of `ϕ` throughout domain by Godunov's scheme with WENO derivatives.
 
-Internally, calls [`𝒢_weno`](@ref) on all computational cells.
+Internally, calls `𝒢_weno` on all computational cells.
 """
 function 𝒢_weno_all(ϕ, dom::Domain)
     return reshape([𝒢_weno(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
+    # return 𝒢_weno([ϕ], CartesianIndices(ϕ), [dom])
 end

@@ -1,10 +1,9 @@
 # dom = Domain(51, 51, 1.0, 1.0)
-cparams = p = make_default_params()
+cparams = make_default_params()
 ϕ0type = :circ
 Tf0 = 233.15u"K"
 Q_gl_RF = 0.002u"W" # = volumetric * relevant vial volume
 t_samp = (0:0.1:1) .* u"hr"
-# T_sh = [233.15
 Tsh = 263.15u"K"
 Q_ic = 0.3u"W/cm^3"
 p_ch = 100u"mTorr"

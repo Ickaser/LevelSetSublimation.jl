@@ -3,7 +3,7 @@
 ## Table of Contents
 
 ```@contents
-Pages = ["sim.md", "plots.md", "eqs.md", "heat.md", "levelset.md", "disc.md"]
+Pages = ["sim.md", "plots.md", "eqs.md", "heatmass.md", "levelset.md", "disc.md", "alldocs.md"]
 Depth = 2
 ```
 
