@@ -12,10 +12,13 @@ Compute transport coefficient `b` as a function of space, given `T`, `p`, and `p
 - `ϵ` : porosity of porous medium
 - `l` : dusty gas model constant: characteristic length for Knudsen diffusion
 - `κ` : dusty gas model constant: length^2 corresponding loosely to Darcy's Law permeability
-- `R` : universal gas constant, with appropriate units 
-- `Mw`: molecular weight of species (water), with appropriate units
-- `μ` : dynamic viscosity of species (water), with appropriate units
+- `R` : universal gas constant  
+- `Mw`: molecular weight of species (water)
+- `μ` : dynamic viscosity of species (water)
 `ϵ`, `l`, and `κ` may be passed as scalars (and assumed as spatially uniform) or arrays (describing value throughout space, should match `Domain` dimensions).
+
+When the simulation is started, all these values are converted to SI units and passed accordingly, 
+so in practice there are no units to track.
 
 If `κ=0`, no spatial variation due to pressure occurs.
 """

@@ -1,18 +1,42 @@
 # Solving steady-state heat equation
 
+
+```@meta
+CurrentModule = LevelSetSublimation
+```
+
 TODO: fill this out
 
-## Heat Equation Solution
+## Physical Equation Solution
 ```@docs
 solve_T
-make_default_params
-make_artificial_params
+solve_p
+solve_p_given_b
 ```
-## Coupling T solutions to level set motion
+
+## Lumped computations
 
 ```@docs
-compute_frontvel_heatonly
-plot_frontvel
 compute_Qice
+compute_topmassflux
+compute_Qice_noflow
+compute_Qice_nodry
+```
+
+
+## Computing velocity: coupling solutions to level set motion
+
+```@docs
+compute_frontvel_heatmass
+compute_frontvel_heatonly
+compute_frontvel_fixedspeed
+```
+
+## Geometric computations from level set
+
+```@docs
+compute_icesh_area
+compute_icegl_area
+compute_icevol
 compute_icesurf
 ```
