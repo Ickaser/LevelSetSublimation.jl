@@ -246,8 +246,13 @@ end
 
 Given a simulation configuration `fullconfig`, run a simulation.
 
-Maximum simulation time is specified by `tf`.
+Maximum simulation time (not CPU time, but simulation time) is specified by `tf`, which is in seconds; 1e5 is 270 hours. (No matter how much ice is left at that point, simulation will end.)
 `verbose=true` will put out some info messages about simulation progress, i.e. at each reinitialization.
+
+All passed parameters should have Unitful unit annotations, so they can be in whatever units are convenient;
+inside this function, they will be converted to SI marks then have units stripped off (for easier numerical implementation).
+The results will be in SI units, so times in seconds, temperature in Kelvin, pressure in Pa, etc.
+Employ Unitful to do unit conversions after simulation if necessary.
 
 `fullconfig` should have the following fields:
 - `ϕ0type`, types listed for [`make_ϕ0`](@ref)

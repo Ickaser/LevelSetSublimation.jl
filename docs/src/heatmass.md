@@ -27,8 +27,8 @@ compute_Qice_nodry
 ## Computing velocity: coupling solutions to level set motion
 
 ```@docs
-compute_frontvel_heatmass
-compute_frontvel_heatonly
+compute_frontvel_mass
+compute_frontvel_heat
 compute_frontvel_fixedspeed
 ```
 

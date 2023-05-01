@@ -25,4 +25,12 @@ dϕdx_all_WENO
 wenodiffs_local
 ```
 
+## Error evaluation
+
+```@docs
+identify_B
+sdf_err_L1
+sdf_err_L∞
+```
+
 

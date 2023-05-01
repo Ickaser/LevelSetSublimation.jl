@@ -1,7 +1,61 @@
 # export solve_T, solve_T_original
 export solve_p_given_b
-export solve_p
+export solve_p, eval_b
 
+"""
+    solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit=20, reltol=1e-6) where G<:AbstractArray
+
+Iteratively compute the pressure profile for system state `u` and `T`.
+
+There is a weak nonlinearity in the system, since the mass transfer coefficient `b` depends partially on pressure.
+To treat this, use a guessed pressure `p0` (which, if not provided, is set everywhere to sublimation pressure) to compute `b`,
+then perform a linear solve for `p` using `solve_p_given_b`. At this point, recompute `b`, then recompute `p`.
+
+In preliminary testing, this usually converges within 5 or 10 iterations.
+Usually if it doesn't converge, it is because temperatures are outside the expected range, yielding crazy sublimation pressures.
+(Occasionally it means I incorrectly wrote a finite difference somewhere.)
+
+"""
+function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit=20, reltol=1e-6) where G<:AbstractArray
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    p_sub = calc_psub(Tf)
+    if minimum(T) <= 0
+        @info "weird" T
+        pl1 = heat(T, dom)
+        display(pl1)
+        # display(
+    end
+
+    if isnothing(p0)
+        # meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
+        # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
+        b = eval_b(T, params[:p_ch], params)
+        p0 = solve_p_given_b(ϕ, b, p_sub, dom, params)
+    end
+    pl1 = heat(p0, dom)
+
+    relerr::Float64 = 0.0
+    p⁺ = copy(p0)
+    # Iterate 5 times
+    for i in 1:maxit
+        b = eval_b(T, p0, params)
+        p⁺ = solve_p_given_b(ϕ, b, p_sub, dom, params)
+        relerr = maximum(abs.(p⁺ .- p0) ./ p⁺)
+        # @info "Maximum relative error in p after $i iterations:" relerr
+        if relerr < reltol
+            # @info "Number of p iterations: $i"
+            return p⁺
+        end
+        p0 = abs.(p⁺)
+    end
+    @info "Reached maximum iterations in p:" relerr maxit p⁺ T 
+    # pl1 = heat(b, dom)
+    # plot_contour(ϕ, dom)
+    # pl2 = heat(p⁺, dom)
+    # plot_contour(ϕ, dom)
+    # display(plot(pl1, pl2))
+    return p⁺
+end
 
 """
     eval_b(T, p, params)
@@ -317,45 +371,4 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
     sol = mat_lhs \ rhs
     psol = reshape(sol, nr, nz)
-end
-
-function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit=20, reltol=1e-6) where G<:AbstractArray
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-    p_sub = calc_psub(Tf)
-    if minimum(T) <= 0
-        @info "weird" T
-        pl1 = heat(T, dom)
-        display(pl1)
-        # display(
-    end
-
-    if p0 === nothing
-        # meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
-        # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
-        b = eval_b(T, params[:p_ch], params)
-        p0 = solve_p_given_b(ϕ, b, p_sub, dom, params)
-    end
-    pl1 = heat(p0, dom)
-
-    relerr::Float64 = 0.0
-    p⁺ = copy(p0)
-    # Iterate 5 times
-    for i in 1:maxit
-        b = eval_b(T, p0, params)
-        p⁺ = solve_p_given_b(ϕ, b, p_sub, dom, params)
-        relerr = maximum(abs.(p⁺ .- p0) ./ p⁺)
-        # @info "Maximum relative error in p after $i iterations:" relerr
-        if relerr < reltol
-            # @info "Number of p iterations: $i"
-            return p⁺
-        end
-        p0 = abs.(p⁺)
-    end
-    @info "Reached maximum iterations in p:" relerr maxit p⁺ T 
-    # pl1 = heat(b, dom)
-    # plot_contour(ϕ, dom)
-    # pl2 = heat(p⁺, dom)
-    # plot_contour(ϕ, dom)
-    # display(plot(pl1, pl2))
-    return p⁺
 end

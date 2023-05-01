@@ -1,18 +1,11 @@
 # To Do
 
-- Matching numerical values to experimental values
-    - Decide a nondimensionalization: SI units? Wrap everything in Unitful at entrance and exit?
+- Create a function `u_from_ϕ_T` so that no state indices are hard-coded
+- When building a "thermocouple" function for Tf, don't interpolate full system (just Tf at center), so that it's cheaper?
 
-# Add Tgl, Kgl
 
-Update:
-    Example_config
-    Sim_from_dict: read in values, initial values
-    Qice
+- Begin adding variation in Tf: first, try with a full set of Tf variables, and see if it takes tiny time steps
+    - Geometric: detecting where there's ice, what its height is, local surface area (mini contour)
 
-Adding: Kv, Kgl, Tsh, Q_gl_RF (params) Tgl (u)
-Removing: Q_gl, Q_sh
-
-Add callback for feeding in Tsh, Q_gl_RF
-    If only a scalar passed, treat as constant in time
-
+- Build in some doctests
+- Begin building test suite for every function, especially the edge cases
