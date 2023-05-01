@@ -1,4 +1,4 @@
-export fastmarch_v!, extrap_v_fastmarch
+export fastmarch_v!, extrap_v_fastmarch!
 
 function ddx_fastmarch_2nd!(num, den, ϕ, vf, c, sdir, dersign, dx1)
     dϕdx = dersign*(-1.5ϕ[c] + 2ϕ[c+sdir] - 0.5ϕ[c+2sdir])*dx1
