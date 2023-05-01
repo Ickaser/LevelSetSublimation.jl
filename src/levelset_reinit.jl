@@ -108,18 +108,31 @@ function reinitialize_ϕ_HCR(ϕ, dom::Domain)
     return ϕa
 end
 
+"""
+    sdf_err_L1(ϕ, dom; region=:B)
+
+Compute the L1 norm of the error in the Eikonal equation 
+`|∇ϕ| = 1`, on the given region (either `:B` or `:all`).
+"""
 function sdf_err_L1(ϕ, dom; region=:B)
     if region == :B
         Bf = identify_B(ϕ, dom)
         B = findall(Bf)
         𝒢 = 𝒢_weno.([ϕ], B, [dom])
+        return sum(abs.(𝒢 .-1)) / length(B)
     elseif region == :all
         𝒢 = 𝒢_weno_all(ϕ, dom)
+        return sum(abs.(𝒢 .-1)) / dom.ntot
     else
         @error "Bad region to error calc; expect `:B` or `:all`." region
     end
-    err = sum(abs.(𝒢 .-1)) / length(B)
 end
+"""
+    sdf_err_L∞(ϕ, dom; region=:B)
+
+Compute the L∞ norm of the error in the Eikonal equation 
+`|∇ϕ| = 1`, on the given region (either `:B` or `:all`).
+"""
 function sdf_err_L∞(ϕ, dom; region=:B)
     if region == :B
         Bf = identify_B(ϕ, dom)
@@ -134,15 +147,15 @@ function sdf_err_L∞(ϕ, dom; region=:B)
 end
 
 """
-    reinitialize_ϕ_HCR2!(ϕ, dom::Domain; maxsteps = 20, tol=1e-4, err_reg=:B)
+    reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=:B)
 
 Reinitialize `ϕ` throughout the domain.
 
 Implementation of Eq. 22 in Hartmann 2010, scheme HCR-2.
 
-Checks L∞ error against `tol` either in band around interface (`err_reg=:B`) or throughout domain (`err_reg=:all`), and ends iteration early
-
-TODO: switch to Eq. 23 to minimize allocations? Can eliminate F, rhs that way
+Checks L∞ error (of `|∇ϕ|=1`) against `tol` either in band around interface 
+(`err_reg=:B`) or throughout domain (`err_reg=:all`), and ends iteration 
+early if tolerance is met.
 
 """
 function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=:B)
@@ -247,8 +260,6 @@ function 𝒢_1st_all(ϕ, dom::Domain)
 end
 
 
-
-
 """
     weno_Φ(c, d, e, f)
 
@@ -305,7 +316,6 @@ function 𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
     return 𝒢_weno(ϕ, CI(ir, iz), dom)
 end
 
-
 function 𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
     indmin = CI(1, 1)
     indmax = CI(dom.nr, dom.nz)
@@ -334,8 +344,9 @@ end
 
 Compute the norm of the gradient of `ϕ` throughout domain by Godunov's scheme with WENO derivatives.
 
-Internally, calls [`𝒢_weno`](@ref) on all computational cells.
+Internally, calls `𝒢_weno` on all computational cells.
 """
 function 𝒢_weno_all(ϕ, dom::Domain)
     return reshape([𝒢_weno(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
+    # return 𝒢_weno([ϕ], CartesianIndices(ϕ), [dom])
 end

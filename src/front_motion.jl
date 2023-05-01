@@ -63,7 +63,7 @@ end
     compute_Qice_nodry(u, T, dom::Domain, params)
 
 Compute the total heat input into frozen domain from volumetric, shelf, and glass. 
-Contrast with compute_Qice_noflow and compute_Qice, which include heat to dried domain.
+Contrast with `compute_Qice_noflow` and `compute_Qice`, which include heat to dried domain.
 """
 function compute_Qice_nodry(u, T, dom::Domain, params)
     @unpack Kv, Kgl, Q_ic, Q_ck, Tsh= params
@@ -137,6 +137,8 @@ end
 
 """
     compute_topmassflux(ϕ, T, p, dom::Domain, params)
+
+Compute total mass flow through top of the cake (that is, mass flux integrated across top surface).
 """
 function compute_topmassflux(u, T, p, dom::Domain, params)
     dpdz = [compute_pderiv(u, T, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
@@ -315,14 +317,11 @@ function compute_icesurf(ϕ, dom::Domain)
 end
 
 """
-    compute_Tderiv(ϕ, T, ir::Int, iz::Int, dom::Domain, params)
+    compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
 
-Compute `∂ϕ/∂r`, `∂T/∂r`, `∂ϕ/∂z` and `∂T/∂z` at point `(ir, iz)`, given `T`, `ϕ`.
+Compute (`∂T/∂r`, `∂T/∂z`) at point `(ir, iz)`, given system state `u`, `T`.
 
 Quadratic ghost cell extrapolation (into frozen domain), second order finite differences, for T.
-For ϕ derivatives, simple second order finite differences (one-sided at boundaries).
-
-BROKEN: doesn't use Robin BCs.
 """
 function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
@@ -415,14 +414,13 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
 end
 
 """
-    compute_pderiv(ϕ, p, ir::Int, iz::Int, dom::Domain, params)
+    compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
 
-Compute `∂ϕ/∂r`, `∂p/∂r`, `∂ϕ/∂z` and `∂p/∂z` at point `(ir, iz)`, given `p`, `ϕ`.
+Compute  `∂p/∂r`, `∂p/∂z` at point `(ir, iz)`, given system state `u`, `T`, `p`.
 
 Quadratic ghost cell extrapolation (into frozen domain), second order finite differences, for p.
-For ϕ derivatives, simple second order finite differences (one-sided at boundaries).
 
-The distinction between this and `compute_Tderiv` is just in boundary values.
+The distinction in discretization between this and `compute_Tderiv` is essentially just the boundary treatments.
 """
 function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom

@@ -14,11 +14,12 @@ makedocs(
             "Visualizing Simulation Results" => "plots.md",
             "Implementation and Numerical Details" => [
                 "Solved Equations" => "eqs.md",
+                "Solving Physical Equations" => "heatmass.md",
                 "Level Set" => "levelset.md",
-                "Heat Equation" => "heat.md",
                 "Discretizations" => "disc.md",
             ],
-            "References" => "refs.md"
+            "References" => "refs.md",
+            "Everything for Good Measure" => "alldocs.md",
         ] 
         )
 
