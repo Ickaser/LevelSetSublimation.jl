@@ -9,34 +9,37 @@ Return a ϕ0 with appropriate size for the passed Domain.
 
 Parameter ϵ * sqrt(dom.rmax*dom.zmax) is added to ensure that interface is within domain.
 Currently allowed setups:
-- `:top`, `:flat` -- interface at zmax - ϵ
-- `:rad`, `:cyl`  -- interface at rmax - ϵ
-- `:box`          -- interface at both zmax-ϵ and rmax-ϵ
+- `:top`, `:flat` -- interface at zmax*(1 - ϵ)
+- `:rad`, `:cyl`  -- interface at rmax*(1 - ϵ)
+- `:box`          -- interface at both zmax*(1-ϵ) and rmax*(1-ϵ)
 - `:cone`         -- interface a line decreasing in r
 - `:ell_bub `     -- ellipse in center of vial, separated from boundaries
 - `:circ `        -- circle at r=0, z=0 
 - `:tinycirc `    -- circle at r=0, z=0, very small radius
 """
 function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
-    ϵ *= sqrt(dom.rmax * dom.zmax)
+    # ϵ *= sqrt(dom.rmax * dom.zmax)
     if ϕtype == :top || ϕtype == :flat
         ϕ0 = [z - dom.zmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :rad || ϕtype == :cyl
         ϕ0 = [r - dom.rmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :box
-        ϕ0 = [max(r-dom.rmax, z-dom.zmax) + ϵ 
+        ϕ0 = [max(r-dom.rmax*(1-ϵ), z-dom.zmax*(1-ϵ))  
                 for r in dom.rgrid, z in dom.zgrid]
+    elseif ϕtype == :circ
+        ϕ0 = [1.1*sqrt(r^2 / dom.rmax^2 + z^2 / (dom.zmax)^2 ) - 1.0
+                for r in dom.rgrid, z in dom.zgrid] .*sqrt(dom.rmax*dom.zmax)
     elseif ϕtype == :ell_bub
+        @warn "The more arcane starting shapes are not well-tested."
         @unpack rmax, zmax = dom
         ϕ0 = [1.5* r^2 + 6*(z-0.5zmax)^2 - 1.0 
                 for r in dom.rgrid, z in dom.zgrid]
-    elseif ϕtype == :circ
-        ϕ0 = [sqrt(1.1r^2 / dom.rmax^2 + 1.1z^2 / (dom.zmax)^2 )   - 1.0 
-                for r in dom.rgrid, z in dom.zgrid] .*sqrt(dom.rmax*dom.zmax)
     elseif ϕtype == :tinycirc
-        ϕ0 = [dom.rmax * r^2 + dom.zmax * z^2 - 0.11 
-                for r in dom.rgrid, z in dom.zgrid]
+        @warn "The more arcane starting shapes are not well-tested."
+        ϕ0 = [sqrt(10r^2 / dom.rmax^2 + 10z^2 / (dom.zmax)^2 )   - 1.0 
+                for r in dom.rgrid, z in dom.zgrid] .*sqrt(dom.rmax*dom.zmax)
     elseif ϕtype == :cone
+        @warn "The more arcane starting shapes are not well-tested."
         ϕ0 = [0.5r + z - 0.9dom.zmax + ϵ 
                 for r in dom.rgrid, z in dom.zgrid]
     else

@@ -9,3 +9,5 @@
 
 - Build in some doctests
 - Begin building test suite for every function, especially the edge cases
+    - Start from easy functions and early-defined functions
+    - Consider validation cases from early notebooks
