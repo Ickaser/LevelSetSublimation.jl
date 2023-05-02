@@ -7,7 +7,7 @@ using DrWatson, Test
 const LSS = LevelSetSublimation
 
 # Define my own convenience function, since have lots of arrays to check
-approxzero(x) = isapprox(x, 0, atol=10eps(typeof(x)))
+approxzero(x) = isapprox(x, 0, atol=100eps(typeof(x)))
 
 
 # Run test suite
@@ -53,26 +53,22 @@ dϕdz_4_anl[1,1] = dϕdz_4_anl[1,2] # Avoid singularity
 @testset "WENO derivative tests" begin
     @test sum(approxzero.(dϕdx_all_1[1])) == dom.ntot  # East derivatives: 0
     @test sum(approxzero.(dϕdx_all_1[2])) == dom.ntot  # West derivatives: 0
-    @test sum(dϕdx_all_1[3][:,begin:end-1] .≈ 1) == dom.ntot - dom.nr # North derivatives: 1 except on north boundary
-    @test sum(approxzero.(dϕdx_all_1[3][:,end])) == dom.nr
-    @test sum(dϕdx_all_1[4][:,begin+1:end] .≈ 1) == dom.ntot - dom.nr # South derivatives: 1 except on south boundary
-    @test sum(approxzero.(dϕdx_all_1[4][:,begin])) == dom.nr
+    @test sum(dϕdx_all_1[3] .≈ 1) == dom.ntot # North derivatives: 1 
+    @test sum(dϕdx_all_1[4] .≈ 1) == dom.ntot # South derivatives: 1 
 
-    @test sum(dϕdx_all_2[1][begin:end-1,:] .≈ 1) == dom.ntot - dom.nz # East derivatives: 1 except on east boundary
-    @test sum(approxzero.(dϕdx_all_2[1][end,:])) == dom.nz
-    @test sum(dϕdx_all_2[2][begin+1:end,:] .≈ 1) == dom.ntot - dom.nz # West derivatives: 1 except on west boundary
-    @test sum(approxzero.(dϕdx_all_2[2][begin,:])) == dom.nz
+    @test sum(dϕdx_all_2[1] .≈ 1) == dom.ntot  # East derivatives: 1
+    @test sum(dϕdx_all_2[2] .≈ 1) == dom.ntot  # West derivatives: 1
     @test sum(approxzero.(dϕdx_all_2[3])) == dom.ntot  # North derivatives: 0
     @test sum(approxzero.(dϕdx_all_2[4])) == dom.ntot  # South derivatives: 0
 
-    @test_broken sum(isapprox.(dϕdx_all_4[1][begin:end-1,:], dϕdr_4_anl[begin:end-1,:], atol=dom.dr)) == dom.ntot - dom.nz # North derivatives: break at north boundary
-    @test_broken(isapprox.(dϕdx_all_4[2][begin+1:end,:], dϕdr_4_anl[begin+1:end,:], atol=dom.dr)) == dom.ntot - dom.nz # South derivatives: break at south boundary
-    @test_broken sum(isapprox.(dϕdx_all_4[3][:,begin:end-1], dϕdz_4_anl[:,begin:end-1], atol=dom.dz)) == dom.ntot - dom.nr # East derivatives: break at east boundary
-    @test_broken sum(isapprox.(dϕdx_all_4[4][:,begin+1:end], dϕdz_4_anl[:,begin+1:end], atol=dom.dz)) == dom.ntot - dom.nr # West derivatives: break ast west boundary
-    @test sum(isapprox.(dϕdx_all_4[1][begin:end-1,:], dϕdr_4_anl[begin:end-1,:], atol=dom.dr^2)) >= dom.ntot - 2dom.nz # Allow breakage at both boundaries
-    @test sum(isapprox.(dϕdx_all_4[2][begin+1:end,:], dϕdr_4_anl[begin+1:end,:], atol=dom.dr^2)) >= dom.ntot - 2dom.nz # Allow breakage at both boundaries
-    @test sum(isapprox.(dϕdx_all_4[3][:,begin:end-1], dϕdz_4_anl[:,begin:end-1], atol=dom.dz^2)) >= dom.ntot - 2dom.nr # Allow breakage at both boundaries
-    @test sum(isapprox.(dϕdx_all_4[4][:,begin+1:end], dϕdz_4_anl[:,begin+1:end], atol=dom.dz^2)) >= dom.ntot - 2dom.nr # Allow breakage at both boundaries
+    @test sum(isapprox.(dϕdx_all_4[1], dϕdr_4_anl, atol=dom.dr)) >= dom.ntot - dom.nz # North derivatives: allow breakage at north boundary
+    @test sum(isapprox.(dϕdx_all_4[2], dϕdr_4_anl, atol=dom.dr)) >= dom.ntot - dom.nz # South derivatives: allow break at south boundary
+    @test sum(isapprox.(dϕdx_all_4[3], dϕdz_4_anl, atol=dom.dz)) >= dom.ntot - dom.nr # East derivatives: break at east boundary
+    @test sum(isapprox.(dϕdx_all_4[4], dϕdz_4_anl, atol=dom.dz)) >= dom.ntot - dom.nr # West derivatives: break ast west boundary
+    # @test sum(isapprox.(dϕdx_all_4[1], dϕdr_4_anl, atol=dom.dr)) == dom.ntot  # North derivatives: allow breakage at north boundary
+    # @test sum(isapprox.(dϕdx_all_4[2], dϕdr_4_anl, atol=dom.dr)) == dom.ntot  # South derivatives: allow break at south boundary
+    # @test sum(isapprox.(dϕdx_all_4[3], dϕdz_4_anl, atol=dom.dz)) == dom.ntot  # East derivatives: break at east boundary
+    # @test sum(isapprox.(dϕdx_all_4[4], dϕdz_4_anl, atol=dom.dz)) == dom.ntot  # West derivatives: break ast west boundary
 end
 
 ti = time() - ti

@@ -680,21 +680,63 @@ Beyond the boundaries of domain, ϕ is padded with the boundary value
 """
 function dϕdx_all_WENO(ϕ, dom)
     # --- Compute ϕ derivatives with WENO
-    indmin = CI(1, 1)
-    indmax = CI(dom.nr, dom.nz)
-    rshift = [CI(i, 0) for i in -3:3]
-    zshift = [CI(0, i) for i in -3:3]
-    
+    # indmin = CI(1, 1)
+    # indmax = CI(dom.nr, dom.nz)
+    rstenc = [CI(i, 0) for i in -3:3]
+    zstenc = [CI(0, i) for i in -3:3]
+
     dϕdr_e = zeros(Float64, size(dom))
     dϕdr_w = zeros(Float64, size(dom))
     dϕdz_n = zeros(Float64, size(dom))
     dϕdz_s = zeros(Float64, size(dom))
     for ind in CartesianIndices(ϕ)
-        rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(ϕ[rst]..., dom.dr)
-        dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(ϕ[zst]..., dom.dz)
+        # rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+        # zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+        # dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(ϕ[rst]..., dom.dr)
+        # dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(ϕ[zst]..., dom.dz)
 
+        dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, rstenc)..., dom.dr)
+        dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, zstenc)..., dom.dz)
     end
     return dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s
+end
+
+const extrap_ϕ_mat_quad   = [3 -3 1 ; 6 -8 3 ; 10 -15 6] # quadratic
+# const extrap_ϕ_mat_lin = [3 -3 1 ; 6 -8 3 ; 10 -15 6] # quadratic
+""" 
+    get_or_extrapolate_ϕ(ϕ, ind, stencil)
+
+Either retrieve `ϕ` at `ind` on the given `stencil`, or extrapolate and return domain + extrapolated values.
+
+This extrapolation is on a uniform grid, using a quadratic extrapolant.
+Define Lagrange interpolant with last three points in domain, then 
+extrapolate outside the domain to make ghost points.
+Ghost points are then a linear combination of points from domain.
+A matrix form just keeps this compact and efficient;
+`extrap_ϕ_mat` in the source is just the matrix representing this extrapolation.
+""" 
+function get_or_extrapolate_ϕ(ϕ, ind, stencil)
+        # See how much of the stencil is inside the domain
+        inside = checkbounds.(Bool, [ϕ], [ind].+stencil)
+        # If all of the stencil is in the domain, no extrapolation needed
+        if findlast(inside) - findfirst(inside) == length(stencil) - 1
+            # @info "interior" [ind] .+ stencil
+            return ϕ[[ind].+stencil]
+        end
+        # If some of the stencil is outside domain,
+        ϕis = similar(ϕ, size(stencil))
+        i1 = findfirst(inside)
+        il = findlast(inside)
+        # use as much of the domain as possible,
+        ϕis[i1:il] .= ϕ[[ind].+stencil[i1:il]]
+
+        # then extrapolate for as many points as necessary
+        if firstindex(ϕis) != i1
+            ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_quad[1:i1-1,:] * ϕis[i1:i1+2])
+            # @info "left extrap" ϕis.-ϕis[end]
+        elseif lastindex(ϕis) != il
+            ϕis[il+1:end] = extrap_ϕ_mat_quad[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-2]
+        end
+
+        return ϕis
 end

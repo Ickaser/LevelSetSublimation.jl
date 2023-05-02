@@ -317,20 +317,19 @@ function 𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
 end
 
 function 𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
-    indmin = CI(1, 1)
-    indmax = CI(dom.nr, dom.nz)
-    rshift = [CI(ir, 0) for ir in -3:3]
-    zshift = [CI( 0,iz) for iz in -3:3]
-    rst = max.([indmin], min.([indmax], [ind].+rshift)) # If stencil falls partly outside domain,  
-    zst = max.([indmin], min.([indmax], [ind].+zshift)) # repeat the boundary cell
+    rstenc = [CI(ir, 0) for ir in -3:3]
+    zstenc = [CI( 0,iz) for iz in -3:3]
 
-    #TODO
-    # Would be better to use an extrapolation procedure, rather than the boundary point repeated
-    # Boundaries are always a hassle, so maybe this would help with instabilities
-    # See Huang et al., 2008, numerical boundary conditions for ... WENO ...
+    # indmin = CI(1, 1)
+    # indmax = CI(dom.nr, dom.nz)
+    # rst = max.([indmin], min.([indmax], [ind].+rstenc)) # If stencil falls partly outside domain,  
+    # zst = max.([indmin], min.([indmax], [ind].+zstenc)) # repeat the boundary cell
+    # ar_, br_ = wenodiffs_local(ϕ[rst]..., dom.dr)
+    # az_, bz_ = wenodiffs_local(ϕ[zst]..., dom.dz)
 
-    ar_, br_ = wenodiffs_local(ϕ[rst]..., dom.dr)
-    az_, bz_ = wenodiffs_local(ϕ[zst]..., dom.dz)
+
+    ar_, br_ = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, rstenc)..., dom.dr)
+    az_, bz_ = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, zstenc)..., dom.dz)
 
     ar = LD(ar_)
     br = LD(br_)
