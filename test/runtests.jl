@@ -11,7 +11,7 @@ approxzero(x) = isapprox(x, 0, atol=100eps(typeof(x)))
 
 
 # Run test suite
-println("Starting tests")
+println("Starting tests\n")
 ti = time()
 
 dom = Domain(25, 21, 2.0, 1.3)
@@ -61,16 +61,12 @@ dϕdz_4_anl[1,1] = dϕdz_4_anl[1,2] # Avoid singularity
     @test sum(approxzero.(dϕdx_all_2[3])) == dom.ntot  # North derivatives: 0
     @test sum(approxzero.(dϕdx_all_2[4])) == dom.ntot  # South derivatives: 0
 
-    @test sum(isapprox.(dϕdx_all_4[1], dϕdr_4_anl, atol=dom.dr)) >= dom.ntot - dom.nz # North derivatives: allow breakage at north boundary
-    @test sum(isapprox.(dϕdx_all_4[2], dϕdr_4_anl, atol=dom.dr)) >= dom.ntot - dom.nz # South derivatives: allow break at south boundary
-    @test sum(isapprox.(dϕdx_all_4[3], dϕdz_4_anl, atol=dom.dz)) >= dom.ntot - dom.nr # East derivatives: break at east boundary
-    @test sum(isapprox.(dϕdx_all_4[4], dϕdz_4_anl, atol=dom.dz)) >= dom.ntot - dom.nr # West derivatives: break ast west boundary
-    # @test sum(isapprox.(dϕdx_all_4[1], dϕdr_4_anl, atol=dom.dr)) == dom.ntot  # North derivatives: allow breakage at north boundary
-    # @test sum(isapprox.(dϕdx_all_4[2], dϕdr_4_anl, atol=dom.dr)) == dom.ntot  # South derivatives: allow break at south boundary
-    # @test sum(isapprox.(dϕdx_all_4[3], dϕdz_4_anl, atol=dom.dz)) == dom.ntot  # East derivatives: break at east boundary
-    # @test sum(isapprox.(dϕdx_all_4[4], dϕdz_4_anl, atol=dom.dz)) == dom.ntot  # West derivatives: break ast west boundary
+    @test sum(isapprox.(dϕdx_all_4[1], dϕdr_4_anl, atol=dom.dr)) >= dom.ntot - dom.nz # North derivatives: allow for breakage at north boundary
+    @test sum(isapprox.(dϕdx_all_4[2], dϕdr_4_anl, atol=dom.dr)) >= dom.ntot - dom.nz # South derivatives: allow for breakage at south boundary
+    @test sum(isapprox.(dϕdx_all_4[3], dϕdz_4_anl, atol=dom.dz)) >= dom.ntot - dom.nr # East derivatives : allow for breakage at east boundary
+    @test sum(isapprox.(dϕdx_all_4[4], dϕdz_4_anl, atol=dom.dz)) >= dom.ntot - dom.nr # West derivatives : allow for breakage at west boundary
 end
 
 ti = time() - ti
-println("\nTest took total time of:")
+println("\nTesting took:")
 println(round(ti/60, digits = 3), " minutes")
