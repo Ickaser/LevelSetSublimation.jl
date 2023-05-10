@@ -358,14 +358,16 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
         elseif wϕ <= 0 # West ghost cell
             θr = ϕp /(ϕp - wϕ)
             if θr > θ_thresh
-                dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+                # dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+                dTr = (pT - Tf)/θr * dr1 # LInear extrapolation
             else 
                 dTr = (eT - Tf)/(θr+1)*dr1 # Linear extrapolation from east
             end
         elseif eϕ <= 0 # East ghost cell
             θr = ϕp /(ϕp - eϕ)
             if θr > θ_thresh
-                dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*θr/(θr+1)) * dr1 # Quadratic extrapolation
+                # dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*θr/(θr+1)) * dr1 # Quadratic extrapolation
+                dTr = (Tf - pT)/θr * dr1 # LInear extrapolation
             else
                 dTr = (Tf - wT)/(θr+1)*dr1 # Linear extrapolation from west
             end
@@ -394,14 +396,16 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
             if θz > θ_thresh
-                dTz = (-Tf/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                # dTz = (-Tf/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                dTz = (pT - Tf)/θz * dz1 # Linear extrapolation
             else
                 dTz = (nT - Tf)/(θz+1)*dz1
             end
         elseif nϕ <= 0 # North ghost cell
             θz = ϕp /(ϕp - nϕ)
             if θz > θ_thresh
-                dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                # dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                dTz = (Tf - pT)/θz * dz1 # Linear extrapolation
             else
                 dTz = (Tf - sT )/(θz+1)*dz1
             end
@@ -434,7 +438,8 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         @debug "Computing mass flux for cell which may not be at front." ir iz ϕp
     end
 
-    θ_thresh = max(1/nr, 1/nz)
+    # θ_thresh = max(1/nr, 1/nz)
+    θ_thresh = 0.05
 
     # Enforce BCs explicitly for boundary cells
     if ir == 1 
@@ -458,21 +463,23 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
             θr = ϕp /(ϕp - wϕ)
             if θr > θ_thresh
                 dpr = (-p_sub/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+                # dpr = (pp - p_sub)/θr*dr1 # Linear extrapolation
             else 
-                dpr = (pe - p_sub)/(θr+1)*dr1 # Linear extrapolation from east
+                dpr = (pe - p_sub)/(θr+1)*dr1 # Linear extrapolation, further out
             end
         elseif eϕ <= 0 # East ghost cell
             θr = ϕp /(ϕp - eϕ)
             if θr > θ_thresh
                 dpr = ( p_sub/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
+                # dpr = (p_sub - pp)/θr*dr1 # Linear extrapolation
             else
-                dpr = (p_sub - pw)/(θr+1)*dr1 # Linear extrapolation from west
+                dpr = (p_sub - pw)/(θr+1)*dr1 # Linear extrapolation, further out
             end
         else # No ghost cells
             dpr = (pe - pw) * 0.5*dr1 # Centered difference
         end
         # if (ir, iz) == (43, 38)
-        # @info "pderiv" ir iz wϕ ϕp eϕ  pw pp pe dpr dϕr
+        # @info "pderiv" ir iz wϕ ϕp eϕ  pw pp pe dpr
         # end
 
     end
@@ -497,23 +504,24 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         ps = p[ir, iz-1]
         dpz = (pn - ps) * 0.5dz1
         if sϕ <= 0 && nϕ <= 0 # North and south ghost cell: weird kink
-            θz1 = ϕp/(ϕp - wϕ)
-            θz2 = ϕp/(ϕp - eϕ)
+            θz1 = ϕp/(ϕp - sϕ)
+            θz2 = ϕp/(ϕp - nϕ)
             dpz = 0.5*dz1*(p_sub - pp)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
             if θz >  θ_thresh
-                # dpz = (-p_sub/(θz+1)/θz + pp*(1-θz)/θz + pn*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                dpz = ((-p_sub + pp*(1-θz))/θz + pn)*0.5*dz1 
+                dpz = ((-p_sub + pp*(1-θz))/θz + pn)*0.5*dz1 # Quadratic
+                # dpz = (pp-p_sub)/θz*dz1 # Linear
             else
-                dpz = (pn - p_sub)/(θz+1)*dz1
+                dpz = (pn - p_sub)/(θz+1)*dz1 # Linear, further out
             end
         elseif nϕ <= 0 # North ghost cell
             θz = ϕp /(ϕp - nϕ)
             if θz >  θ_thresh
                 dpz = ( p_sub/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                # dpz = (p_sub - pp)/θz*dz1 # Linear extrapolation
             else
-                dpz = (p_sub - ps )/(θz+1)*dz1
+                dpz = (p_sub - ps )/(θz+1)*dz1 #Linear, further out
             end
         else # No ghost cells
             dpz = (pn - ps) * 0.5*dz1 # Centered difference
@@ -546,21 +554,25 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
         ir, iz = Tuple(c)
         dpr, dpz = compute_pderiv(u, T, p, ir, iz, dom, params)
 
-        if ir == dom.nr # Right boundary
-            dϕdr = dϕdr_w[c]
-        elseif ir == 1 # Left boundary
-            dϕdr = dϕdr_e[c]
-        else
-            dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        end
-        # Boundary cases: use internal derivative
-        if iz == dom.nz # Top boundary
-            dϕdz = dϕdz_s[c]
-        elseif iz == 1 # Bottom boundary
-            dϕdz = dϕdz_n[c]
-        else
-            dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        end
+        # # Boundary cases: use internal derivative
+        # if ir == dom.nr # Right boundary
+        #     dϕdr = dϕdr_w[c]
+        # elseif ir == 1 # Left boundary
+        #     dϕdr = dϕdr_e[c]
+        # else
+        #     dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        # end
+        # if iz == dom.nz # Top boundary
+        #     dϕdz = dϕdz_s[c]
+        # elseif iz == 1 # Bottom boundary
+        #     dϕdz = dϕdz_n[c]
+        # else
+        #     dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
+        # end
+        
+        # With extrapolation, no need for special boundary treatment
+        dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
         
         # Normal is out of the ice
         # md = -b∇p⋅∇ϕ , >0 for sublimation occurring
@@ -599,21 +611,25 @@ function compute_frontvel_heat(u, T, dom::Domain, params; debug=false)
         ir, iz = Tuple(c)
         dTr, dTz = compute_Tderiv(u, T, ir, iz, dom, params)
 
-        if ir == dom.nr # Right boundary
-            dϕdr = dϕdr_w[c]
-        elseif ir == 1 # Left boundary
-            dϕdr = dϕdr_e[c]
-        else
-            dϕdr = (dTr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        end
-        # Boundary cases: use internal derivative
-        if iz == dom.nz # Top boundary
-            dϕdz = dϕdz_s[c]
-        elseif iz == 1 # Bottom boundary
-            dϕdz = dϕdz_n[c]
-        else
-            dϕdz = (dTz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        end
+        # # Boundary cases: use internal derivative
+        # if ir == dom.nr # Right boundary
+        #     dϕdr = dϕdr_w[c]
+        # elseif ir == 1 # Left boundary
+        #     dϕdr = dϕdr_e[c]
+        # else
+        #     dϕdr = (dTr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        # end
+        # if iz == dom.nz # Top boundary
+        #     dϕdz = dϕdz_s[c]
+        # elseif iz == 1 # Bottom boundary
+        #     dϕdz = dϕdz_n[c]
+        # else
+        #     dϕdz = (dTz < 0 ? dϕdz_s[c] : dϕdz_n[c])
+        # end
+
+        # With extrapolation, no need for special boundary treatment
+        dϕdr = (dTr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        dϕdz = (dTz < 0 ? dϕdz_s[c] : dϕdz_n[c])
         
         # Normal is out of the ice
         # md =  , >0 for sublimation occurring
@@ -644,23 +660,27 @@ function compute_frontvel_fixedspeed(v0, ϕ, dom::Domain)
     dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
     for c in Γ⁺
-        ir, iz = Tuple(c)
 
-        if ir == dom.nr # Right boundary
-            dϕdr = dϕdr_w[c]
-        elseif ir == 1 # Left boundary
-            dϕdr = dϕdr_e[c]
-        else
-            dϕdr = (dϕdr_w > 0 ? dϕdr_w[c] : dϕdr_e[c])
-        end
-        # Boundary cases: use internal derivative
-        if iz == dom.nz # Top boundary
-            dϕdz = dϕdz_s[c]
-        elseif iz == 1 # Bottom boundary
-            dϕdz = dϕdz_n[c]
-        else
-            dϕdz = (dϕdz_s > 0 ? dϕdz_s[c] : dϕdz_n[c])
-        end
+        # ir, iz = Tuple(c)
+        # # Boundary cases: use internal derivative
+        # if ir == dom.nr # Right boundary
+        #     dϕdr = dϕdr_w[c]
+        # elseif ir == 1 # Left boundary
+        #     dϕdr = dϕdr_e[c]
+        # else
+        #     dϕdr = (dϕdr_w > 0 ? dϕdr_w[c] : dϕdr_e[c])
+        # end
+        # if iz == dom.nz # Top boundary
+        #     dϕdz = dϕdz_s[c]
+        # elseif iz == 1 # Bottom boundary
+        #     dϕdz = dϕdz_n[c]
+        # else
+        #     dϕdz = (dϕdz_s > 0 ? dϕdz_s[c] : dϕdz_n[c])
+        # end
+
+        # With extrapolation in WENO, no need for special boundary treatment
+        dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
         
         vf[c,1] = -v0 * dϕdr
         vf[c,2] = -v0 * dϕdz
@@ -668,75 +688,4 @@ function compute_frontvel_fixedspeed(v0, ϕ, dom::Domain)
     end
     
     return vf, dϕdx_all
-end
-
-"""
-    dϕdx_all_WENO(ϕ, dom)
-
-Compute (`∂ϕ/∂r` east, `∂ϕ/∂r` west, `∂ϕ/∂r` north, `∂ϕ/∂r` south) using WENO derivatives.
-
-Beyond the boundaries of domain, ϕ is padded with the boundary value 
-(which I think is equivalent to a homogeneous Neumann condition? Or maybe Dirichlet?)
-"""
-function dϕdx_all_WENO(ϕ, dom)
-    # --- Compute ϕ derivatives with WENO
-    # indmin = CI(1, 1)
-    # indmax = CI(dom.nr, dom.nz)
-    rstenc = [CI(i, 0) for i in -3:3]
-    zstenc = [CI(0, i) for i in -3:3]
-
-    dϕdr_e = zeros(Float64, size(dom))
-    dϕdr_w = zeros(Float64, size(dom))
-    dϕdz_n = zeros(Float64, size(dom))
-    dϕdz_s = zeros(Float64, size(dom))
-    for ind in CartesianIndices(ϕ)
-        # rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        # zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
-        # dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(ϕ[rst]..., dom.dr)
-        # dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(ϕ[zst]..., dom.dz)
-
-        dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, rstenc)..., dom.dr)
-        dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, zstenc)..., dom.dz)
-    end
-    return dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s
-end
-
-const extrap_ϕ_mat_quad   = [3 -3 1 ; 6 -8 3 ; 10 -15 6] # quadratic
-# const extrap_ϕ_mat_lin = [3 -3 1 ; 6 -8 3 ; 10 -15 6] # quadratic
-""" 
-    get_or_extrapolate_ϕ(ϕ, ind, stencil)
-
-Either retrieve `ϕ` at `ind` on the given `stencil`, or extrapolate and return domain + extrapolated values.
-
-This extrapolation is on a uniform grid, using a quadratic extrapolant.
-Define Lagrange interpolant with last three points in domain, then 
-extrapolate outside the domain to make ghost points.
-Ghost points are then a linear combination of points from domain.
-A matrix form just keeps this compact and efficient;
-`extrap_ϕ_mat` in the source is just the matrix representing this extrapolation.
-""" 
-function get_or_extrapolate_ϕ(ϕ, ind, stencil)
-        # See how much of the stencil is inside the domain
-        inside = checkbounds.(Bool, [ϕ], [ind].+stencil)
-        # If all of the stencil is in the domain, no extrapolation needed
-        if findlast(inside) - findfirst(inside) == length(stencil) - 1
-            # @info "interior" [ind] .+ stencil
-            return ϕ[[ind].+stencil]
-        end
-        # If some of the stencil is outside domain,
-        ϕis = similar(ϕ, size(stencil))
-        i1 = findfirst(inside)
-        il = findlast(inside)
-        # use as much of the domain as possible,
-        ϕis[i1:il] .= ϕ[[ind].+stencil[i1:il]]
-
-        # then extrapolate for as many points as necessary
-        if firstindex(ϕis) != i1
-            ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_quad[1:i1-1,:] * ϕis[i1:i1+2])
-            # @info "left extrap" ϕis.-ϕis[end]
-        elseif lastindex(ϕis) != il
-            ϕis[il+1:end] = extrap_ϕ_mat_quad[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-2]
-        end
-
-        return ϕis
 end

@@ -50,7 +50,7 @@ dϕdz_4_anl = 1.1sqrt(dom.rmax*dom.zmax) * @. zbroad / dom.zmax^2 / [sqrt(r^2/do
 dϕdz_4_anl[1,1] = dϕdz_4_anl[1,2] # Avoid singularity
 
 
-@testset "WENO derivative tests" begin
+@testset "WENO derivative tests: tested on ellipse front" begin
     @test sum(approxzero.(dϕdx_all_1[1])) == dom.ntot  # East derivatives: 0
     @test sum(approxzero.(dϕdx_all_1[2])) == dom.ntot  # West derivatives: 0
     @test sum(dϕdx_all_1[3] .≈ 1) == dom.ntot # North derivatives: 1 
@@ -65,6 +65,50 @@ dϕdz_4_anl[1,1] = dϕdz_4_anl[1,2] # Avoid singularity
     @test sum(isapprox.(dϕdx_all_4[2], dϕdr_4_anl, atol=dom.dr)) >= dom.ntot - dom.nz # South derivatives: allow for breakage at south boundary
     @test sum(isapprox.(dϕdx_all_4[3], dϕdz_4_anl, atol=dom.dz)) >= dom.ntot - dom.nr # East derivatives : allow for breakage at east boundary
     @test sum(isapprox.(dϕdx_all_4[4], dϕdz_4_anl, atol=dom.dz)) >= dom.ntot - dom.nr # West derivatives : allow for breakage at west boundary
+
+    @test_broken sum(isapprox.(dϕdx_all_4[1], dϕdx_all_4[2], atol=dom.dr)) == dom.ntot # East and west are within grid size
+    @test_broken sum(isapprox.(dϕdx_all_4[3], dϕdx_all_4[4], atol=dom.dz)) == dom.ntot # North and south are within grid size
+end
+
+ϕ_pre = make_ϕ0(:circ, dom)
+ϕ_post = reinitialize_ϕ_HCR(ϕ_pre, dom, maxsteps=500, tol = 0.01)
+const sdf_err_L∞ = LSS.sdf_err_L∞
+
+vol_pre = LSS.compute_icevol(ϕ_pre, dom)
+vol_post = LSS.compute_icevol(ϕ_post, dom)
+surf_pre = LSS.compute_icesurf(ϕ_pre, dom)
+surf_post = LSS.compute_icesurf(ϕ_post, dom)
+
+@testset "Reinitialization function: tested only on ellipse" begin
+    @test sdf_err_L∞(ϕ_pre, dom) > 0.01
+    @test sdf_err_L∞(ϕ_post, dom) < 0.01
+    @test vol_pre ≈ vol_post rtol = 1/max(dom.nr, dom.nz)^2 # Second order mass conservation
+    @test surf_pre ≈ surf_post rtol = 1/max(dom.nr, dom.nz)^2 # Second order area conservation
+end
+
+@testset "T solution: nothing here" begin
+    # Compare to analytical:
+    # 1D r direction, no ice 
+    # 1D z direction, no ice 
+    # 2D no ice 
+    # 1D r direction, ghost θ > θ_thresh 
+    # 1D r direction, ghost θ < θ_thresh 
+    # 1D z direction, ghost θ > θ_thresh 
+    # 1D z direction, ghost θ < θ_thresh 
+end
+
+@testset "T derivatives for velocity: no tests yet" begin
+    # 1D r direction, ghost θ > θ_thresh 
+    # 1D r direction, ghost θ < θ_thresh 
+    # 1D z direction, ghost θ > θ_thresh 
+    # 1D z direction, ghost θ < θ_thresh 
+    # 
+end
+
+@testset "p solution: nothing here" begin
+end
+
+@testset "p derivatives for velocity: no tests yet" begin
 end
 
 ti = time() - ti

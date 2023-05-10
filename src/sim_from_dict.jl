@@ -71,30 +71,35 @@ function uevol_heatmass!(du, u, integ_pars, t)
     dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
-        # Boundary cases: use internal derivative
-        if ir == dom.nr # Right boundary
-            dϕdr = dϕdr_w[ind]
-        elseif ir == 1 # Left boundary
-            dϕdr = dϕdr_e[ind]
-        else
-            dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
-        end
-        # Boundary cases: use internal derivative
-        if iz == dom.nz # Top boundary
-            dϕdz = dϕdz_s[ind]
-        elseif iz == 1 # Bottom boundary
-            dϕdz = dϕdz_n[ind]
-        else
-            dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
-        end
+
+        # # Boundary cases: use internal derivative
+        # if ir == dom.nr # Right boundary
+        #     dϕdr = dϕdr_w[ind]
+        # elseif ir == 1 # Left boundary
+        #     dϕdr = dϕdr_e[ind]
+        # else
+        #     dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
+        # end
+        # # Boundary cases: use internal derivative
+        # if iz == dom.nz # Top boundary
+        #     dϕdz = dϕdz_s[ind]
+        # elseif iz == 1 # Bottom boundary
+        #     dϕdz = dϕdz_n[ind]
+        # else
+        #     dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
+        # end
+
+        # Don't treat boundaries differently
+        dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
+        dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
 
         rcomp = dϕdr*vr[ind]
         zcomp = dϕdz*vz[ind]
         # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
         dϕ[ind] = -rcomp - zcomp 
     end
-    # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" maximum(dϕ)
+    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    @info "prog: t=$t, dryfrac=$dryfrac" maximum(dϕ)
     return nothing
 end
 
@@ -138,6 +143,24 @@ function uevol_heatmass(u, config, t=0)
 
     uevol_heatmass(u, dom, params)
 end
+function uevol_heatmass_params(u, config, t=0)
+    @unpack vialsize, fillvol = config
+    simgridsize = get(config, :simgridsize, (51,51))
+
+    # --------- Set up simulation domain
+    r_vial = get_vial_rad(vialsize)
+    z_fill = fillvol / π / r_vial^2
+
+    rmax = ustrip(u"m", r_vial)
+    zmax = ustrip(u"m", z_fill)
+
+    dom = Domain(simgridsize..., rmax, zmax)
+
+    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
+
+    uevol_heatmass(u, dom, params), dom, params
+end
+
 
 """
     reinit_wrap(integ)
@@ -148,13 +171,18 @@ Calls `reinitialize_ϕ!(ϕ, dom)`, so uses the default reinitialization setup.
 Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 """
 function reinit_wrap(integ; verbose=false)
-    if verbose
-        @info "Reinit at t=$(integ.t)"
-    end
     dom = integ.p[1]
     ϕ = reshape((@view integ.u[1:dom.ntot]), dom.nr, dom.nz)
+    pre_err = sdf_err_L∞(ϕ, dom)
     # reinitialize_ϕ!(ϕ, dom) 
-    reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=100, tol=1/max(dom.nr, dom.nz)) 
+    # reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=300, tol=1/max(dom.nr, dom.nz)) 
+    reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=300, tol=0.015) 
+    post_err = sdf_err_L∞(ϕ, dom)
+    if verbose
+        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        # @info "Reinit at t=$(integ.t)"
+        @info "Reinit" integ.t pre_err post_err dryfrac
+    end
 end
 
 """
@@ -214,13 +242,14 @@ function next_reinit_time(integ; verbose=false)
     return integ.t + dt
 end
 
-function cond_reinit(u, t, integ)
+function needs_reinit(u, t, integ)
     dom = integ.p[1]
-    ϕ = ϕ_T_from_u(u, size(dom))[1]
-    err = sdf_err_L1(ϕ, dom)
-    tol = 1e-5 # Roughly dx^4
-    @info "error from sdf" err-tol
-    return err-tol
+    ϕ = ϕ_T_from_u(u, dom)[1]
+    # err = sdf_err_L1(ϕ, dom)
+    err = sdf_err_L∞(ϕ, dom)
+    tol = 0.02 # Roughly dx^4
+    # @info "error from sdf" err-tol
+    return err > tol
 end
 
 
@@ -326,7 +355,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     end
     # Make sure that the starting profile is very well-initialized
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
-    reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=10000, tol=1.25/max(dom.nr,dom.nz), err_reg=:all) 
+    reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
     ϕ0_flat = reshape(ϕ0, :)
 
     
@@ -352,13 +381,14 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # --- Set up reinitialization callback
 
-    # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
-    cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose=verbose), reinit_wrap,  initial_affect = true)
-    # if verbose
-    #     cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose), x->reinit_wrap(x, verbose=true),  initial_affect = true)
-    # else
-    #     cb_reinit = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
-    # end
+    # # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
+    # cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose=verbose), reinit_wrap,  initial_affect = true)
+    # # if verbose
+    # #     cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose), x->reinit_wrap(x, verbose=true),  initial_affect = true)
+    # # else
+    # #     cb_reinit = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
+    # # end
+    cb_reinit = DiscreteCallback(needs_reinit, x->reinit_wrap(x, verbose=verbose))
 
 
     # --- Set up simulation end callback
@@ -410,10 +440,8 @@ function uevol_heatonly!(du, u, integ_pars, t)
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     # u[dom.ntot+1] = clamp(Tf, 200, 350)  # Prevent crazy temperatures from getting passed through to other functions
     # u[dom.ntot+2] = clamp(Tgl, 200, 400) # Prevent crazy temperatures from getting passed through to other functions
-    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
     T = solve_T(u, dom, params)
-
 
     vf, dϕdx_all = compute_frontvel_heat(u, T, dom, params)
     extrap_v_fastmarch!(vf, u, dom)

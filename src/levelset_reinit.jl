@@ -102,9 +102,9 @@ end
 
 Thin wrapper on `reinitialize_ϕ_HCR!` to avoid mutating.
 """
-function reinitialize_ϕ_HCR(ϕ, dom::Domain)
+function reinitialize_ϕ_HCR(ϕ, dom::Domain;kwargs...)
     ϕa = copy(ϕ)
-    reinitialize_ϕ_HCR!(ϕa, dom)
+    reinitialize_ϕ_HCR!(ϕa, dom;kwargs...)
     return ϕa
 end
 
@@ -143,7 +143,36 @@ function sdf_err_L∞(ϕ, dom; region=:B)
     else
         @error "Bad region to error calc; expect `:B` or `:all`." region
     end
-    err = maximum(abs.(𝒢 .-1)) 
+    return maximum(abs.(𝒢 .-1)) 
+end
+
+"""
+    calc_err_reg(arr, norm=:L∞, region=Colon())
+
+Compute the given norm (`:L1`, `:L2`, or `:L∞`) of the given array, in provided `region` 
+(which must be a valid set of indices for provided `arr`).
+
+`region` defaulting to `Colon()` means looking at the full array.
+A `BitArray` or vector of `CartesianIndex`es, as result from e.g. `ϕ .> 0` or `findall(ϕ .> 0)` are valid options.
+"""
+function calc_err_reg(arr, norm=:L∞, region=Colon())
+    # if region == :B
+    #     reg = identify_B(ϕ, dom)
+    # elseif region == :all
+    #     reg = Colon()
+    # else
+    #     @error "Bad region to error calc; expect `:B` or `:all`." region
+    # end
+
+    if norm == :L∞
+        return maximum(abs.(arr[region]))
+    elseif norm == :L1
+        return sum(abs.(arr[region]))
+    elseif norm == :L2
+        return sqrt(sum((arr[region]).^2))
+    else
+        @error "Bad norm to error calc; expect `:B` or `:all`." norm
+    end
 end
 
 """
@@ -169,14 +198,27 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
     Cv = Γ
     F = zeros(size(dom))
     rhs = zeros(size(dom))
+    𝒢 = zeros(size(dom))
     S = @. ϕ/sqrt(ϕ^2 + dx^2)
     # Time levels
     dτ = 0.25*dx # Pseudo-time step
     rij_list, Sij_list = calc_rij_Sij(ϕ, Γ)
+    signs = sign.(ϕ)
+    steadycheck = 0.0
+
+    if err_reg == :B
+        region = identify_B(ϕ, dom)
+    elseif err_reg == :all
+        region = Colon()
+    else
+        @error "Bad region for error calc; expect `:B` or `:all`." err_reg
+    end
+
     # sdf_err_L1 = 
     for v in 1:maxsteps
-        # if sdf_err_L1(ϕ, dom) < tol
-        if sdf_err_L∞(ϕ, dom, region=err_reg) < tol
+        𝒢 .= 𝒢_weno.([ϕ], CartesianIndices(ϕ), signs, [dom])
+        # if sdf_err_L1(ϕ, dom, region=err_reg) < tol
+        if calc_err_reg(𝒢, :L∞, region) < tol
             break
         end
         F .= 0
@@ -193,8 +235,11 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
             # Eq. 21b
             F[c] = (rij_list[i] * sum(ϕ[Sij]) - ϕ[c]) / dx
         end
-        rhs .= S .* (𝒢_weno.([ϕ], CartesianIndices(ϕ), [dom]) .- 1) .- 0.5F
-        ϕ .-= rhs .* dτ
+        rhs .= S .* (𝒢.-1) .- 0.5F
+        @. ϕ -= rhs * dτ
+        # if maximum(abs.(rhs))*dτ < 
+        #     @info "Exiting reinit because maxiu"
+        # end
     end
 end
 
@@ -306,42 +351,53 @@ end
 """
     𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
     𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
+    𝒢_weno(ϕ, ir::Int, iz::Int, ϕ0sign, dom::Domain)
+    𝒢_weno(ϕ, ind::CartesianIndex{2}, ϕ0sign, dom::Domain)
 
 Compute the norm of the gradient by Godunov's scheme with WENO differences (`wenodiffs_local`).
 
+If supplied, `ϕ0sign` is used in Godunov's scheme, rather than the current sign of ϕ.
 Described in [hartmannAccuracyEfficiencyConstrained2009](@cite), eq. 6 to eq. 9.
-Let all ghost cells equal the function value at boundary; I think this is equivalent to using homogeneous Neumann boundaries.
+Boundary treatment of ghost cells handled by `get_or_extrapolate_ϕ`.
 """
+function 𝒢_weno(ϕ, ir::Int, iz::Int, ϕ0sign, dom::Domain)
+    return 𝒢_weno(ϕ, CI(ir, iz), ϕ0sign, dom)
+end
 function 𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
-    return 𝒢_weno(ϕ, CI(ir, iz), dom)
+    return 𝒢_weno(ϕ, CI(ir, iz), sign(ϕ[ir,iz]), dom)
+end
+function 𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
+    return 𝒢_weno(ϕ, ind, sign(ϕ[ind]), dom)
 end
 
-function 𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
+function 𝒢_weno(ϕ, ind::CartesianIndex{2}, ϕ0sign, dom::Domain)
     rstenc = [CI(ir, 0) for ir in -3:3]
     zstenc = [CI( 0,iz) for iz in -3:3]
-
-    # indmin = CI(1, 1)
-    # indmax = CI(dom.nr, dom.nz)
-    # rst = max.([indmin], min.([indmax], [ind].+rstenc)) # If stencil falls partly outside domain,  
-    # zst = max.([indmin], min.([indmax], [ind].+zstenc)) # repeat the boundary cell
-    # ar_, br_ = wenodiffs_local(ϕ[rst]..., dom.dr)
-    # az_, bz_ = wenodiffs_local(ϕ[zst]..., dom.dz)
-
 
     ar_, br_ = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, rstenc)..., dom.dr)
     az_, bz_ = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, zstenc)..., dom.dz)
 
-    ar = LD(ar_)
-    br = LD(br_)
-    az = LD(az_)
-    bz = LD(bz_)
+    # ar = LD(ar_)
+    # br = LD(br_)
+    # az = LD(az_)
+    # bz = LD(bz_)
 
-    if ϕ[ind] >= 0
-        return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
+    # if ϕ0sign >= 0
+    #     return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
+    # else
+    #     return sqrt(max(ar.m^2, br.p^2) + max(az.m^2, bz.p^2))
+    # end
+    return 𝒢_loc(ar_, br_, az_, bz_, ϕ0sign)
+end
+
+function 𝒢_loc(ar, br, az, bz, ϕloc)
+    if ϕloc >= 0
+        return sqrt(max(ar, -br, 0)^2 + max(az, -bz, 0)^2)
     else
-        return sqrt(max(ar.m^2, br.p^2) + max(az.m^2, bz.p^2))
+        return sqrt(max(-ar, br, 0)^2 + max(-az, bz, 0)^2)
     end
 end
+    
 
 """
     𝒢_weno_all(ϕ, dom::Domain)
@@ -353,4 +409,78 @@ Internally, calls `𝒢_weno` on all computational cells.
 function 𝒢_weno_all(ϕ, dom::Domain)
     return reshape([𝒢_weno(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
     # return 𝒢_weno([ϕ], CartesianIndices(ϕ), [dom])
+end
+
+"""
+    dϕdx_all_WENO(ϕ, dom)
+
+Compute (`∂ϕ/∂r` east, `∂ϕ/∂r` west, `∂ϕ/∂r` north, `∂ϕ/∂r` south) using WENO derivatives.
+
+Beyond the boundaries of domain, ϕ is padded with the boundary value 
+(which I think is equivalent to a homogeneous Neumann condition? Or maybe Dirichlet?)
+"""
+function dϕdx_all_WENO(ϕ, dom)
+    # --- Compute ϕ derivatives with WENO
+    # indmin = CI(1, 1)
+    # indmax = CI(dom.nr, dom.nz)
+    rstenc = [CI(i, 0) for i in -3:3]
+    zstenc = [CI(0, i) for i in -3:3]
+
+    dϕdr_e = zeros(Float64, size(dom))
+    dϕdr_w = zeros(Float64, size(dom))
+    dϕdz_n = zeros(Float64, size(dom))
+    dϕdz_s = zeros(Float64, size(dom))
+    for ind in CartesianIndices(ϕ)
+        # rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+        # zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
+        # dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(ϕ[rst]..., dom.dr)
+        # dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(ϕ[zst]..., dom.dz)
+
+        dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, rstenc)..., dom.dr)
+        dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, zstenc)..., dom.dz)
+    end
+    return dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s
+end
+
+const extrap_ϕ_mat_quad   = [3 -3 1 ; 6 -8 3 ; 10 -15 6] # quadratic
+const extrap_ϕ_mat_lin = [2 -1; 3 -2; 4 -3] # linear
+""" 
+    get_or_extrapolate_ϕ(ϕ, ind, stencil)
+
+Either retrieve `ϕ` at `ind` on the given `stencil`, or extrapolate and return domain + extrapolated values.
+
+This extrapolation is on a uniform grid, using a quadratic extrapolant.
+Define Lagrange interpolant with last three points in domain, then 
+extrapolate outside the domain to make ghost points.
+Ghost points are then a linear combination of points from domain.
+A matrix form just keeps this compact and efficient;
+`extrap_ϕ_mat` in the source is just the matrix representing this extrapolation.
+""" 
+function get_or_extrapolate_ϕ(ϕ, ind, stencil)
+        # See how much of the stencil is inside the domain
+        inside = checkbounds.(Bool, [ϕ], [ind].+stencil)
+        # If all of the stencil is in the domain, no extrapolation needed
+        if findlast(inside) - findfirst(inside) == length(stencil) - 1
+            # @info "interior" [ind] .+ stencil
+            return ϕ[[ind].+stencil]
+        end
+        # If some of the stencil is outside domain,
+        ϕis = similar(ϕ, size(stencil))
+        i1 = findfirst(inside)
+        il = findlast(inside)
+        # use as much of the domain as possible,
+        ϕis[i1:il] .= ϕ[[ind].+stencil[i1:il]]
+
+        # then extrapolate for as many points as necessary
+        if firstindex(ϕis) != i1
+            # ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_quad[1:i1-1,:] * ϕis[i1:i1+2]) # Quadratic extrapolation
+            ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_lin[1:i1-1,:] * ϕis[i1:i1+1]) # LInear extrapolation
+            # ϕis[i1-1:-1:begin] .= ϕis[i1] # Constant extrapolation
+        elseif lastindex(ϕis) != il
+            # ϕis[il+1:end] = extrap_ϕ_mat_quad[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-2] # Quadratic extrapolation
+            ϕis[il+1:end] = extrap_ϕ_mat_lin[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-1] # LInear extrapolation
+            # ϕis[il+1:end] .= ϕis[il] # Constant extrapolation
+        end
+
+        return ϕis
 end

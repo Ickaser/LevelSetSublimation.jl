@@ -1,4 +1,5 @@
-export summaryplot, resultsanim, plotframe,  gen_sumplot, gen_anim
+export summaryplot, resultsanim,  gen_sumplot, gen_anim
+export plotframe, finalframe
 export get_subf_z, get_subf_r, get_ϕ
 
 
@@ -91,6 +92,11 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     plot!(y_ticks = ([0, dom.zmax], ["0", "L"]),  )
     # plot!(x_ticks=[-dom.rmax, 0, dom.rmax], xlabel="radius")
     return pl, heatvar_vals
+end
+
+function finalframe(simresults, simconfig; kwargs...)
+    t = simresults["sol"].t[end]
+    plotframe(t, simresults, simconfig; kwargs...)[1]
 end
 
 """

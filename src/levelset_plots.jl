@@ -1,4 +1,4 @@
-export heat, plot_contour, freshplot, markfront
+export heat, plot_contour, freshplot, markfront, markcells
 export plot_cylheat, plot_cylcont, arrows
 
 """
@@ -81,6 +81,18 @@ function markfront(phi, dom::Domain; lab="", c=:white)
     zs = map(x-> dom.zgrid[Tuple(x)[2]] , frontcells)
     scatter!(rs, zs, color=c, label=lab)
 end
+
+"""
+    markcells(cells, dom::Domain; lab="", c=:white)
+
+Add a star marker for each CartesianIndex in  `cells` to the current plot.
+"""
+function markcells(cells, dom::Domain; lab = "", c=:white, kwargs...)
+    rs = map(x-> dom.rgrid[Tuple(x)[1]], cells)
+    zs = map(x-> dom.zgrid[Tuple(x)[2]], cells)
+    scatter!(rs, zs, color=c, label=lab; kwargs...)
+end
+
 
 """
     arrows(Vf, dom::Domain)
