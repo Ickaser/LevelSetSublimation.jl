@@ -548,11 +548,19 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
     b = eval_b(T, p, params)
      
     vf = zeros(eltype(ϕ), dom.nr, dom.nz, 2)
-    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+
 
     for c in Γ⁺
         ir, iz = Tuple(c)
         dpr, dpz = compute_pderiv(u, T, p, ir, iz, dom, params)
+        # if dpr > 0
+        #     neighbors = [CI(i,j) for i in -1:1, j in 0]
+        #     pnb = p[[c].+neighbors]
+        #     bnb = b[[c].+neighbors]
+        #     Tnb = T[[c].+neighbors]
+        #     @warn "positive dpdr" c dpr pnb bnb Tnb
+        # end
 
         # # Boundary cases: use internal derivative
         # if ir == dom.nr # Right boundary
@@ -573,6 +581,9 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
         # With extrapolation, no need for special boundary treatment
         dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
         dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
+        # Use dϕdr towards the interface, not according to pressure gradient
+        # dϕdr = ((dϕdr_w[c] + dϕdr_e[c]) > 0 ? dϕdr_w[c] : dϕdr_e[c])
+        # dϕdz = ((dϕdz_s[c] + dϕdz_n[c]) > 0 ? dϕdz_s[c] : dϕdz_n[c])
         
         # Normal is out of the ice
         # md = -b∇p⋅∇ϕ , >0 for sublimation occurring
@@ -581,6 +592,9 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
         vtot = md_l / ρf / ϵ 
         vf[c,1] = -vtot * dϕdr
         vf[c,2] = -vtot * dϕdz
+        if sign(vf[c,1]*dϕdr) != sign(vf[c,2]*dϕdz)
+            @warn "Velocity is messed up"
+        end
 
     end
     
@@ -602,7 +616,7 @@ function compute_frontvel_heat(u, T, dom::Domain, params; debug=false)
     Γ⁺ = [c for c in Γ if ϕ[c]>0]
      
     vf = zeros(eltype(ϕ), dom.nr, dom.nz, 2)
-    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
     Qice = compute_Qice_nodry(u, T, dom, params)
     Q_ice_per_surf = Qice / compute_icesurf(ϕ, dom)
@@ -657,7 +671,7 @@ function compute_frontvel_fixedspeed(v0, ϕ, dom::Domain)
     Γ⁺ = [c for c in Γ if ϕ[c]>0]
      
     vf = zeros(eltype(ϕ), dom.nr, dom.nz, 2)
-    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
     for c in Γ⁺
 
