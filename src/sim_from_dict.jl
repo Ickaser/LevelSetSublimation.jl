@@ -98,8 +98,8 @@ function uevol_heatmass!(du, u, integ_pars, t)
         # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
         dϕ[ind] = -rcomp - zcomp 
     end
-    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    @info "prog: t=$t, dryfrac=$dryfrac" maximum(dϕ)
+    # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    # @info "prog: t=$t, dryfrac=$dryfrac" maximum(dϕ)
     return nothing
 end
 
@@ -173,11 +173,13 @@ Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 function reinit_wrap(integ; verbose=false)
     dom = integ.p[1]
     ϕ = reshape((@view integ.u[1:dom.ntot]), dom.nr, dom.nz)
-    pre_err = sdf_err_L∞(ϕ, dom)
+    # reg = identify_B(ϕ, dom)
+    # reg = Colon()
+    pre_err = sdf_err_L∞(ϕ, dom, region=:B)
     # reinitialize_ϕ!(ϕ, dom) 
     # reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=300, tol=1/max(dom.nr, dom.nz)) 
-    reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=300, tol=0.015) 
-    post_err = sdf_err_L∞(ϕ, dom)
+    reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=20, tol=0.02, err_reg=:B) 
+    post_err = sdf_err_L∞(ϕ, dom, region=:B)
     if verbose
         dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         # @info "Reinit at t=$(integ.t)"
@@ -246,8 +248,9 @@ function needs_reinit(u, t, integ)
     dom = integ.p[1]
     ϕ = ϕ_T_from_u(u, dom)[1]
     # err = sdf_err_L1(ϕ, dom)
-    err = sdf_err_L∞(ϕ, dom)
-    tol = 0.02 # Roughly dx^4
+    B = identify_B(ϕ, dom)
+    err = calc_err_reg(𝒢_weno_all(ϕ, dom).-1, :L∞, B)
+    tol = 0.02 # Based on Luddens 2015
     # @info "error from sdf" err-tol
     return err > tol
 end
