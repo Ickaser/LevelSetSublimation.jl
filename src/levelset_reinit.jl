@@ -216,7 +216,8 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
 
     # sdf_err_L1 = 
     for v in 1:maxsteps
-        𝒢 .= 𝒢_weno.([ϕ], CartesianIndices(ϕ), signs, [dom])
+        # 𝒢 .= 𝒢_weno.([ϕ], CartesianIndices(ϕ), signs, [dom])
+        𝒢 .= 𝒢_weno_all(ϕ, dom; signs=signs)
         # if sdf_err_L1(ϕ, dom, region=err_reg) < tol
         if calc_err_reg(𝒢, :L∞, region) < tol
             break
@@ -286,11 +287,12 @@ function 𝒢_1st(ϕ, i, j, dom::Domain) # p. 6830 of Hartmann, 10th page of PDF
         c = LD((ϕ[i,j] - ϕ[i,j-1]) * dom.dz1)
         d = LD((ϕ[i,j+1] - ϕ[i,j]) * dom.dz1)
     end
-    if ϕ[i,j] >= 0
-        return sqrt(max(a.p^2, b.m^2) + max(c.p^2, d.m^2))
-    else
-        return sqrt(max(a.m^2, b.p^2) + max(c.m^2, d.p^2))
-    end
+    # if ϕ[i,j] >= 0
+    #     return sqrt(max(a.p^2, b.m^2) + max(c.p^2, d.m^2))
+    # else
+    #     return sqrt(max(a.m^2, b.p^2) + max(c.m^2, d.p^2))
+    # end
+    return 𝒢_loc(a, b, c, d, ϕ[i,j])
 end
 
 """
@@ -348,6 +350,63 @@ function wenodiffs_local(u_m3, u_m2, u_m1, u_0, u_p1, u_p2, u_p3, dx)
     
     return du_l, du_r
 end
+
+function wenodiffs_row(u, dx)
+    dx1 = 1/dx
+    dx2 = dx1*dx1
+
+    n = size(u, 1)
+
+    u_ex = similar(u, n + 6) # Extrapolate three points beyond on each side
+    u_ex[begin+3:end-3] .= u
+
+    # u_ex[3:-1:1] = extrap_ϕ_mat_quad * u[begin:begin+2] # Quadratic extrapolation, left
+    # u_ex[end-2:end] = extrap_ϕ_mat_quad * u[end:-1:end-2] # Quadratic extrapolation, right
+
+    u_ex[3:-1:1] = extrap_ϕ_mat_lin * u[begin:begin+1] # Linear extrapolation, left
+    u_ex[end-2:end] = extrap_ϕ_mat_lin * u[end:-1:end-1] # Linear extrapolation, right
+
+    # u_ex[3:-1:1] .= u[begin] # Constant extrapolation, left
+    # u_ex[end-2:end] .= u[end] # Constant extrapolation, right
+
+    i0 = (1:n) .+ 3
+    central_part = @. (u_ex[i0.-2] - 8u_ex[i0.-1] + 8u_ex[i0.+1] - u_ex[i0.+2]) * dx1/12
+
+    cdiffs = dx2 * (u_ex[begin:end-2] .- 2u_ex[begin+1:end-1] .+ u_ex[begin+2:end])
+
+    i0 = (1:n) .+ 2
+    left_Φ = weno_Φ.(cdiffs[i0.-2], cdiffs[i0.-1], cdiffs[i0], cdiffs[i0.+1])
+    right_Φ = weno_Φ.(cdiffs[i0.+2], cdiffs[i0.+1], cdiffs[i0], cdiffs[i0.-1])
+
+    du_l = central_part .- dx*left_Φ
+    du_r = central_part .+ dx*right_Φ
+
+    return du_l, du_r
+end
+
+"""
+    dϕdx_all_WENO(ϕ, dom)
+
+Compute (`∂ϕ/∂r` west, `∂ϕ/∂r` east, `∂ϕ/∂z` south, `∂ϕ/∂z` north) using WENO derivatives.
+
+Implemented by computing WENO derivatives for each cell separately, which is a little wasteful.
+Beyond the boundaries of domain, ϕ is extrapolated according to `get_or_extrapolate_ϕ`.
+"""
+function dϕdx_all_WENO(ϕ, dom)
+    dϕdr_w = zeros(size(dom))
+    dϕdr_e = zeros(size(dom))
+    dϕdz_s = zeros(size(dom))
+    dϕdz_n = zeros(size(dom))
+
+    for i in axes(dϕdr_e, 2)
+        dϕdr_w[:,i], dϕdr_e[:,i] = wenodiffs_row(ϕ[:,i], dom.dr)
+    end
+    for i in axes(dϕdz_n, 1)
+        dϕdz_s[i,:], dϕdz_n[i,:] = wenodiffs_row(ϕ[i,:], dom.dz)
+    end
+    return dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n
+end
+
 """
     𝒢_weno(ϕ, ir::Int, iz::Int, dom::Domain)
     𝒢_weno(ϕ, ind::CartesianIndex{2}, dom::Domain)
@@ -377,16 +436,6 @@ function 𝒢_weno(ϕ, ind::CartesianIndex{2}, ϕ0sign, dom::Domain)
     ar_, br_ = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, rstenc)..., dom.dr)
     az_, bz_ = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, zstenc)..., dom.dz)
 
-    # ar = LD(ar_)
-    # br = LD(br_)
-    # az = LD(az_)
-    # bz = LD(bz_)
-
-    # if ϕ0sign >= 0
-    #     return sqrt(max(ar.p^2, br.m^2) + max(az.p^2, bz.m^2))
-    # else
-    #     return sqrt(max(ar.m^2, br.p^2) + max(az.m^2, bz.p^2))
-    # end
     return 𝒢_loc(ar_, br_, az_, bz_, ϕ0sign)
 end
 
@@ -400,36 +449,56 @@ end
     
 
 """
+    𝒢_weno_all_old(ϕ, dom::Domain)
+
+Compute the norm of the gradient of `ϕ` throughout domain by Godunov's scheme with WENO derivatives.
+
+Internally, calls `𝒢_weno` on all computational cells.
+"""
+function 𝒢_weno_all_old(ϕ, dom::Domain)
+    # return reshape([𝒢_weno(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
+    return 𝒢_weno.([ϕ], CartesianIndices(ϕ), [dom])
+end
+
+"""
     𝒢_weno_all(ϕ, dom::Domain)
 
 Compute the norm of the gradient of `ϕ` throughout domain by Godunov's scheme with WENO derivatives.
 
 Internally, calls `𝒢_weno` on all computational cells.
 """
-function 𝒢_weno_all(ϕ, dom::Domain)
-    return reshape([𝒢_weno(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
-    # return 𝒢_weno([ϕ], CartesianIndices(ϕ), [dom])
+function 𝒢_weno_all(ϕ, dom::Domain; signs=nothing)
+    # return reshape([𝒢_weno(ϕ, i, j, dom) for i in 1:dom.nr, j in 1:dom.nz], dom.nr, dom.nz)
+    # dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all_WENO(ϕ, dom)
+    dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+    # dϕdx_all = dϕdx_all_WENO_loc(ϕ, dom)
+    if isnothing(signs)
+        𝒢 = 𝒢_loc.(dϕdx_all..., ϕ)
+    else
+        𝒢 = 𝒢_loc.(dϕdx_all..., signs)
+    end
+    return 𝒢
 end
 
 """
-    dϕdx_all_WENO(ϕ, dom)
+    dϕdx_all_WENO_loc(ϕ, dom)
 
-Compute (`∂ϕ/∂r` east, `∂ϕ/∂r` west, `∂ϕ/∂r` north, `∂ϕ/∂r` south) using WENO derivatives.
+Compute (`∂ϕ/∂r` west, `∂ϕ/∂r` east, `∂ϕ/∂z` south, `∂ϕ/∂z` north) using WENO derivatives.
 
-Beyond the boundaries of domain, ϕ is padded with the boundary value 
-(which I think is equivalent to a homogeneous Neumann condition? Or maybe Dirichlet?)
+Implemented by computing WENO derivatives for each cell separately, which is a little wasteful.
+Beyond the boundaries of domain, ϕ is extrapolated according to `get_or_extrapolate_ϕ`.
 """
-function dϕdx_all_WENO(ϕ, dom)
+function dϕdx_all_WENO_loc(ϕ, dom)
     # --- Compute ϕ derivatives with WENO
     # indmin = CI(1, 1)
     # indmax = CI(dom.nr, dom.nz)
     rstenc = [CI(i, 0) for i in -3:3]
     zstenc = [CI(0, i) for i in -3:3]
 
-    dϕdr_e = zeros(Float64, size(dom))
     dϕdr_w = zeros(Float64, size(dom))
-    dϕdz_n = zeros(Float64, size(dom))
+    dϕdr_e = zeros(Float64, size(dom))
     dϕdz_s = zeros(Float64, size(dom))
+    dϕdz_n = zeros(Float64, size(dom))
     for ind in CartesianIndices(ϕ)
         # rst = max.(min.([ind].+rshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
         # zst = max.(min.([ind].+zshift, [indmax]), [indmin]) # Pad beyond boundary with boundary
@@ -439,7 +508,7 @@ function dϕdx_all_WENO(ϕ, dom)
         dϕdr_w[ind], dϕdr_e[ind] = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, rstenc)..., dom.dr)
         dϕdz_s[ind], dϕdz_n[ind] = wenodiffs_local(get_or_extrapolate_ϕ(ϕ, ind, zstenc)..., dom.dz)
     end
-    return dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s
+    return dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n
 end
 
 const extrap_ϕ_mat_quad   = [3 -3 1 ; 6 -8 3 ; 10 -15 6] # quadratic

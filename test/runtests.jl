@@ -41,6 +41,7 @@ dϕdx_all_1 = LSS.dϕdx_all_WENO(ϕ1, dom)
 dϕdx_all_2 = LSS.dϕdx_all_WENO(ϕ2, dom)
 # Skip the box shape for now: doesn't have as nice derivatives
 dϕdx_all_4 = LSS.dϕdx_all_WENO(ϕ4, dom)
+dϕdx_all_4_alt = LSS.dϕdx_all_WENO_loc(ϕ4, dom)
 
 rbroad = reshape(dom.rgrid, dom.nr, 1)
 zbroad = reshape(dom.zgrid, 1, dom.nz)
@@ -51,6 +52,11 @@ dϕdz_4_anl[1,1] = dϕdz_4_anl[1,2] # Avoid singularity
 
 
 @testset "WENO derivative tests: tested on ellipse front" begin
+    @test sum(dϕdx_all_4[1] .== dϕdx_all_4_alt[1]) == dom.ntot  # New and old implementations match
+    @test sum(dϕdx_all_4[2] .== dϕdx_all_4_alt[2]) == dom.ntot  # New and old implementations match
+    @test sum(dϕdx_all_4[3] .== dϕdx_all_4_alt[3]) == dom.ntot  # New and old implementations match
+    @test sum(dϕdx_all_4[4] .== dϕdx_all_4_alt[4]) == dom.ntot  # New and old implementations match
+
     @test sum(approxzero.(dϕdx_all_1[1])) == dom.ntot  # East derivatives: 0
     @test sum(approxzero.(dϕdx_all_1[2])) == dom.ntot  # West derivatives: 0
     @test sum(dϕdx_all_1[3] .≈ 1) == dom.ntot # North derivatives: 1 
