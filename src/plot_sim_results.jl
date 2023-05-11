@@ -40,9 +40,12 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
                 params[ki] = ncontrols[ki][end]
             end
         else
-            tip = findfirst(t_samp .> t)
-            tip = clamp(tip, 2, length(t_samp))
-            tim = tip - 1
+            # tip = findfirst(t_samp .> t)
+            # tip = clamp(tip, 2, length(t_samp))
+            # tim = tip - 1
+            tim = findlast(t_samp .<= t)
+            tim = clamp(tim, 1, length(t_samp)-1)
+            tip = tim + 1
             for ki in meas_keys
                 params[ki] = (ncontrols[ki][tip] - ncontrols[ki][tim]) / (t_samp[tip] - t_samp[tim]) * (t - t_samp[tim]) + ncontrols[ki][tim]
             end

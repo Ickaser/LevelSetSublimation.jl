@@ -41,7 +41,7 @@ Compute `findall(identify_Γ(ϕ, dom))`. (That's the whole implementation.)
 Γ_cells(ϕ, dom::Domain) = findall(identify_Γ(ϕ, dom))
 
 """
-    identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain)
+    identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain; extra=0)
     identify_B(Γ_field::Matrix{Bool}, dom::Domain)
     identify_B(ϕ::Matrix{Float64}, dom::Domain)
     identify_B(ϕ::Any, dom::Domain)
@@ -50,8 +50,9 @@ Return a field of bools identifying the band around the interface.
 
 The width in the band around Γ is specified by the fields `bwr` and `bwz`, 
 which represent number of cells in the 𝑟 and 𝑧 directions respectively.
+`extra` will tack on extra cells, if in some (but not all) places you need a larger band than the default.
 """
-function identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain)
+function identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain; extra=0)
     # nx, ny = size(Γ_field)
     nx = dom.nr
     ny = dom.nz
@@ -59,21 +60,21 @@ function identify_B(Γc::Vector{CartesianIndex{2}}, dom::Domain)
     # Γc = findall(Γ_field)
     for c in Γc
         ix, iy = Tuple(c)
-        xgrab = range(max(1,ix-dom.bwr), min(nx, ix+dom.bwz))
-        ygrab = range(max(1,iy-dom.bwr), min(ny, iy+dom.bwz))
+        xgrab = range(max(1,ix-dom.bwr-extra), min(nx, ix+dom.bwz+extra))
+        ygrab = range(max(1,iy-dom.bwr-extra), min(ny, iy+dom.bwz+extra))
         B[xgrab, iy] .= true
         B[ix, ygrab] .= true
     end
     return B
 end
-function identify_B(Γ_field::Matrix{Bool}, dom::Domain)
-    return identify_B(findall(Γ_field), dom)
+function identify_B(Γ_field::Matrix{Bool}, dom::Domain; kwargs...)
+    return identify_B(findall(Γ_field), dom; kwargs...)
 end
-function identify_B(ϕ::Matrix{Float64}, dom::Domain)
-    return identify_B(Γ_cells(ϕ, dom), dom)
+function identify_B(ϕ::Matrix{Float64}, dom::Domain; kwargs...)
+    return identify_B(Γ_cells(ϕ, dom), dom;kwargs...)
 end
-function identify_B(ϕ, dom::Domain)
-    return identify_B(Γ_cells(ϕ, dom), dom)
+function identify_B(ϕ, dom::Domain;kwargs...)
+    return identify_B(Γ_cells(ϕ, dom), dom;kwargs...)
 end
 
 """
@@ -187,7 +188,7 @@ Checks L∞ error (of `|∇ϕ|=1`) against `tol` either in band around interface
 early if tolerance is met.
 
 """
-function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=:B)
+function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=:B, outside_B = nothing)
 
     if sum(0 .< extrema(ϕ)) != 1
         @info "Attempted reinit when surface is not in domain. Skipping reinit." extrema(ϕ)
@@ -219,7 +220,8 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
         # 𝒢 .= 𝒢_weno.([ϕ], CartesianIndices(ϕ), signs, [dom])
         𝒢 .= 𝒢_weno_all(ϕ, dom; signs=signs)
         # if sdf_err_L1(ϕ, dom, region=err_reg) < tol
-        if calc_err_reg(𝒢, :L∞, region) < tol
+        if calc_err_reg(𝒢 .- 1, :L∞, region) < tol
+            @info "Early reinit finish. Steps:" v-1
             break
         end
         F .= 0
@@ -242,6 +244,11 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
         #     @info "Exiting reinit because maxiu"
         # end
     end
+    # Outside a band, set to a constant value
+    # if err_reg == :B
+    #     not_Bf = .~ identify_B(Γ, dom, extra=3)
+    #     ϕ[not_Bf] .= sign.(ϕ[not_Bf]) .* (isnothing(outside_B) ? dom.bwfrac*1.5*max(dom.rmax,dom.zmax) : outside_B)
+    # end
 end
 
 
@@ -543,11 +550,11 @@ function get_or_extrapolate_ϕ(ϕ, ind, stencil)
         # then extrapolate for as many points as necessary
         if firstindex(ϕis) != i1
             # ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_quad[1:i1-1,:] * ϕis[i1:i1+2]) # Quadratic extrapolation
-            ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_lin[1:i1-1,:] * ϕis[i1:i1+1]) # LInear extrapolation
+            # ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_lin[1:i1-1,:] * ϕis[i1:i1+1]) # LInear extrapolation
             # ϕis[i1-1:-1:begin] .= ϕis[i1] # Constant extrapolation
         elseif lastindex(ϕis) != il
             # ϕis[il+1:end] = extrap_ϕ_mat_quad[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-2] # Quadratic extrapolation
-            ϕis[il+1:end] = extrap_ϕ_mat_lin[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-1] # LInear extrapolation
+            # ϕis[il+1:end] = extrap_ϕ_mat_lin[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-1] # LInear extrapolation
             # ϕis[il+1:end] .= ϕis[il] # Constant extrapolation
         end
 
