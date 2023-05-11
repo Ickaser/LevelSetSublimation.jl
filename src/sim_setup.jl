@@ -29,6 +29,10 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     elseif ϕtype == :circ
         ϕ0 = [1.1*sqrt(r^2 / dom.rmax^2 + z^2 / (dom.zmax)^2 ) - 1.0
                 for r in dom.rgrid, z in dom.zgrid] .*sqrt(dom.rmax*dom.zmax)
+    elseif ϕtype == :circ_end
+        @warn "The more arcane starting shapes are not necessarily well-tested."
+        ϕ0 = [1.1*sqrt(r^2 / dom.rmax^2 + (z+0.75dom.zmax)^2 / (dom.zmax)^2 ) - 1.0
+                for r in dom.rgrid, z in dom.zgrid] .*sqrt(dom.rmax*dom.zmax) 
     elseif ϕtype == :ell_bub
         @warn "The more arcane starting shapes are not well-tested."
         @unpack rmax, zmax = dom
