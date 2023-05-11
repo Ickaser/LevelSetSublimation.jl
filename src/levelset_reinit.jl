@@ -370,11 +370,11 @@ function wenodiffs_row(u, dx)
     # u_ex[3:-1:1] = extrap_ϕ_mat_quad * u[begin:begin+2] # Quadratic extrapolation, left
     # u_ex[end-2:end] = extrap_ϕ_mat_quad * u[end:-1:end-2] # Quadratic extrapolation, right
 
-    u_ex[3:-1:1] = extrap_ϕ_mat_lin * u[begin:begin+1] # Linear extrapolation, left
-    u_ex[end-2:end] = extrap_ϕ_mat_lin * u[end:-1:end-1] # Linear extrapolation, right
+    # u_ex[3:-1:1] = extrap_ϕ_mat_lin * u[begin:begin+1] # Linear extrapolation, left
+    # u_ex[end-2:end] = extrap_ϕ_mat_lin * u[end:-1:end-1] # Linear extrapolation, right
 
-    # u_ex[3:-1:1] .= u[begin] # Constant extrapolation, left
-    # u_ex[end-2:end] .= u[end] # Constant extrapolation, right
+    u_ex[3:-1:1] .= u[begin] # Constant extrapolation, left
+    u_ex[end-2:end] .= u[end] # Constant extrapolation, right
 
     i0 = (1:n) .+ 3
     central_part = @. (u_ex[i0.-2] - 8u_ex[i0.-1] + 8u_ex[i0.+1] - u_ex[i0.+2]) * dx1/12
@@ -550,12 +550,12 @@ function get_or_extrapolate_ϕ(ϕ, ind, stencil)
         # then extrapolate for as many points as necessary
         if firstindex(ϕis) != i1
             # ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_quad[1:i1-1,:] * ϕis[i1:i1+2]) # Quadratic extrapolation
-            ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_lin[1:i1-1,:] * ϕis[i1:i1+1]) # LInear extrapolation
-            # ϕis[i1-1:-1:begin] .= ϕis[i1] # Constant extrapolation
+            # ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_lin[1:i1-1,:] * ϕis[i1:i1+1]) # LInear extrapolation
+            ϕis[i1-1:-1:begin] .= ϕis[i1] # Constant extrapolation
         elseif lastindex(ϕis) != il
             # ϕis[il+1:end] = extrap_ϕ_mat_quad[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-2] # Quadratic extrapolation
-            ϕis[il+1:end] = extrap_ϕ_mat_lin[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-1] # LInear extrapolation
-            # ϕis[il+1:end] .= ϕis[il] # Constant extrapolation
+            # ϕis[il+1:end] = extrap_ϕ_mat_lin[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-1] # LInear extrapolation
+            ϕis[il+1:end] .= ϕis[il] # Constant extrapolation
         end
 
         return ϕis
