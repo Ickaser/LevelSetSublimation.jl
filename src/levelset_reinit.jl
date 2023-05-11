@@ -550,11 +550,11 @@ function get_or_extrapolate_ϕ(ϕ, ind, stencil)
         # then extrapolate for as many points as necessary
         if firstindex(ϕis) != i1
             # ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_quad[1:i1-1,:] * ϕis[i1:i1+2]) # Quadratic extrapolation
-            # ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_lin[1:i1-1,:] * ϕis[i1:i1+1]) # LInear extrapolation
+            ϕis[i1-1:-1:begin] = (extrap_ϕ_mat_lin[1:i1-1,:] * ϕis[i1:i1+1]) # LInear extrapolation
             # ϕis[i1-1:-1:begin] .= ϕis[i1] # Constant extrapolation
         elseif lastindex(ϕis) != il
             # ϕis[il+1:end] = extrap_ϕ_mat_quad[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-2] # Quadratic extrapolation
-            # ϕis[il+1:end] = extrap_ϕ_mat_lin[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-1] # LInear extrapolation
+            ϕis[il+1:end] = extrap_ϕ_mat_lin[1:lastindex(ϕis)-il,:] * ϕis[il:-1:il-1] # LInear extrapolation
             # ϕis[il+1:end] .= ϕis[il] # Constant extrapolation
         end
 
