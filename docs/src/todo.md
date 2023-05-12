@@ -11,3 +11,14 @@
 - Begin building test suite for every function, especially the edge cases
     - Start from easy functions and early-defined functions
     - Consider validation cases from early notebooks
+
+- Extrapolation for WENO: try removing the boundary direction specialization where that was used in choice of east/west derivatives (left boundary can use all extrapolated cells, if velocity dictates)
+
+- G for WENO: improve performance
+- Reinit conditions: play with tolerances
+- Reinit: steady state check for iteration
+- Velocity extrapolation stil needs behavior checking
+
+- Reinit happens at almost every time step. Speed up the need to check it?
+- Docs for new reinit
+- Unify error region across all methods

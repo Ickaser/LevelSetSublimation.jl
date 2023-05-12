@@ -68,30 +68,30 @@ function uevol_heatmass!(du, u, integ_pars, t)
     du[ntot+1] = dTfdt
     du[ntot+2] = dTgldt
 
-    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all
+    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
 
-        # # Boundary cases: use internal derivative
-        # if ir == dom.nr # Right boundary
-        #     dϕdr = dϕdr_w[ind]
-        # elseif ir == 1 # Left boundary
-        #     dϕdr = dϕdr_e[ind]
-        # else
-        #     dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
-        # end
-        # # Boundary cases: use internal derivative
-        # if iz == dom.nz # Top boundary
-        #     dϕdz = dϕdz_s[ind]
-        # elseif iz == 1 # Bottom boundary
-        #     dϕdz = dϕdz_n[ind]
-        # else
-        #     dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
-        # end
+        # Boundary cases: use internal derivative
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[ind]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[ind]
+        else
+            dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
+        end
+        # Boundary cases: use internal derivative
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[ind]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[ind]
+        else
+            dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
+        end
 
-        # Don't treat boundaries differently
-        dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
-        dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
+        # # Don't treat boundaries differently
+        # dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
+        # dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
 
         rcomp = dϕdr*vr[ind]
         zcomp = dϕdz*vz[ind]
@@ -99,7 +99,7 @@ function uevol_heatmass!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp 
     end
     # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" maximum(dϕ)
+    # @info "prog: t=$t, dryfrac=$dryfrac"
     return nothing
 end
 
@@ -384,13 +384,8 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # --- Set up reinitialization callback
 
-    # # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
+    # cb1 = PeriodicCallback(reinit_wrap, reinit_time, initial_affect=true)
     # cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose=verbose), reinit_wrap,  initial_affect = true)
-    # # if verbose
-    # #     cb_reinit = IterativeCallback(x->next_reinit_time(x, verbose), x->reinit_wrap(x, verbose=true),  initial_affect = true)
-    # # else
-    # #     cb_reinit = IterativeCallback(next_reinit_time, reinit_wrap,  initial_affect = true)
-    # # end
     cb_reinit = DiscreteCallback(needs_reinit, x->reinit_wrap(x, verbose=verbose))
 
 
@@ -458,7 +453,7 @@ function uevol_heatonly!(du, u, integ_pars, t)
     du[ntot+1] = 0
     du[ntot+2] = 0
 
-    dϕdr_e, dϕdr_w, dϕdz_n, dϕdz_s = dϕdx_all
+    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
         # Boundary cases: use internal derivative

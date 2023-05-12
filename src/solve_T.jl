@@ -51,7 +51,8 @@ function solve_T(u, dom::Domain, params)
     vcr = (vals, cols, rows)
     rhs = fill(0.0, ntot)
 
-    θ_thresh = dr / dom.rmax
+    # θ_thresh = dr / dom.rmax
+    θ_thresh = 0.05
 
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration

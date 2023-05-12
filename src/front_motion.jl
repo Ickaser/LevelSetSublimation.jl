@@ -336,7 +336,8 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
         @debug "Computing heat flux for cell which may not be at front." ir iz ϕp
     end
 
-    θ_thresh = max(1/nr, 1/nz)
+    # θ_thresh = max(1/nr, 1/nz)
+    θ_thresh = 0.05
 
     # Enforce BCs explicitly for boundary cells
     if ir == 1 # Symmetry
@@ -510,7 +511,7 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
             if θz >  θ_thresh
-                dpz = ((-p_sub + pp*(1-θz))/θz + pn)*0.5*dz1 # Quadratic
+                dpz = (-p_sub/(1+θz)/θz + pp*(1-θz)/θz + pn*θz/(θz+1))*dz1 # Quadratic
                 # dpz = (pp-p_sub)/θz*dz1 # Linear
             else
                 dpz = (pn - p_sub)/(θz+1)*dz1 # Linear, further out
@@ -562,26 +563,26 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
         #     @warn "positive dpdr" c dpr pnb bnb Tnb
         # end
 
-        # # Boundary cases: use internal derivative
-        # if ir == dom.nr # Right boundary
-        #     dϕdr = dϕdr_w[c]
-        # elseif ir == 1 # Left boundary
-        #     dϕdr = dϕdr_e[c]
-        # else
-        #     dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        # end
-        # if iz == dom.nz # Top boundary
-        #     dϕdz = dϕdz_s[c]
-        # elseif iz == 1 # Bottom boundary
-        #     dϕdz = dϕdz_n[c]
-        # else
-        #     dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        # end
+        # Boundary cases: use internal derivative
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[c]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[c]
+        else # Not at boundary: use according to pressure gradient
+            dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        end
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[c]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[c]
+        else
+            dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
+        end
         
-        # With extrapolation, no need for special boundary treatment
-        dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        # Use dϕdr towards the interface, not according to pressure gradient
+        # # With extrapolation, no need for special boundary treatment
+        # dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        # dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
+        # # Use dϕdr towards the interface, not according to pressure gradient
         # dϕdr = ((dϕdr_w[c] + dϕdr_e[c]) > 0 ? dϕdr_w[c] : dϕdr_e[c])
         # dϕdz = ((dϕdz_s[c] + dϕdz_n[c]) > 0 ? dϕdz_s[c] : dϕdz_n[c])
         
@@ -592,9 +593,13 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
         vtot = md_l / ρf / ϵ 
         vf[c,1] = -vtot * dϕdr
         vf[c,2] = -vtot * dϕdz
-        if sign(vf[c,1]*dϕdr) != sign(vf[c,2]*dϕdz)
-            @warn "Velocity is messed up"
-        end
+        # if sign(vf[c,1]*dϕdr) != sign(vf[c,2]*dϕdz) && (dϕdr != 0 && dϕdz != 0)
+        #     @warn "Velocity is messed up" vtot vf[c,1] dϕdr vf[c,2] dϕdz
+        # end
+
+        # if iz ∈ [2, 3]
+        #     @info iz vf[c,2]
+        # end
 
     end
     

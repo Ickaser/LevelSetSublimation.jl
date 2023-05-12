@@ -205,7 +205,6 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
     dτ = 0.25*dx # Pseudo-time step
     rij_list, Sij_list = calc_rij_Sij(ϕ, Γ)
     signs = sign.(ϕ)
-    steadycheck = 0.0
 
     if err_reg == :B
         region = identify_B(ϕ, dom)
@@ -215,13 +214,10 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
         @error "Bad region for error calc; expect `:B` or `:all`." err_reg
     end
 
-    # sdf_err_L1 = 
     for v in 1:maxsteps
-        # 𝒢 .= 𝒢_weno.([ϕ], CartesianIndices(ϕ), signs, [dom])
         𝒢 .= 𝒢_weno_all(ϕ, dom; signs=signs)
-        # if sdf_err_L1(ϕ, dom, region=err_reg) < tol
         if calc_err_reg(𝒢 .- 1, :L∞, region) < tol
-            @info "Early reinit finish. Steps:" v-1
+            # @info "Early reinit finish. Steps:" v-1
             break
         end
         F .= 0

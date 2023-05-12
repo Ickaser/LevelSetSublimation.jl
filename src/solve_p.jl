@@ -137,7 +137,8 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
         r = rgrid[ir]
         r1 = 1/r
         
-        θ_thresh = dr/dom.rmax
+        # θ_thresh = dr/dom.rmax
+        θ_thresh = 0.05
 
         # Stencil values: initialize to 0
         ec = 0
