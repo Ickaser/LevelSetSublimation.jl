@@ -67,6 +67,7 @@ dϕdz_4_anl[1,1] = dϕdz_4_anl[1,2] # Avoid singularity
     @test sum(approxzero.(dϕdx_all_2[3])) == dom.ntot  # North derivatives: 0
     @test sum(approxzero.(dϕdx_all_2[4])) == dom.ntot  # South derivatives: 0
 
+    # This should maybe not be tested on this domain with a discontinuous slope?
     @test sum(isapprox.(dϕdx_all_4[1], dϕdr_4_anl, atol=dom.dr)) >= dom.ntot - dom.nz # North derivatives: allow for breakage at north boundary
     @test sum(isapprox.(dϕdx_all_4[2], dϕdr_4_anl, atol=dom.dr)) >= dom.ntot - dom.nz - 5 # South derivatives: break at south edge, center discontinuity
     @test sum(isapprox.(dϕdx_all_4[3], dϕdz_4_anl, atol=dom.dz)) >= dom.ntot - dom.nr # East derivatives : allow for breakage at east boundary
