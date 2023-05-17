@@ -293,22 +293,22 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-sϕ)
                 if θz > θ_thresh
-                    pc += -2bp*dz2/θz -2Rp0*dz1 - Rp0*dbz/bp
-                    rhs[imx] -= 2*p_sub*bp*dz2/θz + p_ch*Rp0*(dbz/bp + 2dz1)
+                    pc += -2bp*dz2/θz -2/Rp0*dz1 - dbz/bp/Rp0
+                    rhs[imx] -= 2*p_sub*bp*dz2/θz + p_ch/Rp0*(dbz/bp + 2dz1)
                 else
                     # First: use Neumann BC to get ghost cell left
                     # Second: extrapolate using left ghost cell across front
                     
-                    pc += (-2bp*dz2 + dbz*dz1 - Rp0*(dbz/bp + 2*θz*dz1))/(θz+1)
-                    rhs[imx] -= (p_sub*(2dz2*bp - dbz*dz1) + p_ch*Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
+                    pc += (-2bp*dz2 + dbz*dz1 - (dbz/bp + 2*θz*dz1)/Rp0)/(θz+1)
+                    rhs[imx] -= (p_sub*(2dz2*bp - dbz*dz1) + p_ch/Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
                 end
                 # No way to treat other equations, so cut it here
             else
                 # Using Robin boundary to define ghost point: north p= south T - 2dz/bp*Rp0*(pi - p_ch)
                 # p. 65, 66 of project notes
-                pc += -2bp*dz2 - Rp0*(2*dz1 + dbz/bp)
+                pc += -2bp*dz2 - (2*dz1 + dbz/bp)/Rp0
                 sc +=  2bp*dz2
-                rhs[imx] -= Rp0*p_ch*(dbz/bp + 2dz1)
+                rhs[imx] -= p_ch*(dbz/bp + 2dz1)/Rp0
             end
             #
             # BC4 = p_ch

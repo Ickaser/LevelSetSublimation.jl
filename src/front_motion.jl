@@ -23,8 +23,6 @@ function compute_Qice(u, T, p, dom::Domain, params)
     md = compute_topmassflux(u, T, p, dom, params)
     Qsub = - md * ΔH
 
-    # @info "Q" Q_glshvol Qgl Qsub
-
     return Q_glshvol + Qsub, Qgl
 end
 
@@ -143,6 +141,13 @@ Compute total mass flow through top of the cake (that is, mass flux integrated a
 function compute_topmassflux(u, T, p, dom::Domain, params)
     dpdz = [compute_pderiv(u, T, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
     b = eval_b(T, p, params)[:,end] # all r, top of z
+    rweights = zeros(Float64, dom.nr) 
+    for ir in 1:dom.nr-1
+        rmid = (dom.rgrid[ir] + dom.rgrid[ir+1])/2
+        rweights[ir] += rmid^2/2
+        rweights[ir+1] -= rmid^2/2
+    end
+    # md = - 2π * sum(rweights .* b .*dpdz )
     md = - 2π * sum(dpdz .*b .* dom.rgrid) * dom.dr
     # @info "massflux" dpdz b md 1/dom.dz
     return md
@@ -496,7 +501,9 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         else
             bp = b[ir,iz]
         end
-        dpz = Rp0/bp*(p_ch - p[ir,iz]) 
+        # bp*dpz = Δp/Rp0
+        dpz = (p_ch - p[ir,iz])/bp/Rp0
+        # @info "here" ir iz (p_ch - p[ir,iz])/Rp0
     else # Bulk
         nϕ = ϕ[ir, iz+1]
         sϕ = ϕ[ir, iz-1]
