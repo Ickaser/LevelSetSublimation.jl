@@ -404,8 +404,8 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         @info "Beginning solve"
     end
     # --- Solve
-    sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
-    # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping
+    # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+    sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping
     # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
     return @strdict sol dom
 end
