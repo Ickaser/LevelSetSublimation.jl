@@ -22,7 +22,7 @@ config = Dict{Symbol, Any}()
 # Set up stuff to make debugging easier
 params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
 
-r_vial = get_vial_rad(vialsize)
+r_vial = get_vial_radii(vialsize)[1]
 z_fill = fillvol / π / r_vial^2
 
 rmax = ustrip(u"m", r_vial)

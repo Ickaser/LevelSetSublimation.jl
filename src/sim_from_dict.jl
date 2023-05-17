@@ -47,7 +47,7 @@ function uevol_heatmass!(du, u, integ_pars, t)
     p_sub = calc_psub(Tf) 
     if p_sub < params[:p_ch] # No driving force for mass transfer: no ice loss, just temperature change
         Qice, Qgl = compute_Qice_noflow(u, T, dom, params)
-        dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+        dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-8) # Prevent explosion during last time step by not letting volume go to 0
         dTgldt =  (Q_gl_RF - Qgl) / m_cp_gl
         dϕ .= 0.0
         du[ntot+1] = dTfdt
@@ -131,7 +131,7 @@ function uevol_heatmass(u, config, t=0)
     simgridsize = get(config, :simgridsize, (51,51))
 
     # --------- Set up simulation domain
-    r_vial = get_vial_rad(vialsize)
+    r_vial = get_vial_radii(vialsize)[1]
     z_fill = fillvol / π / r_vial^2
 
     rmax = ustrip(u"m", r_vial)
@@ -148,7 +148,7 @@ function uevol_heatmass_params(u, config, t=0)
     simgridsize = get(config, :simgridsize, (51,51))
 
     # --------- Set up simulation domain
-    r_vial = get_vial_rad(vialsize)
+    r_vial = get_vial_radii(vialsize)[1]
     z_fill = fillvol / π / r_vial^2
 
     rmax = ustrip(u"m", r_vial)
@@ -333,7 +333,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     simgridsize = get(fullconfig, :simgridsize, (51,51))
 
     # --------- Set up simulation domain
-    r_vial = get_vial_rad(vialsize)
+    r_vial = get_vial_radii(vialsize)[1]
     z_fill = fillvol / π / r_vial^2
 
     rmax = ustrip(u"m", r_vial)
@@ -405,7 +405,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     end
     # --- Solve
     sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
-    # sol = solve(prob, SSPRK33(), dt=1e-4, callback=cbs; ) # Fixed timestepping
+    # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping
     # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
     return @strdict sol dom
 end
@@ -506,7 +506,7 @@ function uevol_heatonly(u, config)
     simgridsize = get(config, :simgridsize, (51,51))
 
     # --------- Set up simulation domain
-    r_vial = get_vial_rad(vialsize)
+    r_vial = get_vial_radii(vialsize)[1]
     z_fill = fillvol / π / r_vial^2
 
     rmax = ustrip(u"m", r_vial)
@@ -619,7 +619,7 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
     simgridsize = get(fullconfig, :simgridsize, (51,51))
 
     # --------- Set up simulation domain
-    r_vial = get_vial_rad(vialsize)
+    r_vial = get_vial_radii(vialsize)[1]
     z_fill = fillvol / π / r_vial^2
 
     rmax = ustrip(u"m", r_vial)

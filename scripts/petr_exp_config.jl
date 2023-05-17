@@ -17,7 +17,7 @@ A1 = 16u"cm*hr*Torr/g"
 Tguess = 260u"K"
 l_bulk = sqrt(cparams[:R]*Tguess/cparams[:Mw]) / A1
 
-r_vial = get_vial_rad(vialsize)
+r_vial = get_vial_radii(vialsize)[1]
 L = fillvol / π/r_vial^2
 dz_approx = L / simgridsize[2]
 # l_surf = l_bulk * (A1 / (R0/dz_approx ))
@@ -86,7 +86,7 @@ config = Dict{Symbol, Any}()
 # # Set up stuff to make debugging easier
 params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
 
-r_vial = get_vial_rad(vialsize)
+r_vial = get_vial_radii(vialsize)[1]
 z_fill = fillvol / π / r_vial^2
 
 rmax = ustrip(u"m", r_vial)
