@@ -1,5 +1,5 @@
 export make_artificial_params, make_default_params
-export make_ϕ0
+export make_ϕ0, make_ramp
 export params_nondim_setup
 
 """
@@ -210,4 +210,18 @@ function make_artificial_params()
     return params
 end
 
-default_params = make_artificial_params()
+"""
+    make_ramp(ustart, uend, ramprate, ts)
+
+Convenience function for interpolating appropriate ramp values.
+`ustart` and `uend` are initial and final setpoints; `ts` the time points at which to sample.
+
+`ts` need not start at 0, but should contain at least enough time for the full ramp.
+"""
+function make_ramp(ustart, uend, ramprate, ts)
+    du = uend - ustart
+    dt = du / ramprate
+    us = fill(ustart, size(ts))
+    dus = min.((ts.-ts[begin])/dt, 1) .* (uend - ustart)
+    return us .+ dus
+end
