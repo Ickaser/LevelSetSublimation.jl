@@ -21,21 +21,38 @@ const psub_ei = [
  -9.130_509_635_477_21,
 ]
 """
-    calc_psub(T)
+    calc_psub_highorder(T)
 
 Compute pressure (in Pascals) of sublimation at temperature `T` in Kelvin
 
 From Feistel and Wagner, 2006
 """
-function calc_psub(T)
-    if clamp(T, 20.0, 273.0) != T
-        @warn "Invalid temperature for sublimation pressure correlation. Clamped to 20 and 273 K" T
-        T = clamp(T, 20.0, 273.0)
-    end
+function calc_psub_highorder(T)
+    # if clamp(T, 20.0, 273.0) != T
+    #     @warn "Invalid temperature for sublimation pressure correlation. Clamped to 20 and 273 K" T
+    #     T = clamp(T, 20.0, 273.0)
+    # end
     η = sum(psub_ei .* (T/psub_Tt) .^ (0:6))
     lnπ = 1.5log(T/psub_Tt) + (1 - psub_Tt/T) * η
     return exp(lnπ) * psub_pt
 end
+
+# -----------------------------
+# Sublimation pressure, correlation used in LyoPRONTO: 
+# simple Arrhenius form is almost certainly less accurate but probably not significantly so
+"""
+    calc_psub(T)
+
+Compute pressure (in Pascals) of sublimation at temperature `T` in Kelvin.
+
+From...somewhere else. Used in LyoPRONTO
+"""
+calc_psub(T::F) where F<:Number = 359.7e10 * exp(-6144.96/T)
+calc_psub(T::Q) where Q<:Quantity = 359.7e10*u"Pa" * exp(-6144.96u"K"/uconvert(u"K",T))
+
+# --------------------
+
+
 
 # Heat of sublimation ----------
 # Approximate: coresponds to 254K or 225K
