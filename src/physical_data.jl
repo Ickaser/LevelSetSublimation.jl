@@ -82,6 +82,9 @@ const kf = 2.4* u"W/m/K"
 # Ice density
 # IAPWS for ice: use triple point value for simplicity
 const ρ_ice = 0.916e3 * u"kg/m^3"
+
+const ρ_wat = 997.0u"kg/m^3"
+
 # Ice heat capacity
 # IAPWS for ice: use triple point value for simplicity
 const Cp_ice = 0.209e4 * u"J/kg/K"
@@ -103,7 +106,7 @@ const k_mannitol2 = 0.74u"W/m/K"
 const k_gl = 1.0u"W/m/K"
 
 # Glass heat capacity
-# Rough estimate from Bansal and Doremus 1986, "Handbook of Glass Properties
+# Rough estimate from Bansal and Doremus 1986, "Handbook of Glass Properties"
 const cp_gl = 8.0u"J/kg/K"
 
 # Typical value of porosity, heuristically

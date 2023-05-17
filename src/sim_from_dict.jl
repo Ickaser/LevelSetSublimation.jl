@@ -330,16 +330,16 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # Default values for non-essential parameters
     Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
-    simgridsize = get(fullconfig, :simgridsize, (51,51))
 
-    # --------- Set up simulation domain
-    r_vial = get_vial_radii(vialsize)[1]
-    z_fill = fillvol / π / r_vial^2
+    # --------- Set up simulation domain, including grid size (defaults to 51x51)
+    # r_vial = get_vial_radii(vialsize)[1]
+    # z_fill = fillvol / π / r_vial^2
 
-    rmax = ustrip(u"m", r_vial)
-    zmax = ustrip(u"m", z_fill)
+    # rmax = ustrip(u"m", r_vial)
+    # zmax = ustrip(u"m", z_fill)
 
-    dom = Domain(simgridsize..., rmax, zmax)
+    # dom = Domain(simgridsize..., rmax, zmax)
+    dom = Domain(fullconfig)
 
     # ----- Nondimensionalize everything
 

@@ -115,5 +115,6 @@ lpfname = datadir("lyopronto", "output_saved_230512_1714.csv")
 lpdat = CSV.File(lpfname)
 t_lp = lpdat["Time [hr]"]*u"hr"
 T_lp = lpdat["Sublimation Temperature [C]"]*u"°C"
+Tsh_lp = lpdat["Shelf Temperature [C]"]*u"°C"
 m_lp = lpdat["Sublimation Flux [kg/hr/m^2]"]*u"kg/hr/m^2"
 dryfrac_lp = lpdat["Percent Dried"] / 100
