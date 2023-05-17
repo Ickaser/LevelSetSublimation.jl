@@ -1,7 +1,56 @@
 export summaryplot, resultsanim,  gen_sumplot, gen_anim
-export plotframe, finalframe
+export plotframe, finalframe 
+export calc_ϕTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
 export get_subf_z, get_subf_r, get_ϕ
 
+function get_t_Tf(simresults::Dict)
+    @unpack sol, dom = simresults
+    t = sol.t .* u"s"
+    Tf = sol[dom.ntot+1,:] .* u"K"
+    return t, Tf
+end
+
+function get_t_Tf_subflux(simresults::Dict, simconfig::Dict)
+    @unpack sol, dom = simresults
+    t = sol.t .* u"s"
+    Tf = sol[dom.ntot+1,:] .* u"K"
+    md = map(sol.t) do ti
+        params = calc_params_at_t(ti, simconfig)
+        uTp = calc_ϕuTp_res(ti, simresults, simconfig)[2:4]
+        Tfi = ϕ_T_from_u(uTp[1], dom)[2]
+        md = compute_topmassflux(uTp..., dom, params) * u"kg/s"
+        if sign(md) == -1
+            @info "md=$md" ti Tfi calc_psub(Tfi)
+        end
+        md = max(zero(md), md)
+        md
+    end
+    return t, Tf, md
+end
+
+function compare_lyopronto_res(simresults::Dict, simconfig::Dict)
+    @unpack sol, dom = simresults
+    t = uconvert.(u"hr", sol.t .* u"s")
+    Tf = sol[dom.ntot+1,:] .* u"K"
+    md = map(sol.t) do ti
+        params = calc_params_at_t(ti, simconfig)
+        uTp = calc_ϕuTp_res(ti, simresults, simconfig)[2:4]
+        Tfi = ϕ_T_from_u(uTp[1], dom)[2]
+        mdi = compute_topmassflux(uTp..., dom, params) * u"kg/s"
+        if sign(mdi) == -1
+            @info "md=$mdi" ti Tfi calc_psub(Tfi)
+        end
+        mdi = max(zero(mdi), mdi)
+        mdi
+    end
+    mfd = uconvert.(u"kg/hr", md) / (π*(dom.rmax*u"m")^2)
+    totvol = π*dom.rmax^2 * dom.zmax
+    dryfrac = map(sol.t) do ti
+        ϕ = ϕ_T_from_u(sol(ti), dom)[1]
+        1 - compute_icevol(ϕ, dom) / totvol
+    end
+    return t, Tf, mfd, dryfrac
+end
 
 function gen_sumplot(config, var=:T, casename="test")
     pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
@@ -17,17 +66,7 @@ function gen_anim(config, var=:T, casename="test")
     return simres
 end
 
-
-"""
-    plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
-
-Unpack simulation results and plot the state at time `t`.
-
-`heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
-If given, `maxT` sets an upper limit for the associated colorbar.
-"""
-function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, p0=nothing)
-    @unpack sol, dom = simresults
+function calc_params_at_t(t::Float64, simconfig::Dict)
     @unpack cparams, controls = simconfig
     
     params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
@@ -40,33 +79,83 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
                 params[ki] = ncontrols[ki][end]
             end
         else
-            # tip = findfirst(t_samp .> t)
-            # tip = clamp(tip, 2, length(t_samp))
-            # tim = tip - 1
             tim = findlast(t_samp .<= t)
             tim = clamp(tim, 1, length(t_samp)-1)
             tip = tim + 1
+            tfrac = clamp((t - t_samp[tim]) / (t_samp[tip] - t_samp[tim]), 0, 1)
             for ki in meas_keys
-                params[ki] = (ncontrols[ki][tip] - ncontrols[ki][tim]) / (t_samp[tip] - t_samp[tim]) * (t - t_samp[tim]) + ncontrols[ki][tim]
+                params[ki] = (ncontrols[ki][tip] - ncontrols[ki][tim])*tfrac  + ncontrols[ki][tim]
             end
         end
     end
+    return params
+end
+
+function calc_ϕuTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
+    @unpack sol, dom = simresults
+
+    params = calc_params_at_t(t, simconfig)
     
     u = sol(t)
     ϕ = ϕ_T_from_u(u, dom)[1]
     # p_sub = calc_psub(Tf)
+    T = solve_T(u, dom, params)
+    p = solve_p(u, T, dom, params, p0=p0)
+    return ϕ, u, T, p
+end
+
+"""
+    plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
+
+Unpack simulation results and plot the state at time `t`.
+
+`heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
+If given, `maxT` sets an upper limit for the associated colorbar.
+"""
+function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, p0=nothing)
+    @unpack sol, dom = simresults
+    # @unpack cparams, controls = simconfig
+    
+    # params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
+
+    # t_samp = get(ncontrols, :t_samp, 0.0)
+    # if meas_keys !== nothing
+    #     # Interpolation here
+    #     if t > t_samp[end] # Past end of sampling interval
+    #         for ki in meas_keys
+    #             params[ki] = ncontrols[ki][end]
+    #         end
+    #     else
+    #         # tip = findfirst(t_samp .> t)
+    #         # tip = clamp(tip, 2, length(t_samp))
+    #         # tim = tip - 1
+    #         tim = findlast(t_samp .<= t)
+    #         tim = clamp(tim, 1, length(t_samp)-1)
+    #         tip = tim + 1
+    #         for ki in meas_keys
+    #             tfrac = clamp((t - t_samp[tim]) / (t_samp[tip] - t_samp[tim]), 0, 1)
+    #             params[ki] = (ncontrols[ki][tip] - ncontrols[ki][tim])*tfrac  + ncontrols[ki][tim]
+    #         end
+    #     end
+    # end
+    
+    # u = sol(t)
+    # ϕ = ϕ_T_from_u(u, dom)[1]
+    # p_sub = calc_psub(Tf)
+
+    ϕ, T, p = calc_uϕTp_res(t, simresults, simconfig; p0=p0)[2:4]
     if heatvar == :ϕ 
         heatvar_vals = ϕ
         clab = "ϕ, m"
         cmap = :algae
     elseif heatvar == :T 
-        T = solve_T(u, dom, params)
+        # T = solve_T(u, dom, params)
         heatvar_vals = T .- 273.15
         clab = " \nT, °C"
         cmap = :thermal
     elseif heatvar == :p
-        T = solve_T(u, dom, params)
-        p = solve_p(u, T, dom, params, p0=p0)
+        # T = solve_T(u, dom, params)
+        # p = solve_p(u, T, dom, params, p0=p0)
         heatvar_vals = ustrip.(u"mTorr", p.*u"Pa") # Either ϕ, 
         clab = "p, mTorr"
         cmap = :ice
