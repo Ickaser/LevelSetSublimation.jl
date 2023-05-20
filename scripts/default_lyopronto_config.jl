@@ -1,3 +1,5 @@
+# @quickactivate :LevelSetSublimation
+
 cparams = make_default_params()
 
 Tf0 = -35.857u"°C"
@@ -48,30 +50,7 @@ config = Dict{Symbol, Any}()
 @pack! config = cparams, ϕ0type, Tf0, controls, vialsize, fillvol
 
 
-# --------------------------------------
-# # Set up stuff to make debugging easier
-# params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
-
-# r_vial = get_vial_radii(vialsize)[1]
-# z_fill = fillvol / π / r_vial^2
-
-# rmax = ustrip(u"m", r_vial)
-# zmax = ustrip(u"m", z_fill)
-
-# dom = Domain(51, 51, rmax, zmax)
-
-# ϕ0 = make_ϕ0(ϕ0type, dom)   
-# u0 = zeros(dom.ntot+2)
-# u0[1:dom.ntot] = reshape(ϕ0, :)
-# u0[dom.ntot+1] = ustrip(u"K", Tf0)
-# u0[dom.ntot+2] = ustrip(u"K", Tf0)
-# reinitialize_ϕ_HCR!(ϕ0, dom)
-# T0 = solve_T(u0, dom, params)
-# p0 = solve_p(u0, T0, dom, params)
-
-
-# -----------------------------
-# Read in LyoPronto data
+# -------------------- Read in LyoPronto data
 
 using CSV
 lpfname = datadir("lyopronto", "output_saved_230512_1714.csv")
@@ -83,3 +62,13 @@ T_lp = lpdat["Sublimation Temperature [C]"][slice]*u"°C"
 Tsh_lp = lpdat["Shelf Temperature [C]"][slice]*u"°C"
 m_lp = lpdat["Sublimation Flux [kg/hr/m^2]"][slice]*u"kg/hr/m^2"
 dryfrac_lp = lpdat["Percent Dried"][slice] / 100
+
+# -------------------- Run simulation
+@time res = sim_from_dict(config)
+
+# ------------- Comparison plots
+tsol, Tsol, msol, fsol = compare_lyopronto_res(t_lp, res, config)
+pl1 = plot(tsol, [T_lp, Tsol], ylabel="Tp", labels=permutedims(["LyoPronto", "LevelSetSublimation"]), legend=:bottomright)
+pl2 = plot(tsol, [m_lp, msol], ylabel="sub. flux", labels=permutedims(["LyoPronto", "LevelSetSublimation"]))
+pl3 = plot(tsol, [dryfrac_lp, fsol], ylabel="drying progress", labels=permutedims(["LyoPronto", "LevelSetSublimation"]))
+plot(pl1, pl2, pl3)
