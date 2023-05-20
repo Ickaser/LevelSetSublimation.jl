@@ -140,7 +140,6 @@ function make_default_params()
     Kv = 20 * u"W/K/m^2"
     Q_ic = 0.3u"W/cm^3"
     Q_ck = 0.0u"W/m^3"
-    k = k_sucrose
     m_cp_gl = 5u"g" * cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
 
     # Mass transfer
@@ -149,6 +148,8 @@ function make_default_params()
     l = 1e-6u"m" # ~size of a pore
     κ = 1e-10u"m^2" # ~size^2 of a pore
     Rp0 = 1.4u"cm^2*Torr*hr/g" # R0 from Rp: guess from thin-film thickness & pore size?
+    k = k_sucrose * (1-ϵ)
+
     R = 8.3145u"J/mol/K"
     Mw = .018u"kg/mol" #mol/kg
     μ = LevelSetSublimation.μ

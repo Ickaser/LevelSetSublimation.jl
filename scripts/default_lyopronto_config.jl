@@ -1,16 +1,11 @@
-using CSV
+cparams = make_default_params()
 
-# dom = Domain(51, 51, 1.0, 1.0)
-cparams = p = make_default_params()
-
-cparams[:Cpf] = 2050u"J/kg/K"
 Tf0 = -35.857u"°C"
-
 vialsize = "6R"
 fillvol = 2u"mL"
-simgridsize = (51, 51)
 
-ϕ0type = :flat # Not always necessary
+simgridsize = (51, 51)
+ϕ0type = :flat 
 
 
 # ---- Variables which can be controlled during a run
@@ -35,7 +30,7 @@ cparams[:Kv] *= 3.8/3.14 # Correct for Av/Ap factor
 Rp0 = 1.4u"cm^2*hr*Torr/g"
 @pack! cparams = Rp0
 A1 = 16u"cm*hr*Torr/g"
-Tguess = 250u"K"
+Tguess = 240u"K"
 l_bulk = sqrt(cparams[:R]*Tguess/cparams[:Mw]) / A1
 l_bulk = upreferred(l_bulk)
 cparams[:l] = l_bulk
@@ -44,42 +39,10 @@ cparams[:ϵ] = 0.95
 cparams[:κ] *= 0 # Multiply by 0, to match dimensions
 cparams[:Kgl] *= 0
 
-
-
-
-
-# ----------- Fitting parameters! 
-# With all four, get: 
-# Q_ic = 0.5u"W/cm^3"
-# Q_gl_RF = 0.16u"W"
-# cparams[:Kgl] = 29.0u"W/m^2/K"
-# cparams[:m_cp_gl] = 3.3u"g" * 840u"J/kg/K"
-
-# With fixed vial mass including whole vial...
-cparams[:m_cp_gl] = 7.9u"g" * 840u"J/kg/K"
-
-# With fixed vial mass, varying l_surf
-# cparams[:m_cp_gl] = 7.9u"g" * 840u"J/kg/K"
-# Q_ic = 0.30u"W/cm^3"
-# Q_gl_RF = 0.02u"W" # = volumetric * relevant vial volume
-# cparams[:Kgl] = 600.0u"W/m^2/K"
-# l_surf = .05*l_bulk
-
-# Fixed mass, varying l_surf, less aggressive time matching
-# cparams[:m_cp_gl] = 7.9u"g" * 840u"J/kg/K"
-# Q_ic = 2.64u"W/cm^3"
-# Q_gl_RF = 0.15u"W" # = volumetric * relevant vial volume
-# cparams[:Kgl] = 225.0u"W/m^2/K"
-# l_surf = 1.13*l_bulk
-
-
-
-# -------------------------
+# Assemble parameters into objects -------------------------
 
 controls = Dict{Symbol, Any}()
 @pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
-
-
 
 config = Dict{Symbol, Any}()
 @pack! config = cparams, ϕ0type, Tf0, controls, vialsize, fillvol
@@ -110,11 +73,13 @@ config = Dict{Symbol, Any}()
 # -----------------------------
 # Read in LyoPronto data
 
-# exfname = datadir("exp_raw", "3_8_23_Man05_10C_constPower10W_17vials_5ml_6R", "TemperatureLog_030223.csv")
+using CSV
 lpfname = datadir("lyopronto", "output_saved_230512_1714.csv")
 lpdat = CSV.File(lpfname)
-t_lp = lpdat["Time [hr]"]*u"hr"
-T_lp = lpdat["Sublimation Temperature [C]"]*u"°C"
-Tsh_lp = lpdat["Shelf Temperature [C]"]*u"°C"
-m_lp = lpdat["Sublimation Flux [kg/hr/m^2]"]*u"kg/hr/m^2"
-dryfrac_lp = lpdat["Percent Dried"] / 100
+
+slice = floor.(Int, range(1, length(lpdat), length=100))
+t_lp = lpdat["Time [hr]"][slice]*u"hr"
+T_lp = lpdat["Sublimation Temperature [C]"][slice]*u"°C"
+Tsh_lp = lpdat["Shelf Temperature [C]"][slice]*u"°C"
+m_lp = lpdat["Sublimation Flux [kg/hr/m^2]"][slice]*u"kg/hr/m^2"
+dryfrac_lp = lpdat["Percent Dried"][slice] / 100
