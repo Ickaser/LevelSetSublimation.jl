@@ -5,6 +5,19 @@ export uevol_heatmass, uevol_heatonly, ϕ_T_from_u
 # --------- Convenience functions that need a home
 
 """
+    ϕ_T_from_u_view(u, dom)
+
+Take the current system state `u` and return views corresponding to `ϕ`, `Tf`, and `Tgl`.
+Nothing too fancy--just to avoid rewriting the same logic everywhere
+"""
+function ϕ_T_from_u_view(u, dom)
+    ϕ = @views reshape(u[1:dom.ntot], size(dom))
+    Tf = @view u[dom.ntot+1]
+    Tgl = @view u[dom.ntot+2]
+    return ϕ, Tf, Tgl
+end
+
+"""
     ϕ_T_from_u(u, dom)
 
 Take the current system state `u` and break it into `ϕ`, `Tf`, and `Tgl`.
@@ -16,6 +29,21 @@ function ϕ_T_from_u(u, dom)
     Tgl = u[dom.ntot+2]
     return ϕ, Tf, Tgl
 end
+
+"""
+    ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
+
+Take `ϕ`, `Tf`, and `Tgl`, and stuff them into `u` with appropriate indices.
+Nothing too fancy--just to keep indexing abstract
+"""
+function ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
+    u[1:dom.ntot] = reshape(ϕ, :)
+    u[dom.ntot+1] = Tf
+    u[dom.ntot+2] = Tgl
+    return nothing
+end
+
+
 
 # ---------- Fully adaptive time stepping functions
 
