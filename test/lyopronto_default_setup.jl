@@ -73,13 +73,13 @@ config = Dict{Symbol, Any}()
 # -----------------------------
 # Read in LyoPronto data
 
-using CSV
-lpfname = datadir("lyopronto", "output_saved_230512_1714.csv")
-lpdat = CSV.File(lpfname)
+# using CSV
+# lpfname = datadir("lyopronto", "output_saved_230512_1714.csv")
+# lpdat = CSV.File(lpfname)
 
-slice = floor.(Int, range(1, length(lpdat), length=100))
-t_lp = lpdat["Time [hr]"][slice]*u"hr"
-T_lp = lpdat["Sublimation Temperature [C]"][slice]*u"°C"
-Tsh_lp = lpdat["Shelf Temperature [C]"][slice]*u"°C"
-m_lp = lpdat["Sublimation Flux [kg/hr/m^2]"][slice]*u"kg/hr/m^2"
-dryfrac_lp = lpdat["Percent Dried"][slice] / 100
+# slice = floor.(Int, range(1, length(lpdat), length=100))
+# t_lp = lpdat["Time [hr]"][slice]*u"hr"
+# T_lp = lpdat["Sublimation Temperature [C]"][slice]*u"°C"
+# Tsh_lp = lpdat["Shelf Temperature [C]"][slice]*u"°C"
+# m_lp = lpdat["Sublimation Flux [kg/hr/m^2]"][slice]*u"kg/hr/m^2"
+# dryfrac_lp = lpdat["Percent Dried"][slice] / 100
