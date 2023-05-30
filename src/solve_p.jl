@@ -32,7 +32,6 @@ function solve_p(u, T, dom::Domain, params; p0::Union{Nothing, G}=nothing, maxit
         b = eval_b(T, params[:p_ch], params)
         p0 = solve_p_given_b(ϕ, b, p_sub, dom, params)
     end
-    pl1 = heat(p0, dom)
 
     relerr::Float64 = 0.0
     p⁺ = copy(p0)
