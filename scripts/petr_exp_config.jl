@@ -27,7 +27,7 @@ l_bulk = upreferred(l_bulk)
 
 
 
-ϕ0type = :flat
+init_prof = :flat
 
 # Shortly after ramp stops, no more t_samp: no need for callback to interfere
 t_samp = range(0, 2, step=1//60) .* u"hr"
@@ -80,7 +80,7 @@ controls = Dict{Symbol, Any}()
 
 
 config = Dict{Symbol, Any}()
-@pack! config = cparams, ϕ0type, Tf0, controls, vialsize, fillvol
+@pack! config = cparams, init_prof, Tf0, controls, vialsize, fillvol
 
 
 # # Set up stuff to make debugging easier
@@ -94,7 +94,7 @@ zmax = ustrip(u"m", z_fill)
 
 dom = Domain(51, 51, rmax, zmax)
 
-ϕ0 = make_ϕ0(ϕ0type, dom)   
+ϕ0 = make_ϕ0(init_prof, dom)   
 u0 = zeros(dom.ntot+2)
 u0[1:dom.ntot] = reshape(ϕ0, :)
 u0[dom.ntot+1] = ustrip(u"K", Tf0)

@@ -1,6 +1,6 @@
 # dom = Domain(51, 51, 1.0, 1.0)
 cparams = make_default_params()
-ϕ0type = :circ
+init_prof = :circ
 Tf0 = 233.15u"K"
 Q_gl_RF = 0.002u"W" # = volumetric * relevant vial volume
 t_samp = (0:0.1:1) .* u"hr"
@@ -16,7 +16,7 @@ vialsize = "10R"
 fillvol = 2u"mL"
 
 config = Dict{Symbol, Any}()
-@pack! config = cparams, ϕ0type, Tf0, controls, vialsize, fillvol
+@pack! config = cparams, init_prof, Tf0, controls, vialsize, fillvol
 
 
 # Set up stuff to make debugging easier
@@ -30,7 +30,7 @@ zmax = ustrip(u"m", z_fill)
 
 dom = Domain(51, 51, rmax, zmax)
 
-ϕ0 = make_ϕ0(ϕ0type, dom)   
+ϕ0 = make_ϕ0(init_prof, dom)   
 u0 = zeros(dom.ntot+2)
 u0[1:dom.ntot] = reshape(ϕ0, :)
 u0[dom.ntot+1] = ustrip(u"K", Tf0)
