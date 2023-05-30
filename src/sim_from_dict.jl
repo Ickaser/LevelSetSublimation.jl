@@ -12,8 +12,8 @@ Nothing too fancy--just to avoid rewriting the same logic everywhere
 """
 function ϕ_T_from_u_view(u, dom)
     ϕ = @views reshape(u[1:dom.ntot], size(dom))
-    Tf = @view u[dom.ntot+1]
-    Tgl = @view u[dom.ntot+2]
+    Tf = @view u[dom.ntot+1:dom.ntot+dom.nr]
+    Tgl = @view u[end]
     return ϕ, Tf, Tgl
 end
 
@@ -25,22 +25,47 @@ Nothing too fancy--just to avoid rewriting the same logic everywhere
 """
 function ϕ_T_from_u(u, dom)
     ϕ = reshape(u[1:dom.ntot], size(dom))
-    Tf = u[dom.ntot+1]
-    Tgl = u[dom.ntot+2]
+    Tf = u[dom.ntot+1:dom.ntot+dom.nr]
+    Tgl = u[end]
     return ϕ, Tf, Tgl
 end
 
-"""
-    ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
+# """
+#     ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
 
-Take `ϕ`, `Tf`, and `Tgl`, and stuff them into `u` with appropriate indices.
-Nothing too fancy--just to keep indexing abstract
-"""
-function ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
-    u[1:dom.ntot] = reshape(ϕ, :)
-    u[dom.ntot+1] = Tf
-    u[dom.ntot+2] = Tgl
-    return nothing
+# Take `ϕ`, `Tf`, and `Tgl`, and stuff them into `u` with appropriate indices.
+# Nothing too fancy--just to keep indexing abstract
+# """
+# function ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
+#     u[1:dom.ntot] = reshape(ϕ, :)
+#     u[dom.ntot+dom.nr] = Tf
+#     u[end] = Tgl
+#     return nothing
+# end
+# """
+#     T_into_u!(u, Tf, Tgl, dom)
+
+# Take `Tf` and `Tgl` and stuff them into `u` with appropriate indices.
+# Nothing too fancy--just to keep indexing abstract
+# """
+# function T_into_u!(u, Tf, Tgl, dom)
+#     u[dom.ntot+1] = Tf
+#     u[dom.ntot+2] = Tgl
+#     return nothing
+# end
+
+function make_u0_ndim(init_prof, Tf0, Tgl0, dom)
+    Tf0_nd = ustrip(u"K", Tf0)
+    Tgl0_nd = ustrip(u"K", Tgl0)
+    # ϕ0 = make_ϕ0(init_prof, dom)
+    # ϕ0_flat = reshape(ϕ0, :)
+
+    ϕ0_flat = reshape(make_ϕ0(init_prof, dom), :)
+    u0 = similar(ϕ0_flat, dom.ntot+dom.nr+1) # Add 2 to length: Tf, Tgl
+    u0[1:dom.ntot] .= ϕ0_flat
+    u0[dom.ntot+1:dom.ntot+dom.nr] .= Tf0_nd 
+    u0[end] = Tgl0_nd
+    return u0
 end
 
 
@@ -52,8 +77,7 @@ end
 
 Evaluate local time rate of change for `u` and put results in `du`.
 
-`u` and `du` are both structured as follows:
-First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`, `dom.ntot+2` index is glass temperature `Tgl`
+Splitting `u` and `du` into `ϕ`, `Tf`, and `Tgl` is handled by `ϕ_T_****_u` functions.
 
 Parameters `p` assumed to be `(dom::Domain, params)`
 This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
@@ -63,23 +87,26 @@ function uevol_heatmass!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params = integ_pars[2]
     p_last = integ_pars[3]
-    ntot = dom.ntot
-    dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
+    dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-    u[dom.ntot+1] = clamp(Tf, 200, 350)  # Prevent crazy temperatures from getting passed through to other functions
-    u[dom.ntot+2] = clamp(Tgl, 200, 400) # Prevent crazy temperatures from getting passed through to other functions
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
+    if any(Tf .!= clamp.(Tf, 200, 350))
+        @warn "Crazy Tf, clamped"
+        clamp!(Tf, 200, 350)
+    end
+    if Tgl != clamp(Tgl, 200, 400)
+        @warn "Crazy Tgl, clamped"
+        Tgl = clamp(Tgl, 200, 400)
+    end
     T = solve_T(u, dom, params)
 
     p_sub = calc_psub(Tf) 
     if p_sub < params[:p_ch] # No driving force for mass transfer: no ice loss, just temperature change
         Qice, Qgl = compute_Qice_noflow(u, T, dom, params)
-        dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-8) # Prevent explosion during last time step by not letting volume go to 0
-        dTgldt =  (Q_gl_RF - Qgl) / m_cp_gl
+        dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-8) # Prevent explosion during last time step by not letting volume go to 0
+        dTgl .=  (Q_gl_RF - Qgl) / m_cp_gl
         dϕ .= 0.0
-        du[ntot+1] = dTfdt
-        du[ntot+2] = dTgldt
         return nothing
     end
 
@@ -91,10 +118,10 @@ function uevol_heatmass!(du, u, integ_pars, t)
     vz = @view vf[:,:,2]
     
     Qice, Qgl = compute_Qice(u, T, p, dom, params)
-    dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
-    dTgldt = (Q_gl_RF - Qgl) / m_cp_gl
-    du[ntot+1] = dTfdt
-    du[ntot+2] = dTgldt
+    dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+    dTgl .= (Q_gl_RF - Qgl) / m_cp_gl
+    # du[ntot+1] .= dTfdt
+    # du[ntot+2] .= dTgldt
 
     dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
@@ -200,12 +227,11 @@ Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 """
 function reinit_wrap(integ; verbose=false)
     dom = integ.p[1]
-    ϕ = reshape((@view integ.u[1:dom.ntot]), dom.nr, dom.nz)
+    # ϕ = reshape((@view integ.u[1:dom.ntot]), dom.nr, dom.nz)
+    ϕ = ϕ_T_from_u_view(integ.u, dom)
     # reg = identify_B(ϕ, dom)
     # reg = Colon()
     pre_err = sdf_err_L∞(ϕ, dom, region=:B)
-    # reinitialize_ϕ!(ϕ, dom) 
-    # reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=300, tol=1/max(dom.nr, dom.nz)) 
     reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=20, tol=0.02, err_reg=:B) 
     post_err = sdf_err_L∞(ϕ, dom, region=:B)
     if verbose
@@ -231,10 +257,10 @@ function next_reinit_time(integ; verbose=false)
     ϕ, Tf, Tgl = ϕ_T_from_u(integ.u, dom)
     dϕ, dTfdt, dTgldt = ϕ_T_from_u(du, dom)
     B = identify_B(ϕ, dom)
-    B⁻ = B .& (ϕ .<= 0)
-    if sum(B⁻) > 0
+    B⁻ = B .& (ϕ .<= 0) # BitArray: Frozen region, near interface
+    if sum(B⁻) > 0 # FOund a frozen region
         max_dϕdt = maximum(abs.(dϕ[B⁻]))
-    else
+    else # No frozen region: use whole domain
         max_dϕdt = maximum(abs.(dϕ))
     end
     @unpack p_ch = integ.p[2]
@@ -243,7 +269,7 @@ function next_reinit_time(integ; verbose=false)
         # Guess when it will start
         # Find temperature such that p_sub = p_ch
         Tstart = Tf
-        for i in 1:5
+        for i in 1:5 # 5 steps of Newton iteration
             pg = calc_psub(Tstart)
             dpdT = pg - calc_psub(Tstart - 1)
             dT = -(pg-p_ch)/dpdT
@@ -256,7 +282,7 @@ function next_reinit_time(integ; verbose=false)
 
     # Reinit next when interface should have moved across half of band around interface 
     domfrac = 0.1 # Should reinit roughly 10-15 times during simulation
-    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax)  # Also: at early times, do more often
+    minlen = min(domfrac*dom.rmax , domfrac*dom.zmax)  
     dt = minlen / max_dϕdt
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
     if dryfrac < domfrac || integ.t < 1000
@@ -299,8 +325,6 @@ function input_measurements!(integ, meas_keys, controls)
     end
 end
 
-# function input_measurements!(integ, meas_keys, controls) end
-
 """
     sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
@@ -315,7 +339,7 @@ The results will be in SI units, so times in seconds, temperature in Kelvin, pre
 Employ Unitful to do unit conversions after simulation if necessary.
 
 `fullconfig` should have the following fields:
-- `ϕ0type`, types listed for [`make_ϕ0`](@ref)
+- `init_prof`, types listed for [`make_ϕ0`](@ref)
 - `fillvol`, fill volume with Unitful units (e.g. `3u"mL"`)
 - `vialsize`, a string (e.g. `"2R"`) giving vial size
 - `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
@@ -354,7 +378,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack cparams, ϕ0type, Tf0, controls, vialsize, fillvol = fullconfig
+    @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = fullconfig
 
     # Default values for non-essential parameters
     Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
@@ -371,8 +395,6 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # ----- Nondimensionalize everything
 
-    Tf0 = ustrip(u"K", Tf0)
-    Tgl0 = ustrip(u"K", Tgl0)
     params, meas_keys, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
     if verbose
         @info "Variables used in callback:" meas_keys
@@ -380,24 +402,25 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     
 
 
-    ϕ0 = make_ϕ0(ϕ0type, dom)
+    # ϕ0_flat = reshape(ϕ0, :)
+
+    
+    # # Full array of starting state variables ------------
+    # u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tgl
+    # u0[1:dom.ntot] .= ϕ0_flat
+    # u0[dom.ntot+1] = Tf0 
+    # u0[dom.ntot+2] = Tgl0 
+    u0 = make_u0_ndim(init_prof, Tf0, Tgl0, dom)
+
+    ϕ0 = ϕ_T_from_u_view(u0, dom)[1]
     if verbose
         @info "Initializing ϕ"
     end
     # Make sure that the starting profile is very well-initialized
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
-    ϕ0_flat = reshape(ϕ0, :)
 
-    
-    # Full array of starting state variables ------------
-    u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tgl
-    u0[1:dom.ntot] .= ϕ0_flat
-    u0[dom.ntot+1] = Tf0 
-    u0[dom.ntot+2] = Tgl0 
-    p_sub = calc_psub(Tf0)
-    # @info "Initial Tf:" Tf0 p_sub
-
+    p_sub = calc_psub(ustrip(u"K", Tf0))
     # Cached array for using last pressure state as guess
     p_last = fill(p_sub, size(dom))
 
@@ -461,8 +484,7 @@ function uevol_heatonly!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params = integ_pars[2]
     p_last = integ_pars[3]
-    ntot = dom.ntot
-    dϕ = reshape((@view du[1:ntot]), dom.nr, dom.nz)
+    dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     # u[dom.ntot+1] = clamp(Tf, 200, 350)  # Prevent crazy temperatures from getting passed through to other functions
     # u[dom.ntot+2] = clamp(Tgl, 200, 400) # Prevent crazy temperatures from getting passed through to other functions
@@ -478,8 +500,8 @@ function uevol_heatonly!(du, u, integ_pars, t)
     # dTgldt = (Q_gl_RF - Qgl) / m_cp_gl
     # du[ntot+1] = dTfdt
     # du[ntot+2] = dTgldt
-    du[ntot+1] = 0
-    du[ntot+2] = 0
+    dTf .= 0
+    dTgl .= 0
 
     dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
@@ -517,8 +539,6 @@ end
     uevol_heatonly(u, config)
     
 Compute the time derivative of `u` with given parameters.
-
-`u` has `dom.ntot` entries for `ϕ` and one each for `Tf` and `Tgl`.
 
 Wraps a call on `uevol_heatonly!`, for convenience in debugging and elsewhere that efficiency is less important
 """
@@ -607,7 +627,7 @@ Maximum simulation time is specified by `tf`.
 `verbose=true` will put out some info messages about simulation progress, i.e. at each reinitialization.
 
 `fullconfig` should have the following fields:
-- `ϕ0type`, types listed for [`make_ϕ0`](@ref)
+- `init_prof`, types listed for [`make_ϕ0`](@ref)
 - `fillvol`, fill volume with Unitful units (e.g. `3u"mL"`)
 - `vialsize`, a string (e.g. `"2R"`) giving vial size
 - `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
@@ -640,7 +660,7 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack cparams, ϕ0type, Tf0, controls, vialsize, fillvol = fullconfig
+    @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = fullconfig
 
     # Default values for non-essential parameters
     Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
@@ -666,7 +686,7 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
     
 
 
-    ϕ0 = make_ϕ0(ϕ0type, dom)
+    ϕ0 = make_ϕ0(init_prof, dom)
     if verbose
         @info "Initializing ϕ"
     end
@@ -678,11 +698,11 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     
     # Full array of starting state variables ------------
-    u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tgl
-    u0[1:dom.ntot] .= ϕ0_flat
-    u0[dom.ntot+1] = Tf0 
-    u0[dom.ntot+2] = Tgl0 
-    # @info "Initial Tf:" Tf0 p_sub
+    # u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tgl
+    # u0[1:dom.ntot] .= ϕ0_flat
+    # u0[dom.ntot+1] = Tf0 
+    # u0[dom.ntot+2] = Tgl0 
+    u0 = make_u0_ndim(init_prof, Tf0, Tgl0, dom)
 
     # Cached array for using last pressure state as guess
     p_last = fill(0.0, size(dom))
