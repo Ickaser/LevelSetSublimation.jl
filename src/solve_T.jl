@@ -4,12 +4,12 @@ export solve_T, solve_T_original
 
 # Construct sparse array with rows, cols, vals format, then construct sparse matrix
 
-function radial_Tf(u, dom, params) 
-    @unpack dr, dz, dr1, dz1, dr2, dz2, 
-            rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Kgl, Kv, Q_ck, k, Tsh = params
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-end 
+# function radial_Tf(u, dom, params) 
+#     @unpack dr, dz, dr1, dz1, dr2, dz2, 
+#             rgrid, zgrid, nr, nz, ntot = dom
+#     @unpack Kgl, Kv, Q_ck, k, Tsh = params
+#     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+# end 
 
 """
     solve_T(u, dom::Domain, params)
@@ -37,6 +37,7 @@ function solve_T(u, dom::Domain, params)
             rgrid, zgrid, nr, nz, ntot = dom
     @unpack Kgl, Kv, Q_ck, k, Tsh = params
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
     if minimum(ϕ) > 0
@@ -63,7 +64,7 @@ function solve_T(u, dom::Domain, params)
         # Check if in frozen domain; if so, fix temperature
         if pϕ <= 0
             add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-            rhs[imx] = Tf
+            rhs[imx] = Tf[ir]
             continue
         end
 
@@ -97,16 +98,17 @@ function solve_T(u, dom::Domain, params)
             if eϕ < 0 # Front is within a cell of boundary
                 # p. 65 of project notes
                 θr = pϕ/(pϕ-eϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 if θr >= θ_thresh
                     pc += -2k*dr2/θr
-                    rhs[imx] -= 2k*Tf*dr2/θr #+ BC1*(r1 - 2dr1)
+                    rhs[imx] -= 2k*Tf_loc*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within dr/r cells of boundary
                     # Have an exact value given by BC + front
                     # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
                     # rhs[imx] = Tf - θr*BC1*dr
                     # continue
                     pc += -2k*dr2/(θr+1)
-                    rhs[imx] -= 2Tf*k*dr2/(θr+1) 
+                    rhs[imx] -= 2Tf_loc*k*dr2/(θr+1) 
                 end
                 # No way to treat other equations, so cut it here
             else
@@ -124,14 +126,15 @@ function solve_T(u, dom::Domain, params)
             if wϕ < 0 # Front is within a cell of boundary
                 # p. 119 of project notes
                 θr = pϕ/(pϕ-wϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_thresh
                     pc += -2k*dr2/θr - Kgl*(r1 + 2dr1*θr)
-                    rhs[imx] -= 2Tf*k*dr2/θr + Kgl*Tgl*(r1 + 2dr1)
+                    rhs[imx] -= 2Tf_loc*k*dr2/θr + Kgl*Tgl*(r1 + 2dr1)
                 else 
                     # First, use Robin BC to define an east ghost cell
                     # THen, extrapolate across Stefan boundary using east ghost & Stefan
                     pc += (Kgl*(-r1 -2dr1*θr) + k*(r1*dr1 - 2dr2))/(θr+1)
-                    rhs[imx] -= (Tf*k*(2dr2-r1*dr1) + Tgl*Kgl*(r1+2dr1*θr))/(θr+1)
+                    rhs[imx] -= (Tf_loc*k*(2dr2-r1*dr1) + Tgl*Kgl*(r1+2dr1*θr))/(θr+1)
                 end
 
             else
@@ -155,27 +158,29 @@ function solve_T(u, dom::Domain, params)
                 rhs[imx] += 0
             elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 if θr >= θ_thresh
                     pc += -2k*dr2 # Regular 
                     pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf_loc*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
                     pc += -2k*dr2 # Regular
                     wc += k*(-dr1*r1 + 2θr*dr2)/(θr+1)  
-                    rhs[imx] -= Tf*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf_loc*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_thresh # Regular magnitude θ
                     pc += -2k*dr2 # Regular 
                     pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
                 else # Very small θ
                     pc += -2k*dr2 # Regular
                     ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
-                    rhs[imx] -= Tf*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
 
             else # Bulk, not at front 
@@ -199,7 +204,7 @@ function solve_T(u, dom::Domain, params)
                 θz = pϕ/(pϕ-nϕ)
                 if θz > θ_thresh
                     pc += -2k*dz2/θz - 2Kv*dz1
-                    rhs[imx] -= 2*Tf*k*dz2/θz + 2Kv*Tsh*dz1
+                    rhs[imx] -= 2*Tf[ir]*k*dz2/θz + 2Kv*Tsh*dz1
                 else
                     # Have an exact value given by BC + front
                     # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
@@ -229,7 +234,7 @@ function solve_T(u, dom::Domain, params)
                 θz = pϕ/(pϕ-sϕ)
                 if θz > θ_thresh
                     pc += -2*k*dz2/θz
-                    rhs[imx] -= 2*Tf*k*dz2/θz + BC4*2*dz1
+                    rhs[imx] -= 2*Tf[ir]*k*dz2/θz + BC4*2*dz1
                 else
                     # # Have an exact value given by BC + front
                     # # No way to treat other equations, so add to matrix and stop here
@@ -237,7 +242,7 @@ function solve_T(u, dom::Domain, params)
                     # rhs[imx] = Tf + θz*BC4*dz
                     # continue
                     pc += -2k*dz2/(θz+1)
-                    rhs[imx] -= 2Tf*k*dz2/(θz+1) 
+                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1) 
                 end
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
@@ -263,11 +268,11 @@ function solve_T(u, dom::Domain, params)
                 if θz >= θ_thresh
                     pc += -k*dz2*(θz+1)/θz
                     sc += k*dz2
-                    rhs[imx] -= Tf*k*dz2/θz
+                    rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
                     pc += -2k*dz2
                     sc += 2*k*θz*dz2/(θz+1)
-                    rhs[imx] -= 2Tf*k*dz2/(θz+1)
+                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
                 end
             elseif sϕ <= 0
                 # stefan_debug = true
@@ -276,11 +281,11 @@ function solve_T(u, dom::Domain, params)
                 if θz >= θ_thresh
                     pc += -k*dz2*(θz+1)/θz
                     nc += k*dz2
-                    rhs[imx] -= Tf*k*dz2/θz
+                    rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
                     pc += -2k*dz2
                     nc += 2*k*θz*dz2/(θz+1)
-                    rhs[imx] -= 2Tf*k*dz2/(θz+1)
+                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
                 end
 
             else # Bulk, no Stefan front
