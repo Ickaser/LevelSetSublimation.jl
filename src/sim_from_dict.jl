@@ -101,8 +101,8 @@ function uevol_heatmass!(du, u, integ_pars, t)
     end
     T = solve_T(u, dom, params)
 
-    p_sub = calc_psub(Tf) 
-    if p_sub < params[:p_ch] # No driving force for mass transfer: no ice loss, just temperature change
+    p_sub = calc_psub.(Tf) 
+    if all(p_sub .< params[:p_ch]) # No driving force for mass transfer: no ice loss, just temperature change
         Qice, Qgl = compute_Qice_noflow(u, T, dom, params)
         dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-8) # Prevent explosion during last time step by not letting volume go to 0
         dTgl .=  (Q_gl_RF - Qgl) / m_cp_gl

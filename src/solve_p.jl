@@ -18,7 +18,6 @@ Usually if it doesn't converge, it is because temperatures are outside the expec
 """
 function solve_p(u, T, dom::Domain, params; kwargs...) 
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-    p_sub = calc_psub.(Tf)
     if minimum(T) <= 0
         @info "weird" T
         pl1 = heat(T, dom)
@@ -28,12 +27,11 @@ function solve_p(u, T, dom::Domain, params; kwargs...)
     # meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
     # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
     b = eval_b(T, params[:p_ch], params)
-    p0 = solve_p_given_b(ϕ, b, p_sub, dom, params)
+    p0 = solve_p_given_b(ϕ, b, Tf, dom, params)
     solve_p(u, T, dom::Domain, params, p0; kwargs...)
 end
 function solve_p(u, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-    p_sub = calc_psub.(Tf)
     if minimum(T) <= 0
         @info "weird" T
         pl1 = heat(T, dom)
@@ -46,7 +44,7 @@ function solve_p(u, T, dom::Domain, params, p0; maxit=20, reltol=1e-6)
     # Iterate up to maxit times
     for i in 1:maxit
         b = eval_b(T, p0, params)
-        p⁺ = solve_p_given_b(ϕ, b, p_sub, dom, params)
+        p⁺ = solve_p_given_b(ϕ, b, Tf, dom, params)
         relerr = calc_err_reg((p⁺ .- p0) ./ p⁺, :L∞, :)
         # @info "Maximum relative error in p after $i iterations:" relerr
         if relerr < reltol
@@ -89,15 +87,15 @@ function eval_b(T, p, params)
 end
 
 """
-    solve_p_given_b(ϕ, b, dom::Domain, params)
+    solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
 
 Compute 2D axisymmetric pseudosteady pressure profile for given values of level set function `ϕ`, temperature `T`, and transport coefficient `b`.
 
 `b` is a dusty-gas transport coefficient for the pressure, which can vary spatially.
-Homogeneous Neumann boundary conditions at `r=0`, `r=R`, `z=0`; Dirichlet on zero-level set (`p=p_sub`) and top (`p=p_ch`).
+Homogeneous Neumann boundary conditions at `r=0`, `r=R`, `z=0`; Dirichlet on zero-level set (`p=p_sub`), Robin at top (`dp/dz = (p_ch-p)/Rp0`).
 `params` should have fields: 
+- `Rp0` : zero-thickness resistance offset, often written R0 in lyo literature
 - `p_ch` : chamber (or vial) pressure at top surface
-- `p_sub` : sublimation pressure on interface
 
 This implementation uses second-order finite differences, with linear extrapolation into Ω⁻.  
 (For details, see [gibouFourthOrderAccurate2005](@cite).)  
@@ -105,7 +103,7 @@ Coefficients are all hard-coded here, unfortunately.
 Neumann boundaries use a ghost point & BC to define ghost cell, then use same stencil as normal.
 Coefficients computed in `gfm_extrap.ipynb`, using Sympy.  
 """
-function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params) 
+function solve_p_given_b(ϕ, b, Tf, dom::Domain, params) 
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
     @unpack Rp0, p_ch = params
@@ -135,7 +133,7 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
         if pϕ <= 0
             add_to_vcr!(vcr, dom, imx, (0, 0), 1)
             # rhs[imx] = 1.1p_sub
-            rhs[imx] = p_sub
+            rhs[imx] = calc_psub(Tf[ir])
             # rhs[imx] = p_ch
             continue
         end
@@ -163,16 +161,18 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
             if eϕ < 0 # Front is within a cell of boundary
                 # p. 65 of project notes
                 θr = pϕ/(pϕ-eϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
+                psub_l = calc_psub(Tf_loc)
                 if θr >= θ_thresh
                     pc += -2bp*dr2/θr
-                    rhs[imx] -= 2bp*p_sub*dr2/θr #+ BC1*(r1 - 2dr1)
+                    rhs[imx] -= 2bp*psub_l*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within dr/r cells of boundary
                     # Have an exact value given by BC + front
                     # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
                     # rhs[imx] = p_sub - θr*BC1*dr
                     # continue
                     pc += -2bp*dr2/(θr+1)
-                    rhs[imx] -= 2p_sub*bp*dr2/(θr+1) 
+                    rhs[imx] -= 2psub_l*bp*dr2/(θr+1) 
                 end
                 # No way to treat other equations, so cut it here
             else
@@ -192,15 +192,17 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
             if wϕ < 0 # Front is within a cell of boundary
                 # p. 119 of project notes
                 θr = pϕ/(pϕ-wϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
+                psub_l = calc_psub(Tf_loc)
                 if θr >= θ_thresh
                     pc += -2bp*dr2/θr
-                    rhs[imx] -= 2p_sub*bp*dr2/θr + BC2*(r1 + 2dr1)
+                    rhs[imx] -= 2psub_l*bp*dr2/θr + BC2*(r1 + 2dr1)
                 else 
                     # First: use Neumann BC to get ghost cell left
                     # Second: extrapolate using left ghost cell across front
                     
                     pc += -2bp*dr2/(θr+1)
-                    rhs[imx] -= 2p_sub*bp*dr2/(θr+1) + BC2*(r1 + 2dr1)
+                    rhs[imx] -= 2psub_l*bp*dr2/(θr+1) + BC2*(r1 + 2dr1)
                 end
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
@@ -226,28 +228,32 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
 
             elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
+                psub_l = calc_psub(Tf_loc)
                 if θr >= θ_thresh
                     # @info "hmm, east" θr dr ir iz
                     pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/θr
                     wc +=  bp*(-0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
-                    rhs[imx] -= p_sub*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= psub_l*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else
                     # @info "hmm, east" θr dr ir iz
                     pc += -2bp*dr2 # Regular
                     wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
-                    rhs[imx] -= p_sub*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= psub_l*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
+                psub_l = calc_psub(Tf_loc)
                 if θr >= θ_thresh # Regular magnitude θ
                     pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
                     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    rhs[imx] -= p_sub*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else # Very small θ
                     # @info "hmm, west" θr dr ir iz
                     pc += -2bp*dr2 # Regular
                     ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1)
-                    rhs[imx] -= p_sub*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
 
             else # Bulk, not at front 
@@ -260,6 +266,8 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
 
         # z direction discretization
 
+        # For all z, psub is at given r
+        psub_l = calc_psub(Tf[ir])
         # z direction boundaries
         if iz == 1
             # Zero flux BC
@@ -272,13 +280,13 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 θz = pϕ/(pϕ-nϕ)
                 if θz > θ_thresh
                     pc += -2bp*dz2/θz
-                    rhs[imx] -= 2*p_sub*bp*dz2/θz + 2*BC3*dz1
+                    rhs[imx] -= 2*psub_l*bp*dz2/θz + 2*BC3*dz1
                 else
                     # First: use Neumann BC to get ghost cell left
                     # Second: extrapolate using left ghost cell across front
                     
                     pc += -2bp*dz2/(θz+1)
-                    rhs[imx] -= 2p_sub*dz2*bp/(θz+1)
+                    rhs[imx] -= 2psub_l*dz2*bp/(θz+1)
                 end
                 # No way to treat other equations, so cut it here
             else
@@ -301,13 +309,13 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 θz = pϕ/(pϕ-sϕ)
                 if θz > θ_thresh
                     pc += -2bp*dz2/θz -2/Rp0*dz1 - dbz/bp/Rp0
-                    rhs[imx] -= 2*p_sub*bp*dz2/θz + p_ch/Rp0*(dbz/bp + 2dz1)
+                    rhs[imx] -= 2*psub_l*bp*dz2/θz + p_ch/Rp0*(dbz/bp + 2dz1)
                 else
                     # First: use Neumann BC to get ghost cell left
                     # Second: extrapolate using left ghost cell across front
                     
                     pc += (-2bp*dz2 + dbz*dz1 - (dbz/bp + 2*θz*dz1)/Rp0)/(θz+1)
-                    rhs[imx] -= (p_sub*(2dz2*bp - dbz*dz1) + p_ch/Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
+                    rhs[imx] -= (psub_l*(2dz2*bp - dbz*dz1) + p_ch/Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
                 end
                 # No way to treat other equations, so cut it here
             else
@@ -338,23 +346,23 @@ function solve_p_given_b(ϕ, b, p_sub, dom::Domain, params)
                 if θz >= θ_thresh
                     pc += (dbz*(θz-1)*dz1 - bp*(θz+1)*dz2 )/θz
                     sc += bp*dz2 - dbz*0.5*dz1
-                    rhs[imx] -= p_sub*(bp*dz2 + dbz*0.5*dz1)/θz
+                    rhs[imx] -= psub_l*(bp*dz2 + dbz*0.5*dz1)/θz
                 else
                     # @info "hmm, north" θz dz ir iz
                     pc += -2bp*dz2
                     sc += (2*bp*θz*dz2 - dbz*dz1)/(θz+1)
-                    rhs[imx] -= p_sub*(2bp*dz2 + dbz*dz1)/(θz+1)
+                    rhs[imx] -= psub_l*(2bp*dz2 + dbz*dz1)/(θz+1)
                 end
             elseif sϕ <= 0
                 θz = pϕ / (pϕ - sϕ)
                 if θz >= θ_thresh
                     pc += (-bp*dz2*(θz+1) + dbz*(1-θz)*dz1)/θz
                     nc += bp*dz2 + dbz*0.5dz1
-                    rhs[imx] -= p_sub*(bp*dz2 - dbz*0.5dz1)/θz
+                    rhs[imx] -= psub_l*(bp*dz2 - dbz*0.5dz1)/θz
                 else
                     pc += -2bp*dz2
                     nc += (2*bp*θz*dz2 + dbz*dz1)/(θz+1)
-                    rhs[imx] -= p_sub*(2bp*dz2 - dbz*dz1)/(θz+1)
+                    rhs[imx] -= psub_l*(2bp*dz2 - dbz*dz1)/(θz+1)
                 end
 
             else # Bulk, no Stefan front
