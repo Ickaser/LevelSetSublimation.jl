@@ -356,32 +356,38 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
 
         eT = T[ir+1, iz]
         wT = T[ir-1, iz]
-        # West and east ghost cell: weird kink? Set to 0 and procrastinate
         if wϕ <= 0 && eϕ <= 0
-            θr1 = ϕp/(ϕp - wϕ)
-            θr2 = ϕp/(ϕp - eϕ)
-            dTr = 0.5*dr1*(Tf - pT)*(1/θr2 - 1/θr1)
+            # Constant Tf:
+            # θr1 = ϕp/(ϕp - wϕ)
+            # θr2 = ϕp/(ϕp - eϕ)
+            # dTr = 0.5*dr1*((Tf - pT)*(1/θr2 - 1/θr1)
+            # Varying Tf: pretend in bulk
+            dTr = 0.5*dr1*(Tf[ir+1]-Tf[ir-1])
         elseif wϕ <= 0 # West ghost cell
             θr = ϕp /(ϕp - wϕ)
+            Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
             if θr > θ_thresh
                 # dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
-                dTr = (pT - Tf)/θr * dr1 # LInear extrapolation
+                dTr = (pT - Tf_loc)/θr * dr1 # LInear extrapolation
             else 
-                dTr = (eT - Tf)/(θr+1)*dr1 # Linear extrapolation from east
+                dTr = (eT - Tf_loc)/(θr+1)*dr1 # Linear extrapolation from east
             end
         elseif eϕ <= 0 # East ghost cell
             θr = ϕp /(ϕp - eϕ)
+            Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
             if θr > θ_thresh
                 # dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*θr/(θr+1)) * dr1 # Quadratic extrapolation
-                dTr = (Tf - pT)/θr * dr1 # LInear extrapolation
+                dTr = (Tf_loc - pT)/θr * dr1 # LInear extrapolation
             else
-                dTr = (Tf - wT)/(θr+1)*dr1 # Linear extrapolation from west
+                dTr = (Tf_loc - wT)/(θr+1)*dr1 # Linear extrapolation from west
             end
         else # No ghost cells
             dTr = (eT - wT) * 0.5*dr1 # Centered difference
         end
     end
             
+    # For all z derivatives, use Tf[ir]
+    Tf_loc = Tf[ir]
     # Enforce BCs explicitly for boundary cells
     if iz == 1 # Robin: shelf
         dTz = Kv/k*(Tsh-pT)
@@ -398,22 +404,22 @@ function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
         if sϕ <= 0 && nϕ <= 0
             θz1 = ϕp/(ϕp - nϕ)
             θz2 = ϕp/(ϕp - sϕ)
-            dTz = 0.5*dz1*(Tf - pT)*(1/θz2 - 1/θz1)
+            dTz = 0.5*dz1*(Tf_loc - pT)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
             if θz > θ_thresh
-                # dTz = (-Tf/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                dTz = (pT - Tf)/θz * dz1 # Linear extrapolation
+                # dTz = (-Tf_loc/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                dTz = (pT - Tf_loc)/θz * dz1 # Linear extrapolation
             else
-                dTz = (nT - Tf)/(θz+1)*dz1
+                dTz = (nT - Tf_loc)/(θz+1)*dz1
             end
         elseif nϕ <= 0 # North ghost cell
             θz = ϕp /(ϕp - nϕ)
             if θz > θ_thresh
-                # dTz = ( Tf/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                dTz = (Tf - pT)/θz * dz1 # Linear extrapolation
+                # dTz = ( Tf_loc/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                dTz = (Tf_loc - pT)/θz * dz1 # Linear extrapolation
             else
-                dTz = (Tf - sT )/(θz+1)*dz1
+                dTz = (Tf_loc - sT )/(θz+1)*dz1
             end
         else # No ghost cells
             dTz = (nT - sT) * 0.5*dz1 # Centered difference
@@ -436,7 +442,6 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack p_ch, Rp0 = params
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-    p_sub = calc_psub(Tf)
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
     
@@ -462,24 +467,31 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         dpr = (pe - pw) * 0.5dr1
 
         if wϕ <= 0 && eϕ <= 0 # West and east ghost cell
-            θr1 = ϕp/(ϕp - wϕ)
-            θr2 = ϕp/(ϕp - eϕ)
-            dpr = 0.5*dr1*(p_sub - pp)*(1/θr2 - 1/θr1)
+            # Constant Tf
+            # θr1 = ϕp/(ϕp - wϕ)
+            # θr2 = ϕp/(ϕp - eϕ)
+            # dpr = 0.5*dr1*(psub_l - pp)*(1/θr2 - 1/θr1)
+            # Varying Tf; I'm lazy and this is a rare case
+            dpr = 0.5*dr1*(calc_psub(Tf[ir+1]) - calc_psub(Tf[ir-1]))
         elseif wϕ <= 0 # West ghost cell
             θr = ϕp /(ϕp - wϕ)
+            Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
+            psub_l = calc_psub(Tf_loc)
             if θr > θ_thresh
-                dpr = (-p_sub/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
-                # dpr = (pp - p_sub)/θr*dr1 # Linear extrapolation
+                dpr = (-psub_l/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+                # dpr = (pp - psub_l)/θr*dr1 # Linear extrapolation
             else 
-                dpr = (pe - p_sub)/(θr+1)*dr1 # Linear extrapolation, further out
+                dpr = (pe - psub_l)/(θr+1)*dr1 # Linear extrapolation, further out
             end
         elseif eϕ <= 0 # East ghost cell
             θr = ϕp /(ϕp - eϕ)
+            Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
+            psub_l = calc_psub(Tf_loc)
             if θr > θ_thresh
-                dpr = ( p_sub/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
-                # dpr = (p_sub - pp)/θr*dr1 # Linear extrapolation
+                dpr = ( psub_l/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
+                # dpr = (psub_l - pp)/θr*dr1 # Linear extrapolation
             else
-                dpr = (p_sub - pw)/(θr+1)*dr1 # Linear extrapolation, further out
+                dpr = (psub_l - pw)/(θr+1)*dr1 # Linear extrapolation, further out
             end
         else # No ghost cells
             dpr = (pe - pw) * 0.5*dr1 # Centered difference
@@ -490,6 +502,8 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
 
     end
             
+    # All z derivatives use Tf[ir]
+    psub_l = calc_psub(Tf[ir])
     if iz == 1 
         # Enforce BCs explicitly for Neumann boundary cells
         dpz = 0
@@ -514,22 +528,22 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         if sϕ <= 0 && nϕ <= 0 # North and south ghost cell: weird kink
             θz1 = ϕp/(ϕp - sϕ)
             θz2 = ϕp/(ϕp - nϕ)
-            dpz = 0.5*dz1*(p_sub - pp)*(1/θz2 - 1/θz1)
+            dpz = 0.5*dz1*(psub_l - pp)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
             if θz >  θ_thresh
-                dpz = (-p_sub/(1+θz)/θz + pp*(1-θz)/θz + pn*θz/(θz+1))*dz1 # Quadratic
-                # dpz = (pp-p_sub)/θz*dz1 # Linear
+                dpz = (-psub_l/(1+θz)/θz + pp*(1-θz)/θz + pn*θz/(θz+1))*dz1 # Quadratic
+                # dpz = (pp-psub_l)/θz*dz1 # Linear
             else
-                dpz = (pn - p_sub)/(θz+1)*dz1 # Linear, further out
+                dpz = (pn - psub_l)/(θz+1)*dz1 # Linear, further out
             end
         elseif nϕ <= 0 # North ghost cell
             θz = ϕp /(ϕp - nϕ)
             if θz >  θ_thresh
-                dpz = ( p_sub/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                # dpz = (p_sub - pp)/θz*dz1 # Linear extrapolation
+                dpz = ( psub_l/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                # dpz = (psub_l - pp)/θz*dz1 # Linear extrapolation
             else
-                dpz = (p_sub - ps )/(θz+1)*dz1 #Linear, further out
+                dpz = (psub_l - ps )/(θz+1)*dz1 #Linear, further out
             end
         else # No ghost cells
             dpz = (pn - ps) * 0.5*dz1 # Centered difference

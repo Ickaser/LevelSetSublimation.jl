@@ -107,7 +107,11 @@ function calc_ϕuTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothin
     ϕ = ϕ_T_from_u(u, dom)[1]
     # p_sub = calc_psub(Tf)
     T = solve_T(u, dom, params)
-    p = solve_p(u, T, dom, params, p0)
+    if isnothing(p0)
+        p = solve_p(u, T, dom, params)
+    else
+        p = solve_p(u, T, dom, params, p0)
+    end
     return ϕ, u, T, p
 end
 

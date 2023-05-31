@@ -228,7 +228,7 @@ Used internally in an `IterativeCallback`, as implemented in `DiffEqCallbacks`.
 function reinit_wrap(integ; verbose=false)
     dom = integ.p[1]
     # ϕ = reshape((@view integ.u[1:dom.ntot]), dom.nr, dom.nz)
-    ϕ = ϕ_T_from_u_view(integ.u, dom)
+    ϕ = ϕ_T_from_u_view(integ.u, dom)[1]
     # reg = identify_B(ϕ, dom)
     # reg = Colon()
     pre_err = sdf_err_L∞(ϕ, dom, region=:B)

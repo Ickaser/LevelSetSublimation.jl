@@ -52,6 +52,7 @@ function solve_p(u, T, dom::Domain, params, p0; maxit=20, reltol=1e-6)
             return p⁺
         end
         # p0 = abs.(p⁺)
+        p0 = p⁺
     end
     @info "Reached maximum iterations in p:" relerr maxit p⁺ T 
     # pl1 = heat(b, dom)
