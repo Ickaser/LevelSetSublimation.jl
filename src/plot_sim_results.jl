@@ -107,7 +107,7 @@ function calc_ϕuTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothin
     ϕ = ϕ_T_from_u(u, dom)[1]
     # p_sub = calc_psub(Tf)
     T = solve_T(u, dom, params)
-    p = solve_p(u, T, dom, params, p0=p0)
+    p = solve_p(u, T, dom, params, p0)
     return ϕ, u, T, p
 end
 
@@ -162,7 +162,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
         cmap = :thermal
     elseif heatvar == :p
         # T = solve_T(u, dom, params)
-        # p = solve_p(u, T, dom, params, p0=p0)
+        # p = solve_p(u, T, dom, params, p0)
         heatvar_vals = ustrip.(u"mTorr", p.*u"Pa") # Either ϕ, 
         clab = "p, mTorr"
         cmap = :ice

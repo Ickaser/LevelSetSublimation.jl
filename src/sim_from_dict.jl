@@ -110,7 +110,7 @@ function uevol_heatmass!(du, u, integ_pars, t)
         return nothing
     end
 
-    p = solve_p(u, T, dom, params, p0 = p_last)
+    p = solve_p(u, T, dom, params, p_last)
     integ_pars[3] .= p # Cache current state of p as a guess for next timestep
     vf, dϕdx_all = compute_frontvel_mass(u, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
