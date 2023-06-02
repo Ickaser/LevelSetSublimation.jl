@@ -1,6 +1,6 @@
 export summaryplot, resultsanim,  gen_sumplot, gen_anim
 export plotframe, finalframe 
-export calc_ϕTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
+export calc_uϕTp_res, calc_uTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
 export get_subf_z, get_subf_r, get_ϕ
 
 function get_t_Tf(simresults::Dict)
@@ -16,7 +16,7 @@ function get_t_Tf_subflux(simresults::Dict, simconfig::Dict)
     Tf = sol[dom.ntot+1,:] .* u"K"
     md = map(sol.t) do ti
         params = calc_params_at_t(ti, simconfig)
-        uTp = calc_ϕuTp_res(ti, simresults, simconfig)[2:4]
+        uTp = calc_uTp_res(ti, simresults, simconfig)
         Tfi = ϕ_T_from_u(uTp[1], dom)[2]
         md = compute_topmassflux(uTp..., dom, params) * u"kg/s"
         if sign(md) == -1
@@ -41,7 +41,7 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
     Tf = sol(ts_ndim, idxs=dom.ntot+1).u .* u"K"
     md = map(ts_ndim) do ti
         params = calc_params_at_t(ti, simconfig)
-        uTp = calc_ϕuTp_res(ti, simresults, simconfig)[2:4]
+        uTp = calc_uTp_res(ti, simresults, simconfig)
         Tfi = ϕ_T_from_u(uTp[1], dom)[2]
         mdi = compute_topmassflux(uTp..., dom, params) * u"kg/s"
         if sign(mdi) == -1
@@ -100,14 +100,20 @@ end
 
 function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
     @unpack sol, dom = simresults
+    u, T, p = calc_uTp_res(t, simresults, simconfig; p0=p0)    
+    ϕ = ϕ_T_from_u(u, dom)[1]
+    return u, ϕ, T, p
+end
 
+
+function calc_uTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
+    @unpack sol, dom = simresults
     params = calc_params_at_t(t, simconfig)
     
     u = sol(t)
-    ϕ = ϕ_T_from_u(u, dom)[1]
     # p_sub = calc_psub(Tf)
     T = solve_T(u, dom, params)
-    if simconfig[:dudt_func] == dudt_heatonly!
+    if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatonly!
         return u, ϕ, T, zeros(size(ϕ))
     end
     if isnothing(p0)
@@ -115,7 +121,7 @@ function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothin
     else
         p = solve_p(u, T, dom, params, p0)
     end
-    return u, ϕ, T, p
+    return u, T, p
 end
 
 """
