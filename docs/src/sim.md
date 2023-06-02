@@ -40,8 +40,8 @@ config = Dict{Symbol, Any}()
 ## The Guts (not exported)
 
 ```@docs
-uevol_heatmass
-uevol_heatmass!
+dudt_heatmass
+dudt_heatmass!
 reinit_wrap
 next_reinit_time
 ```
@@ -50,6 +50,6 @@ next_reinit_time
 
 ```@docs
 sim_heatonly
-uevol_heatonly
-uevol_heatonly!
+dudt_heatonly
+dudt_heatonly!
 ```
