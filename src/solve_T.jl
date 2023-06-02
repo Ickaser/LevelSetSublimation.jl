@@ -124,11 +124,10 @@ function solve_T(u, dom::Domain, params)
             # Robin BC: glass
             wϕ = ϕ[ir-1, iz]
             if wϕ < 0 # Front is within a cell of boundary
-                # p. 119 of project notes
                 θr = pϕ/(pϕ-wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_thresh
-                    pc += -2k*dr2/θr - Kgl*(r1 + 2dr1*θr)
+                    pc += -2k*dr2/θr - Kgl*(r1 + 2dr1)
                     rhs[imx] -= 2Tf_loc*k*dr2/θr + Kgl*Tgl*(r1 + 2dr1)
                 else 
                     # First, use Robin BC to define an east ghost cell
