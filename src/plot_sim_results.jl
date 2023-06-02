@@ -107,6 +107,9 @@ function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothin
     ϕ = ϕ_T_from_u(u, dom)[1]
     # p_sub = calc_psub(Tf)
     T = solve_T(u, dom, params)
+    if simconfig[:dudt_func] == dudt_heatonly!
+        return u, ϕ, T, zeros(size(ϕ))
+    end
     if isnothing(p0)
         p = solve_p(u, T, dom, params)
     else
@@ -125,51 +128,31 @@ If given, `maxT` sets an upper limit for the associated colorbar.
 """
 function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, p0=nothing)
     @unpack sol, dom = simresults
-    # @unpack cparams, controls = simconfig
-    
-    # params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
 
-    # t_samp = get(ncontrols, :t_samp, 0.0)
-    # if meas_keys !== nothing
-    #     # Interpolation here
-    #     if t > t_samp[end] # Past end of sampling interval
-    #         for ki in meas_keys
-    #             params[ki] = ncontrols[ki][end]
-    #         end
-    #     else
-    #         # tip = findfirst(t_samp .> t)
-    #         # tip = clamp(tip, 2, length(t_samp))
-    #         # tim = tip - 1
-    #         tim = findlast(t_samp .<= t)
-    #         tim = clamp(tim, 1, length(t_samp)-1)
-    #         tip = tim + 1
-    #         for ki in meas_keys
-    #             tfrac = clamp((t - t_samp[tim]) / (t_samp[tip] - t_samp[tim]), 0, 1)
-    #             params[ki] = (ncontrols[ki][tip] - ncontrols[ki][tim])*tfrac  + ncontrols[ki][tim]
-    #         end
-    #     end
-    # end
-    
-    # u = sol(t)
-    # ϕ = ϕ_T_from_u(u, dom)[1]
-    # p_sub = calc_psub(Tf)
-
-    ϕ, T, p = calc_uϕTp_res(t, simresults, simconfig; p0=p0)[2:4]
+    u, ϕ, T, p = calc_uϕTp_res(t, simresults, simconfig; p0=p0)
     if heatvar == :ϕ 
         heatvar_vals = ϕ
         clab = "ϕ, m"
         cmap = :algae
+        cont_c = :black
     elseif heatvar == :T 
         # T = solve_T(u, dom, params)
         heatvar_vals = T .- 273.15
         clab = " \nT, °C"
         cmap = :thermal
+        if maximum(ϕ_T_from_u(u, dom)[2]) > maximum(T) # Tf > T
+            cont_c = :black
+        else
+            cont_c = :white
+        end
     elseif heatvar == :p
         # T = solve_T(u, dom, params)
         # p = solve_p(u, T, dom, params, p0)
-        heatvar_vals = ustrip.(u"mTorr", p.*u"Pa") # Either ϕ, 
+        heatvar_vals = ustrip.(u"mTorr", p.*u"Pa")
         clab = "p, mTorr"
         cmap = :ice
+        cont_c = :black
+        
     else
         @warn "Invalid value of heatvar passed to `plotframe`. Should be :ϕ, :T, or :p." heatvar
     end
@@ -180,7 +163,6 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     end
 
     tr = round(t/3600, digits=2)
-    cont_c = (argmin(heatvar_vals) > argmax(heatvar_vals)) ? :black : :white
     local pl = plot(aspect_ratio=:equal, xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
     # plot_cylheat(heatvar_vals, dom; clims=clims)
     heatmap!(dom.rgrid, dom.zgrid, heatvar_vals', c=cmap, clims=clims)
