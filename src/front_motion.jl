@@ -628,7 +628,7 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
 end
 
 """
-    compute_frontvel_heat(ϕ, T, p, dom::Domain, params; debug=false)
+    compute_frontvel_heat(u, T, p, dom::Domain, params; debug=false)
 
 Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on Γ with ϕ>0). 
 """
@@ -651,31 +651,26 @@ function compute_frontvel_heat(u, T, dom::Domain, params; debug=false)
         ir, iz = Tuple(c)
         dTr, dTz = compute_Tderiv(u, T, ir, iz, dom, params)
 
-        # # Boundary cases: use internal derivative
-        # if ir == dom.nr # Right boundary
-        #     dϕdr = dϕdr_w[c]
-        # elseif ir == 1 # Left boundary
-        #     dϕdr = dϕdr_e[c]
-        # else
-        #     dϕdr = (dTr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        # end
-        # if iz == dom.nz # Top boundary
-        #     dϕdz = dϕdz_s[c]
-        # elseif iz == 1 # Bottom boundary
-        #     dϕdz = dϕdz_n[c]
-        # else
-        #     dϕdz = (dTz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        # end
+        # Boundary cases: use internal derivative
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[c]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[c]
+        else
+            dϕdr = (dTr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        end
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[c]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[c]
+        else
+            dϕdz = (dTz < 0 ? dϕdz_s[c] : dϕdz_n[c])
+        end
 
-        # With extrapolation, no need for special boundary treatment
-        dϕdr = (dTr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        dϕdz = (dTz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        
         # Normal is out of the ice
         # md =  , >0 for sublimation occurring
         # v = md/ρ * -∇ϕ
         q_grad = k* (dTr*dϕdr + dTz * dϕdz) 
-        # @info "aha"  q_grad Qice Q_ice_per_surf
         md_l = (q_grad + Q_ice_per_surf)/ΔH
         vtot = md_l / ρf / ϵ 
         vf[c,1] = -vtot * dϕdr
