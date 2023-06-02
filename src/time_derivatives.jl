@@ -29,13 +29,13 @@ function dudt_heatmass!(du, u, integ_pars, t)
     end
     T = solve_T(u, dom, params)
 
-    p_sub = calc_psub.(Tf) 
+    p_sub = calc_psub.(Tf)
     # If no sublimation occurring, just let temperature increase
     if all(p_sub .< params[:p_ch]) # No driving force for mass transfer: no ice loss, just temperature change
         Qice, Qgl = compute_Qice_noflow(u, T, dom, params)
         # TODO 
         dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-8) # Prevent explosion during last time step by not letting volume go to 0
-        dTgl .=  (Q_gl_RF - Qgl) / m_cp_gl
+        dTgl .= (Q_gl_RF - Qgl) / m_cp_gl
         dϕ .= 0.0
         return nothing
     end
@@ -44,9 +44,9 @@ function dudt_heatmass!(du, u, integ_pars, t)
     integ_pars[3] .= p # Cache current state of p as a guess for next timestep
     vf, dϕdx_all = compute_frontvel_mass(u, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
-    vr = @view vf[:,:,1]
-    vz = @view vf[:,:,2]
-    
+    vr = @view vf[:, :, 1]
+    vz = @view vf[:, :, 2]
+
     # TODO
     Qice, Qgl = compute_Qice(u, T, p, dom, params)
     dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
@@ -79,10 +79,10 @@ function dudt_heatmass!(du, u, integ_pars, t)
         # dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
         # dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
 
-        rcomp = dϕdr*vr[ind]
-        zcomp = dϕdz*vz[ind]
+        rcomp = dϕdr * vr[ind]
+        zcomp = dϕdz * vz[ind]
         # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
-        dϕ[ind] = -rcomp - zcomp 
+        dϕ[ind] = -rcomp - zcomp
     end
     # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
     # @info "prog: t=$t, dryfrac=$dryfrac"
@@ -159,9 +159,9 @@ function dudt_heatonly!(du, u, integ_pars, t)
 
     vf, dϕdx_all = compute_frontvel_heat(u, T, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
-    vr = @view vf[:,:,1]
-    vz = @view vf[:,:,2]
-    
+    vr = @view vf[:, :, 1]
+    vz = @view vf[:, :, 2]
+
     # dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
     # dTgldt = (Q_gl_RF - Qgl) / m_cp_gl
     # du[ntot+1] = dTfdt
@@ -189,10 +189,10 @@ function dudt_heatonly!(du, u, integ_pars, t)
             dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
         end
 
-        rcomp = dϕdr*vr[ind]
-        zcomp = dϕdz*vz[ind]
+        rcomp = dϕdr * vr[ind]
+        zcomp = dϕdz * vz[ind]
         # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
-        dϕ[ind] = -rcomp - zcomp 
+        dϕ[ind] = -rcomp - zcomp
     end
     # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
     # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf Tgl
@@ -217,16 +217,11 @@ function dudt_heatonly(u, dom::Domain, params)
 end
 function dudt_heatonly(u, config)
     @unpack vialsize, fillvol = config
-    simgridsize = get(config, :simgridsize, (51,51))
+    simgridsize = get(config, :simgridsize, (51, 51))
 
     # --------- Set up simulation domain
-    r_vial = get_vial_radii(vialsize)[1]
-    z_fill = fillvol / π / r_vial^2
-
-    rmax = ustrip(u"m", r_vial)
-    zmax = ustrip(u"m", z_fill)
-
     dom = Domain(simgridsize..., rmax, zmax)
+    dom = Domain(config)
 
     params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
 
