@@ -98,7 +98,7 @@ function calc_params_at_t(t::Float64, simconfig::Dict)
     return params
 end
 
-function calc_ϕuTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
+function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
     @unpack sol, dom = simresults
 
     params = calc_params_at_t(t, simconfig)
@@ -112,7 +112,7 @@ function calc_ϕuTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothin
     else
         p = solve_p(u, T, dom, params, p0)
     end
-    return ϕ, u, T, p
+    return u, ϕ, T, p
 end
 
 """
