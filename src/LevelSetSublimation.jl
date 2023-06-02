@@ -27,6 +27,7 @@ include(srcdir("physical_data.jl"))
 include(srcdir("solve_p.jl"))
 include(srcdir("front_motion.jl"))
 include(srcdir("sim_setup.jl"))
+include(srcdir("time_derivatives.jl"))
 include(srcdir("sim_from_dict.jl"))
 include(srcdir("plot_sim_results.jl"))
 
