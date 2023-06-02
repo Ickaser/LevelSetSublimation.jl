@@ -146,6 +146,7 @@ Employ Unitful to do unit conversions after simulation if necessary.
     - `κ` : dusty gas model constant: length^2 corresponding loosely to Darcy's Law permeability
     - `Mw`: molecular weight of species (water), with appropriate units
     - `μ` : dynamic viscosity of species (water), with appropriate units
+- `dudt_func`: defaults to `dudt_heatmass!`, but for other cases (e.g. ignoring mass transfer) can replace this
 
 During simulation, at each value of `t_samp`, the values of any `controls` which are arrays will be added to an internal dict called `params`.
 
@@ -163,6 +164,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # Default values for non-essential parameters
     Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to same ice & glass temperature if glass initial not given
 
     # --------- Set up simulation domain, including grid size (defaults to 51x51)
 
@@ -185,15 +187,16 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
 
-    p_sub = calc_psub(ustrip(u"K", Tf0))
     # Cached array for using last pressure state as guess
+    # This gets ignored for heat-only simulation, but shouldn't cause any problems
+    p_sub = calc_psub(ustrip(u"K", Tf0))
     p_last = fill(p_sub, size(dom))
 
 
     # ---- Set up ODEProblem
     prob_pars = (dom, params, p_last)
     tspan = (0, tf)
-    prob = ODEProblem(dudt_heatmass!, u0, tspan, prob_pars)
+    prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
 
     # --- Set up reinitialization callback
 
@@ -220,8 +223,13 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         @info "Beginning solve"
     end
     # --- Solve
+    if dudt_func == dudt_heatmass!
+        sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
+    else
+        sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+    end
     # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
-    sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
+    # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
     # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
     return @strdict sol dom
 end

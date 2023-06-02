@@ -152,8 +152,6 @@ function dudt_heatonly!(du, u, integ_pars, t)
     p_last = integ_pars[3]
     dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-    # u[dom.ntot+1] = clamp(Tf, 200, 350)  # Prevent crazy temperatures from getting passed through to other functions
-    # u[dom.ntot+2] = clamp(Tgl, 200, 400) # Prevent crazy temperatures from getting passed through to other functions
 
     T = solve_T(u, dom, params)
 
@@ -162,10 +160,6 @@ function dudt_heatonly!(du, u, integ_pars, t)
     vr = @view vf[:, :, 1]
     vz = @view vf[:, :, 2]
 
-    # dTfdt = Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
-    # dTgldt = (Q_gl_RF - Qgl) / m_cp_gl
-    # du[ntot+1] = dTfdt
-    # du[ntot+2] = dTgldt
     dTf .= 0
     dTgl .= 0
 
@@ -195,7 +189,7 @@ function dudt_heatonly!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
     # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf Tgl
+    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[:Tsh] Tgl extrema(vr) extrema(vz)
     return nothing
 end
 
@@ -217,12 +211,8 @@ function dudt_heatonly(u, dom::Domain, params)
 end
 function dudt_heatonly(u, config)
     @unpack vialsize, fillvol = config
-    simgridsize = get(config, :simgridsize, (51, 51))
 
-    # --------- Set up simulation domain
-    dom = Domain(simgridsize..., rmax, zmax)
     dom = Domain(config)
-
     params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
 
     dudt_heatonly(u, dom, params)
