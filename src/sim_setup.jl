@@ -65,13 +65,13 @@ function params_nondim_setup(cparams, controls)
 
     for pk in keys(cparams)
         try
-            params[pk] = ustrip.(pbu[pk], cparams[pk])
+            params[pk] = ustrip.(PBU[pk], cparams[pk])
         catch DomainError
-            @error "Bad dimensions in passed parameter." pk params[pk] pbu[pk]   
+            @error "Bad dimensions in passed parameter." pk params[pk] PBU[pk]   
         end
     end
     for mk in keys(controls)
-        nondim_controls[mk] = ustrip.(pbu[mk], controls[mk])
+        nondim_controls[mk] = ustrip.(PBU[mk], controls[mk])
     end
     if length(nondim_controls[:t_samp]) == 1
         nondim_controls[:t_samp] = [0.0]
