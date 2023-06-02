@@ -1,6 +1,7 @@
-export make_artificial_params, make_default_params
+export make_default_params
 export make_ϕ0, make_ramp
 export params_nondim_setup
+export ϕ_T_from_u, ϕ_T_from_u_view
 
 """
     make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
@@ -53,7 +54,7 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
 end
 
 """
-    params_setup(cparams, controls)
+    params_nondim_setup(cparams, controls)
     
 Return a copied `params` dictionary and list of keys from `controls` 
 to be updated at each time sampled point.
@@ -93,7 +94,7 @@ function params_nondim_setup(cparams, controls)
     return params, arr_keys, nondim_controls
 end
 
-pbu = params_base_units = Dict{Symbol, Any}(
+const PBU = const PARAMS_BASE_UNITS = Dict{Symbol, Any}(
     :Kgl => u"W/m^2/K",
     :Kv => u"W/m^2/K",
     :Q_ic => u"W/m^3",
@@ -140,7 +141,7 @@ function make_default_params()
     Kv = 20 * u"W/K/m^2"
     Q_ic = 0.3u"W/cm^3"
     Q_ck = 0.0u"W/m^3"
-    m_cp_gl = 5u"g" * cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
+    m_cp_gl = 5u"g" * LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
 
     # Mass transfer
     p_ch = 100u"mTorr" # 100 mTorr is about 13 Pa
@@ -170,51 +171,9 @@ function make_default_params()
 end
         
 """
-    make_artificial_params()
-
-Return a dictionary of `T_params`, with artificially chosen values.
-
-For convenience in testing code.
-"""
-function make_artificial_params()
-            
-    # Very artificial parameters
-    # Heat transfer
-    Kgl = 1.0
-    Kv = 1.0
-    Q_ic = 1.0
-    Q_ck = 0.0
-    k = 1.0
-    m_cp_gl = 5.0
-
-    # Mass transfer
-    p_ch = 5 # 100 mTorr is about 13 Pa
-    ϵ = 0.9
-    l = 1.0
-    κ = 0.5
-    R = 8.3145
-    Mw = .018 #mol/kg
-    μ = 1.0
-
-    # Sublimation
-    ΔH = 1.0
-    # ΔHsub = 678.0 # u"cal/g"
-    ρf = 100.0 
-    Cpf = 10.0
-
-    # Rw = 8.3145 / .018 # J/molK * mol/kg
-    # calc_ρvap(T) = calc_psub(T)/Rw/T
-
-
-    params = Dict{Symbol, Any}()
-    @pack! params = Kgl, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, ρf, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
-    return params
-end
-
-"""
     make_ramp(ustart, uend, ramprate, ts)
 
-Convenience function for interpolating appropriate ramp values.
+Convenience function for filling out a time series during and after setpoint ramp.
 `ustart` and `uend` are initial and final setpoints; `ts` the time points at which to sample.
 
 `ts` need not start at 0, but should contain at least enough time for the full ramp.
@@ -225,4 +184,81 @@ function make_ramp(ustart, uend, ramprate, ts)
     us = fill(ustart, size(ts))
     dus = min.((ts.-ts[begin])/dt, 1) .* (uend - ustart)
     return us .+ dus
+end
+
+
+# --------- Functions mapping state `u` to level set and temperatures
+
+"""
+    ϕ_T_from_u_view(u, dom)
+
+Take the current system state `u` and return views corresponding to `ϕ`, `Tf`, and `Tgl`.
+Nothing too fancy--just to avoid rewriting the same logic everywhere
+"""
+function ϕ_T_from_u_view(u, dom)
+    ϕ = @views reshape(u[1:dom.ntot], size(dom))
+    Tf = @view u[dom.ntot+1:dom.ntot+dom.nr]
+    Tgl = @view u[end]
+    return ϕ, Tf, Tgl
+end
+
+"""
+    ϕ_T_from_u(u, dom)
+
+Take the current system state `u` and break it into `ϕ`, `Tf`, and `Tgl`.
+Nothing too fancy--just to avoid rewriting the same logic everywhere
+"""
+function ϕ_T_from_u(u, dom)
+    ϕ = reshape(u[1:dom.ntot], size(dom))
+    Tf = u[dom.ntot+1:dom.ntot+dom.nr]
+    Tgl = u[end]
+    return ϕ, Tf, Tgl
+end
+
+# """
+#     ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
+
+# Take `ϕ`, `Tf`, and `Tgl`, and stuff them into `u` with appropriate indices.
+# Nothing too fancy--just to keep indexing abstract
+# """
+# function ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
+#     u[1:dom.ntot] = reshape(ϕ, :)
+#     u[dom.ntot+dom.nr] = Tf
+#     u[end] = Tgl
+#     return nothing
+# end
+# """
+#     T_into_u!(u, Tf, Tgl, dom)
+
+# Take `Tf` and `Tgl` and stuff them into `u` with appropriate indices.
+# Nothing too fancy--just to keep indexing abstract
+# """
+# function T_into_u!(u, Tf, Tgl, dom)
+#     u[dom.ntot+1] = Tf
+#     u[dom.ntot+2] = Tgl
+#     return nothing
+# end
+
+"""
+    make_u0_ndim(init_prof, Tf0, Tgl0, dom)
+
+Set up a vector of dynamic variables as initial state for simulation.
+
+Structure of vector `u`:
+- `dom.ntot` entries for level set function `ϕ`; initialized with profile using `make_ϕ0`.
+- `dom.nr` entries for frozen (ice) temperature `Tf`
+- 1 entry for glass (outer wall) temperature `Tgl`
+"""
+function make_u0_ndim(init_prof, Tf0, Tgl0, dom)
+    Tf0_nd = ustrip.(u"K", Tf0)
+    Tgl0_nd = ustrip(u"K", Tgl0)
+    # ϕ0 = make_ϕ0(init_prof, dom)
+    # ϕ0_flat = reshape(ϕ0, :)
+
+    ϕ0_flat = reshape(make_ϕ0(init_prof, dom), :)
+    u0 = similar(ϕ0_flat, dom.ntot+dom.nr+1) # Add 2 to length: Tf, Tgl
+    u0[1:dom.ntot] .= ϕ0_flat
+    u0[dom.ntot+1:dom.ntot+dom.nr] .= Tf0_nd 
+    u0[end] = Tgl0_nd
+    return u0
 end
