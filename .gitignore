@@ -8,7 +8,7 @@
 data
 videos
 plots
-notebooks
+# notebooks
 _research
 .vscode
 
