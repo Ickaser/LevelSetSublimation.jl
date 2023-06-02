@@ -30,5 +30,6 @@ include(srcdir("sim_setup.jl"))
 include(srcdir("time_derivatives.jl"))
 include(srcdir("sim_from_dict.jl"))
 include(srcdir("plot_sim_results.jl"))
+include(srcdir("levelset_geometry.jl"))
 
 end # module LevelSetSublimation
