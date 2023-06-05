@@ -88,6 +88,18 @@ function eval_b(T, p, params)
 end
 
 """
+    eval_b_loc(T, p, ir, iz, params)
+
+Locally evaluate transport coefficient (indexes into spatially varying `l` and `κ` if necessary).
+"""
+function eval_b_loc(T, p, ir, iz, params)
+    @unpack ϵ, l, κ, R, Mw, μ = params
+    lloc = (length(l) > 1) ? l[ir,iz] : l
+    κloc = (length(κ) > 1) ? κ[ir,iz] : κ
+    b = @. Mw/R/T[ir,iz] * (lloc*sqrt(R*max(T[ir,iz],1)/Mw) + κloc/μ*p[ir,iz])
+end
+
+"""
     solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
 
 Compute 2D axisymmetric pseudosteady pressure profile for given values of level set function `ϕ`, temperature `T`, and transport coefficient `b`.

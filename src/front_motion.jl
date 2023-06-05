@@ -292,12 +292,7 @@ function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
         dpz = 0
     elseif iz == nz 
         # Robin boundary condition: employ explicitly
-        b = eval_b(T[ir,iz], p[ir,iz], params)
-        if length(b) == 1
-            bp = b
-        else
-            bp = b[ir,iz]
-        end
+        bp = eval_b_loc(T, p, ir, iz, params)
         # bp*dpz = Δp/Rp0
         dpz = (p_ch - p[ir,iz])/bp/Rp0
         # @info "here" ir iz (p_ch - p[ir,iz])/Rp0
@@ -479,26 +474,26 @@ function compute_frontvel_fixedspeed(v0, ϕ, dom::Domain)
 
     for c in Γ⁺
 
-        # ir, iz = Tuple(c)
-        # # Boundary cases: use internal derivative
-        # if ir == dom.nr # Right boundary
-        #     dϕdr = dϕdr_w[c]
-        # elseif ir == 1 # Left boundary
-        #     dϕdr = dϕdr_e[c]
-        # else
-        #     dϕdr = (dϕdr_w > 0 ? dϕdr_w[c] : dϕdr_e[c])
-        # end
-        # if iz == dom.nz # Top boundary
-        #     dϕdz = dϕdz_s[c]
-        # elseif iz == 1 # Bottom boundary
-        #     dϕdz = dϕdz_n[c]
-        # else
-        #     dϕdz = (dϕdz_s > 0 ? dϕdz_s[c] : dϕdz_n[c])
-        # end
+        ir, iz = Tuple(c)
+        # Boundary cases: use internal derivative
+        if ir == dom.nr # Right boundary
+            dϕdr = dϕdr_w[c]
+        elseif ir == 1 # Left boundary
+            dϕdr = dϕdr_e[c]
+        else
+            dϕdr = (dϕdr_w > 0 ? dϕdr_w[c] : dϕdr_e[c])
+        end
+        if iz == dom.nz # Top boundary
+            dϕdz = dϕdz_s[c]
+        elseif iz == 1 # Bottom boundary
+            dϕdz = dϕdz_n[c]
+        else
+            dϕdz = (dϕdz_s > 0 ? dϕdz_s[c] : dϕdz_n[c])
+        end
 
         # With extrapolation in WENO, no need for special boundary treatment
-        dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
+        # dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
+        # dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
         
         vf[c,1] = -v0 * dϕdr
         vf[c,2] = -v0 * dϕdz
