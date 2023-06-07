@@ -1,6 +1,6 @@
 export make_default_params
 export make_ϕ0, make_ramp
-export params_nondim_setup
+export params_nondim_setup, make_u0_ndim
 export ϕ_T_from_u, ϕ_T_from_u_view
 
 """
@@ -110,6 +110,7 @@ const PBU = const PARAMS_BASE_UNITS = Dict{Symbol, Any}(
 
     :p_ch => u"Pa",
 
+    :kf => u"W/m/K",
     :ρf => u"kg/m^3",
     :Cpf => u"J/kg/K",
     :ΔH => u"J/kg",
@@ -160,13 +161,14 @@ function make_default_params()
     # ΔHsub = 678.0 # u"cal/g"
     ρf = ρ_ice 
     Cpf = Cp_ice
+    kf = LevelSetSublimation.kf
 
     # Rw = 8.3145 / .018 # J/molK * mol/kg
     # calc_ρvap(T) = calc_psub(T)/Rw/T
 
 
     params = Dict{Symbol, Any}()
-    @pack! params = Kgl, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, ρf, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
+    @pack! params = Kgl, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
     return params
 end
         
@@ -215,30 +217,6 @@ function ϕ_T_from_u(u, dom)
     return ϕ, Tf, Tgl
 end
 
-# """
-#     ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
-
-# Take `ϕ`, `Tf`, and `Tgl`, and stuff them into `u` with appropriate indices.
-# Nothing too fancy--just to keep indexing abstract
-# """
-# function ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
-#     u[1:dom.ntot] = reshape(ϕ, :)
-#     u[dom.ntot+dom.nr] = Tf
-#     u[end] = Tgl
-#     return nothing
-# end
-# """
-#     T_into_u!(u, Tf, Tgl, dom)
-
-# Take `Tf` and `Tgl` and stuff them into `u` with appropriate indices.
-# Nothing too fancy--just to keep indexing abstract
-# """
-# function T_into_u!(u, Tf, Tgl, dom)
-#     u[dom.ntot+1] = Tf
-#     u[dom.ntot+2] = Tgl
-#     return nothing
-# end
-
 """
     make_u0_ndim(init_prof, Tf0, Tgl0, dom)
 
@@ -262,3 +240,27 @@ function make_u0_ndim(init_prof, Tf0, Tgl0, dom)
     u0[end] = Tgl0_nd
     return u0
 end
+
+# """
+#     ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
+
+# Take `ϕ`, `Tf`, and `Tgl`, and stuff them into `u` with appropriate indices.
+# Nothing too fancy--just to keep indexing abstract
+# """
+# function ϕ_T_into_u!(u, ϕ, Tf, Tgl, dom)
+#     u[1:dom.ntot] = reshape(ϕ, :)
+#     u[dom.ntot+dom.nr] = Tf
+#     u[end] = Tgl
+#     return nothing
+# end
+# """
+#     T_into_u!(u, Tf, Tgl, dom)
+
+# Take `Tf` and `Tgl` and stuff them into `u` with appropriate indices.
+# Nothing too fancy--just to keep indexing abstract
+# """
+# function T_into_u!(u, Tf, Tgl, dom)
+#     u[dom.ntot+1] = Tf
+#     u[dom.ntot+2] = Tgl
+#     return nothing
+# end

@@ -86,20 +86,21 @@ config = Dict{Symbol, Any}()
 # # Set up stuff to make debugging easier
 params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
 
-r_vial = get_vial_radii(vialsize)[1]
-z_fill = fillvol / π / r_vial^2
+# r_vial = get_vial_radii(vialsize)[1]
+# z_fill = fillvol / π / r_vial^2
 
-rmax = ustrip(u"m", r_vial)
-zmax = ustrip(u"m", z_fill)
+# rmax = ustrip(u"m", r_vial)
+# zmax = ustrip(u"m", z_fill)
 
-dom = Domain(51, 51, rmax, zmax)
+dom = Domain(config)
 
-ϕ0 = make_ϕ0(init_prof, dom)   
-u0 = zeros(dom.ntot+2)
-u0[1:dom.ntot] = reshape(ϕ0, :)
-u0[dom.ntot+1] = ustrip(u"K", Tf0)
-u0[dom.ntot+2] = ustrip(u"K", Tf0)
-reinitialize_ϕ_HCR!(ϕ0, dom)
+u0 = make_u0_ndim(init_prof, Tf0, Tf0, dom)
+# ϕ0 = make_ϕ0(init_prof, dom)   
+# u0 = zeros(dom.ntot+2)
+# u0[1:dom.ntot] = reshape(ϕ0, :)
+# u0[dom.ntot+1] = ustrip(u"K", Tf0)
+# u0[dom.ntot+2] = ustrip(u"K", Tf0)
+# reinitialize_ϕ_HCR!(ϕ0, dom)
 T0 = solve_T(u0, dom, params)
 p0 = solve_p(u0, T0, dom, params)
 

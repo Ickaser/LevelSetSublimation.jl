@@ -137,7 +137,8 @@ Employ Unitful to do unit conversions after simulation if necessary.
     - `Kv` : heat transfer coefficients shelf
     - `Q_ck` : volumetric heating in cake 
     - `k`: thermal conductivity of cake
-    - `m_cp_gl` total thermal mass of ice, relevant to heating/cooling of glass wall
+    - `m_cp_gl` total thermal mass of glass, relevant to heating/cooling of glass wall
+    - `kf`: thermal conductivity of ice
     - `ρf`: density of ice
     - `Cpf`: heat capacity of ice
     - `ΔH` : heat of sublimation of ice
@@ -224,7 +225,13 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     end
     # --- Solve
     if dudt_func == dudt_heatmass!
-        sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
+        CFL = 0.5
+        α = params[:kf]/params[:ρf]/params[:Cpf]
+        dt = CFL / (α/dom.dr^2)
+        if verbose
+            @info "Timestepping:" dt
+        end
+        sol = solve(prob, SSPRK33(), dt=dt, callback=cbs; ) # Fixed timestepping: 1 minute
     else
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     end

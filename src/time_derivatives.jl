@@ -20,7 +20,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
     if any(Tf .!= clamp.(Tf, 200, 350))
-        @warn "Crazy Tf, clamped"
+        @warn "Crazy Tf, clamped" Tf
         clamp!(Tf, 200, 350)
     end
     if Tgl != clamp(Tgl, 200, 400)
@@ -49,44 +49,74 @@ function dudt_heatmass!(du, u, integ_pars, t)
 
     # TODO
     Qice, Qgl = compute_Qice(u, T, p, dom, params)
-    dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+    # dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
+    dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
     dTgl .= (Q_gl_RF - Qgl) / m_cp_gl
     # du[ntot+1] .= dTfdt
     # du[ntot+2] .= dTgldt
 
-    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
+    # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
 
-        # Boundary cases: use internal derivative
-        if ir == dom.nr # Right boundary
-            dϕdr = dϕdr_w[ind]
-        elseif ir == 1 # Left boundary
-            dϕdr = dϕdr_e[ind]
-        else
-            dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
-        end
-        # Boundary cases: use internal derivative
-        if iz == dom.nz # Top boundary
-            dϕdz = dϕdz_s[ind]
-        elseif iz == 1 # Bottom boundary
-            dϕdz = dϕdz_n[ind]
-        else
-            dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
-        end
+        # # Boundary cases: use internal derivative
+        # if ir == dom.nr # Right boundary
+        #     dϕdr = dϕdr_w[ind]
+        # elseif ir == 1 # Left boundary
+        #     dϕdr = dϕdr_e[ind]
+        # else
+        #     dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
+        # end
+        # # Boundary cases: use internal derivative
+        # if iz == dom.nz # Top boundary
+        #     dϕdz = dϕdz_s[ind]
+        # elseif iz == 1 # Bottom boundary
+        #     dϕdz = dϕdz_n[ind]
+        # else
+        #     dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
+        # end
 
         # # Don't treat boundaries differently
         # dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
         # dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
+
+        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind] > 0, vz[ind] >0, dϕdx_all, dom)
 
         rcomp = dϕdr * vr[ind]
         zcomp = dϕdz * vz[ind]
         # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
         dϕ[ind] = -rcomp - zcomp
     end
-    # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac"
+    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf
+    if minimum(dϕ) < 0
+        @info "whole thing" dϕ ϕ
+    end
     return nothing
+end
+
+function choose_dϕdx_boundary(ir, iz, west_true::Bool, south_true::Bool, dϕdx_all, dom::Domain)
+    # Boundary cases: use internal derivative
+    if ir == dom.nr # Right boundary
+        dϕdr = dϕdx_all[1][ir, iz]
+    elseif ir == 1 # Left boundary
+        dϕdr = dϕdx_all[2][ir,iz]
+    else
+        dϕdr = (west_true > 0 ? dϕdx_all[1][ir,iz] : dϕdx_all[2][ir,iz])
+    end
+    # Boundary cases: use internal derivative
+    if iz == dom.nz # Top boundary
+        dϕdz = dϕdx_all[3][ir, iz]
+    elseif iz == 1 # Bottom boundary
+        dϕdz = dϕdx_all[4][ir, iz]
+    else
+        dϕdz = (south_true ? dϕdx_all[3][ir, iz] : dϕdx_all[4][ir, iz])
+    end
+
+    # # Don't treat boundaries differently
+    # dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
+    # dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
+    return dϕdr, dϕdz
 end
 
 
@@ -134,10 +164,11 @@ function local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
     @unpack k, ΔH = params
     b = eval_b_loc(T, p, ir, iz, params)
 
-    dTdr, dTdz = compute_Tderiv(u, T, p, ir, iz, dom, params)
+    dTdr, dTdz = compute_Tderiv(u, T, ir, iz, dom, params)
     dpdr, dpdz = compute_pderiv(u, T, p, ir, iz, dom, params)
-    dϕdr = dpdr < 0 ? dϕdx_all[1][ir, iz] : dϕdx_all[2][ir, iz] # East or west based on mass flow
-    dϕdz = dpdz < 0 ? dϕdx_all[3][ir, iz] : dϕdx_all[4][ir, iz] # North or south based on mass flow
+    # dϕdr = dpdr < 0 ? dϕdx_all[1][ir, iz] : dϕdx_all[2][ir, iz] # East or west based on mass flow
+    # dϕdz = dpdz < 0 ? dϕdx_all[3][ir, iz] : dϕdx_all[4][ir, iz] # North or south based on mass flow
+    dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, dpdr<0, dpdz<0, dϕdx_all, dom)
 
     qflux = k*(dϕdr*dTdr + dϕdz*dTdz)
     mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
@@ -172,7 +203,7 @@ function dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom, params)
             # Stefan boundary
             iz = findlast(ϕ[ir,:] .<=0) + 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
-            top_bound_term = q - kf*dϕdr/dϕdz*dTfdr[ir]
+            top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
         end
 
         if bot_contact[ir]
@@ -182,11 +213,12 @@ function dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom, params)
             # Stefan boundary
             iz = findfirst(ϕ[ir,:] .<=0) - 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
-            bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr[ir]
+            bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
         end
 
-        dTfdt[ir] = (k*(1/dom.rgrid[ir]*dTfdr + d2Tfdr2) + Q_ic + 
-            (top_bound_term - bot_bound_term)/Δξ)/ρf/Cpf
+        # @info "vals" dTfdr d2Tfdr2 Q_ic top_bound_term bot_bound_term 
+        dTfdt[ir] = (kf*((ir == 1 ? 0 : 1/dom.rgrid[ir])*dTfdr + d2Tfdr2) + Q_ic + 
+            (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
     end
 
     dTfdt[no_ice] .= 0 # Set to 0 elsewhere
@@ -304,25 +336,26 @@ function dudt_heatonly!(du, u, integ_pars, t)
     dTf .= 0
     dTgl .= 0
 
-    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
+    # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
         # Boundary cases: use internal derivative
-        if ir == dom.nr # Right boundary
-            dϕdr = dϕdr_w[ind]
-        elseif ir == 1 # Left boundary
-            dϕdr = dϕdr_e[ind]
-        else
-            dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
-        end
-        # Boundary cases: use internal derivative
-        if iz == dom.nz # Top boundary
-            dϕdz = dϕdz_s[ind]
-        elseif iz == 1 # Bottom boundary
-            dϕdz = dϕdz_n[ind]
-        else
-            dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
-        end
+        # if ir == dom.nr # Right boundary
+        #     dϕdr = dϕdr_w[ind]
+        # elseif ir == 1 # Left boundary
+        #     dϕdr = dϕdr_e[ind]
+        # else
+        #     dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
+        # end
+        # # Boundary cases: use internal derivative
+        # if iz == dom.nz # Top boundary
+        #     dϕdz = dϕdz_s[ind]
+        # elseif iz == 1 # Bottom boundary
+        #     dϕdz = dϕdz_n[ind]
+        # else
+        #     dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
+        # end
+        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind]>0, vz[ind]>0, dϕdx_all, dom)
 
         rcomp = dϕdr * vr[ind]
         zcomp = dϕdz * vz[ind]

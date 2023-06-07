@@ -229,7 +229,7 @@ function compute_iceht_bottopcont(ϕ, dom)
         interfaces = 0
         for iz in 1:dom.nz-1
             ϕd, ϕu = ϕ[ir, iz:iz+1]
-            if ϕd <= 0 && ϕr <= 0
+            if ϕd <= 0 && ϕu <= 0
                 heights[ir] += dom.dz
             elseif ϕd <= 0
                 θz = -(ϕd/(ϕd - ϕu))
