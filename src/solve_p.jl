@@ -18,13 +18,6 @@ Usually if it doesn't converge, it is because temperatures are outside the expec
 """
 function solve_p(u, T, dom::Domain, params; kwargs...) 
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-    if minimum(T) <= 0
-        @info "weird" T
-        pl1 = heat(T, dom)
-        display(pl1)
-        # display(
-    end
-    # meanT = sum(T[ϕ .>0]) / sum(ϕ .> 0)
     # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
     b = eval_b(T, params[:p_ch], params)
     p0 = solve_p_given_b(ϕ, b, Tf, dom, params)
@@ -32,34 +25,21 @@ function solve_p(u, T, dom::Domain, params; kwargs...)
 end
 function solve_p(u, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-    if minimum(T) <= 0
-        @info "weird" T
-        pl1 = heat(T, dom)
-        display(pl1)
-        # display(
-    end
 
     relerr::Float64 = 0.0
     p⁺ = copy(p0)
     # Iterate up to maxit times
     for i in 1:maxit
         b = eval_b(T, p0, params)
-        p⁺ = solve_p_given_b(ϕ, b, Tf, dom, params)
+        p⁺ .= solve_p_given_b(ϕ, b, Tf, dom, params)
         relerr = calc_err_reg((p⁺ .- p0) ./ p⁺, :L∞, :)
-        # @info "Maximum relative error in p after $i iterations:" relerr
         if relerr < reltol
             # @info "Number of p iterations: $i"
             return p⁺
         end
-        # p0 = abs.(p⁺)
-        p0 = p⁺
+        p0 .= p⁺
     end
     @info "Reached maximum iterations in p:" relerr maxit p⁺ T 
-    # pl1 = heat(b, dom)
-    # plot_contour(ϕ, dom)
-    # pl2 = heat(p⁺, dom)
-    # plot_contour(ϕ, dom)
-    # display(plot(pl1, pl2))
     return p⁺
 end
 
@@ -68,14 +48,9 @@ end
 
 Compute transport coefficient `b` as a function of space, given `T`, `p`, and `params`.
 
-`params` should have the following fields:
-- `ϵ` : porosity of porous medium
-- `l` : dusty gas model constant: characteristic length for Knudsen diffusion
-- `κ` : dusty gas model constant: length^2 corresponding loosely to Darcy's Law permeability
-- `R` : universal gas constant  
-- `Mw`: molecular weight of species (water)
-- `μ` : dynamic viscosity of species (water)
-`ϵ`, `l`, and `κ` may be passed as scalars (and assumed as spatially uniform) or arrays (describing value throughout space, should match `Domain` dimensions).
+Uses the following fields from `params`, as documented in `sim_from_dict`: `\eps
+`params` should have the following fields: `l`, `κ`, `R`, `Mw`, `μ`. 
+`l`, and `κ` may be passed as scalars (and assumed as spatially uniform) or arrays (describing value throughout space, should match `Domain` dimensions).
 
 When the simulation is started, all these values are converted to SI units and passed accordingly, 
 so in practice there are no units to track.
@@ -83,7 +58,7 @@ so in practice there are no units to track.
 If `κ=0`, no spatial variation due to pressure occurs.
 """
 function eval_b(T, p, params)
-    @unpack ϵ, l, κ, R, Mw, μ = params
+    @unpack l, κ, R, Mw, μ = params
     b = @. Mw/R/T * (l*sqrt(R*max(T,1)/Mw) + κ/μ*p)
 end
 
@@ -93,10 +68,10 @@ end
 Locally evaluate transport coefficient (indexes into spatially varying `l` and `κ` if necessary).
 """
 function eval_b_loc(T, p, ir, iz, params)
-    @unpack ϵ, l, κ, R, Mw, μ = params
+    @unpack l, κ, R, Mw, μ = params
     lloc = (length(l) > 1) ? l[ir,iz] : l
     κloc = (length(κ) > 1) ? κ[ir,iz] : κ
-    b = @. Mw/R/T[ir,iz] * (lloc*sqrt(R*max(T[ir,iz],1)/Mw) + κloc/μ*p[ir,iz])
+    b = Mw/R/T[ir,iz] * (lloc*sqrt(R*T[ir,iz]/Mw) + κloc/μ*p[ir,iz])
 end
 
 """

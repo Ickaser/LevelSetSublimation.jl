@@ -1,8 +1,4 @@
-export solve_T, solve_T_original
-# y
-
-
-# Construct sparse array with rows, cols, vals format, then construct sparse matrix
+export solve_T
 
 # function radial_Tf(u, dom, params) 
 #     @unpack dr, dz, dr1, dz1, dr2, dz2, 
@@ -40,11 +36,11 @@ function solve_T(u, dom::Domain, params)
 
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
-    if minimum(ϕ) > 0
-        # @info "Solving heat equation without any ice, artificially introducing some"
-        ϕ = copy(ϕ)
-        ϕ[argmin(ϕ)] = - max(dr, dz)
-    end
+    # if minimum(ϕ) > 0
+    #     # @info "Solving heat equation without any ice, artificially introducing some"
+    #     ϕ = copy(ϕ)
+    #     ϕ[argmin(ϕ)] = - max(dr, dz)
+    # end
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
     vals = Vector{Float64}(undef, 0)
@@ -60,7 +56,6 @@ function solve_T(u, dom::Domain, params)
         imx = ir + (iz-1)*nr
 
         pϕ = ϕ[ir, iz]
-
         # Check if in frozen domain; if so, fix temperature
         if pϕ <= 0
             add_to_vcr!(vcr, dom, imx, (0, 0), 1)
@@ -78,17 +73,7 @@ function solve_T(u, dom::Domain, params)
         wc = 0
         sc = 0
         nc = 0
-        # z = zgrid[iz]
         
-
-        # Check if on boundaries or in bulk, set up BC or diffeq  
-        # TODO 
-        # Currently, boundaries are not checking for interface crossing.
-
-
-        stefan_debug = false
-
-
         # R direction boundaries
         if ir == 1
             # Symmetry BC
@@ -103,10 +88,6 @@ function solve_T(u, dom::Domain, params)
                     pc += -2k*dr2/θr
                     rhs[imx] -= 2k*Tf_loc*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within dr/r cells of boundary
-                    # Have an exact value given by BC + front
-                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    # rhs[imx] = Tf - θr*BC1*dr
-                    # continue
                     pc += -2k*dr2/(θr+1)
                     rhs[imx] -= 2Tf_loc*k*dr2/(θr+1) 
                 end
@@ -205,20 +186,13 @@ function solve_T(u, dom::Domain, params)
                     pc += -2k*dz2/θz - 2Kv*dz1
                     rhs[imx] -= 2*Tf[ir]*k*dz2/θz + 2Kv*Tsh*dz1
                 else
-                    # Have an exact value given by BC + front
-                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    # rhs[imx] = (k*Tf + Kv*Tsh*θz*dz) / (k + Kv*θz*dz)
-                    # continue
                     # First Robin ghost defined, then Stefan ghost extrap
                     pc += -2k*dz2 - 2Kv*dz1
                     nc +=  2k*dz2
                     rhs[imx] -= 2Kv*Tsh*dz1
                 end
-                # No way to treat other equations, so cut it here
             else
-                # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
-                # p. 65, 66 of project notes
-                # FINISH THIS: NOT CORRECT
+                # Robin boundary
                 pc += -k*2dz2 - 2Kv*dz1
                 nc +=  k*2dz2
                 rhs[imx] -= 2Tsh*Kv*dz1
@@ -236,10 +210,6 @@ function solve_T(u, dom::Domain, params)
                     rhs[imx] -= 2*Tf[ir]*k*dz2/θz + BC4*2*dz1
                 else
                     # # Have an exact value given by BC + front
-                    # # No way to treat other equations, so add to matrix and stop here
-                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    # rhs[imx] = Tf + θz*BC4*dz
-                    # continue
                     pc += -2k*dz2/(θz+1)
                     rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1) 
                 end
@@ -295,31 +265,6 @@ function solve_T(u, dom::Domain, params)
             end
         end
 
-        # Stefan boundary debug
-        # if stefan_debug
-        #     println("ir=$ir, iz=$iz, pc=$pc, nc=$nc, sc=$sc,  ec=$ec, wc=$wc, rhs=$(rhs[imx])") 
-        # end
-
-        # Debug boundaries
-        # if iz==1
-        #     if sc != 0
-        #         @info "iz==1" ir pc nc sc ec wc rhs[imx]
-        #     end
-        # elseif iz == nz
-        #     if nc != 0
-        #         @info "iz==nz" ir pc nc sc ec wc rhs[imx]
-        #     end
-        # end
-        # if ir==1
-        #     if wc != 0
-        #         @info "ir==1" ir pc nc sc ec wc rhs[imx]
-        #     end
-        # elseif ir == nr
-        #     if ec != 0
-        #         @info "ir==nr" ir pc nc sc ec wc rhs[imx]
-        #     end
-        # end
-
         # Assign all computed stencil values into matrix
         pc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 0), pc)
         ec != 0 && add_to_vcr!(vcr, dom, imx, ( 1, 0), ec)
@@ -328,25 +273,20 @@ function solve_T(u, dom::Domain, params)
         sc != 0 && add_to_vcr!(vcr, dom, imx, ( 0,-1), sc)
         rhs[imx] += - Q_ck 
 
-        # push!(vals,                     1.0dz2); push!(cols, imx-nr); push!(rows, imx) # S cell
-        # push!(vals,  1.0dr2 - 0.5dr1*r1       ); push!(cols, imx- 1); push!(rows, imx) # W cell
-        # push!(vals, -2.0dr2            -2.0dz2); push!(cols, imx   ); push!(rows, imx) # P cell
-        # push!(vals,  1.0dr2 + 0.5dr1*r1       ); push!(cols, imx+ 1); push!(rows, imx) # E cell
-        # push!(vals,                     1.0dz2); push!(cols, imx+nr); push!(rows, imx) # N cell
     end
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
     sol = mat_lhs \ rhs
     T = reshape(sol, nr, nz)
+
+    if minimum(T) <= 0
+        @info "negative temperatures" T
+    end
 end
 
 function add_to_vcr!(vcr, dom, p_imx, shift, val)
     vals, cols, rows = vcr
     c_imx = p_imx + shift[1] + dom.nr*shift[2]
-    # println("p_imx = $p_imx, c_imx = $c_imx, shift=$shift")
     push!(vals, val)
     push!(cols, c_imx)
     push!(rows, p_imx)
 end
-
-
-# solve_T = solve_T_original
