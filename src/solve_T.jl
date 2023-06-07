@@ -281,6 +281,7 @@ function solve_T(u, dom::Domain, params)
     if minimum(T) <= 0
         @info "negative temperatures" T
     end
+    return T
 end
 
 function add_to_vcr!(vcr, dom, p_imx, shift, val)
