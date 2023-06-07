@@ -206,3 +206,47 @@ function compute_icesh_area_weights(ϕ, dom)
         rweights[dom.nr] += dom.rmax^2/2
     end
 end
+
+
+"""
+    function compute_iceht_bottopcont(ϕ, dom)
+
+Compute the height of ice at each point radially, as well as identify whether at system boundary or not.
+
+Returns (`heights`, `bottom_contact`, `top_contact`), where 
+- `heights` is a vector of floats
+- `bottom_contact`, `top_contact` are vectors of bools
+"""
+function compute_iceht_bottopcont(ϕ, dom)
+    bottom_contact = (ϕ[:,begin] .<= 0)
+    top_contact = (ϕ[:,end] .<= 0)
+
+    heights = fill(0.0, dom.nr)
+    ice_contig = fill(true, dom.nr)
+    for ir in axes(ϕ, 1)
+        # Begin with 1 grid space per frozen cell
+        heights[ir] += dom.dz * sum(ϕ[ir,:] .<= 0) 
+        interfaces = 0
+        for iz in 1:dom.nz-1
+            ϕd, ϕu = ϕ[ir, iz:iz+1]
+            if ϕd <= 0 && ϕr <= 0
+                heights[ir] += dom.dz
+            elseif ϕd <= 0
+                θz = -(ϕd/(ϕd - ϕu))
+                heights[ir] += dom.dz*θz
+                interfaces += 1
+            elseif ϕu <= 0
+                θz = -(ϕu/(ϕu - ϕd))
+                heights[ir] += dom.dz*θz
+                interfaces += 1
+            # else # Nothing needed to do in this case
+            end
+            if interfaces > 2 || (interfaces == 2 && ϕ[ir,begin] > 0)
+                ice_contig[ir] = false
+                @warn "Along a column, ice is not contiguous--more than two interfaces.
+                    This case is not properly treated."
+            end
+        end
+    end
+    return heights, bottom_contact, top_contact
+end

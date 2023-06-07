@@ -129,6 +129,147 @@ function dudt_heatmass_params(u, config)
     dudt_heatmass(u, dom, params), dom, params
 end
 
+# ---------------------------
+function local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
+    @unpack k, ΔH = params
+    b = eval_b_loc(T, p, ir, iz, params)
+
+    dTdr, dTdz = compute_Tderiv(u, T, p, ir, iz, dom, params)
+    dpdr, dpdz = compute_pderiv(u, T, p, ir, iz, dom, params)
+    dϕdr = dpdr < 0 ? dϕdx_all[1][ir, iz] : dϕdx_all[2][ir, iz] # East or west based on mass flow
+    dϕdz = dpdz < 0 ? dϕdx_all[3][ir, iz] : dϕdx_all[4][ir, iz] # North or south based on mass flow
+
+    qflux = k*(dϕdr*dTdr + dϕdz*dTdz)
+    mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
+    return qflux + ΔH*mflux, dϕdr, dϕdz
+end
+
+function dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom, params)
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    @unpack ρf, Cpf, kf, Q_ic = params
+
+    Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
+
+    has_ice = (Δξ .> 0)
+    no_ice = (Δξ .== 0)
+
+    for ir in axes(dTfdt, 1)[has_ice]
+        if ir == 1
+            dTfdr = 0
+            d2Tfdr2 = (-2Tf[1] + 2Tf[2])*dom.dr2 # Adiabatic ghost cell
+        elseif ir == dom.nr
+            dTfdr = params[:Kgl]/kf*(Tgl - Tf[ir])
+            d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
+        else
+            dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
+            d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
+        end
+
+        if top_contact[ir]
+            # Adiabatic boundary
+            top_bound_term = 0
+        else
+            # Stefan boundary
+            iz = findlast(ϕ[ir,:] .<=0) + 1
+            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
+            top_bound_term = q - kf*dϕdr/dϕdz*dTfdr[ir]
+        end
+
+        if bot_contact[ir]
+            # Shelf boundary
+            bot_bound_term = params[:Kv]*(T[ir,begin] - params[:Tsh])
+        else
+            # Stefan boundary
+            iz = findfirst(ϕ[ir,:] .<=0) - 1
+            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
+            bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr[ir]
+        end
+
+        dTfdt[ir] = (k*(1/dom.rgrid[ir]*dTfdr + d2Tfdr2) + Q_ic + 
+            (top_bound_term - bot_bound_term)/Δξ)/ρf/Cpf
+    end
+
+    dTfdt[no_ice] .= 0 # Set to 0 elsewhere
+
+    # TODO
+    # Need to define Tf one cell beyond the ice, actually, for other parts of implementation.
+    # So: set up a ghost cell, with dTfdr defined by Stefan boundary
+    # Question is: how to evaluate, exactly? Average across vertical direction?
+    # Probably need to derive an equation for this.
+
+    # Perhaps can use a fictitious dTfdt at that point to define the ghost cell
+
+    lbound = [i for i in 2:dom.nr if (has_ice[i] && no_ice[i-1])]
+    rbound = [i for i in 1:dom.nr-1 if (has_ice[i] && no_ice[i+1])]
+    if length(lbound) == 0
+        #nothing
+    elseif length(lbound == 1)
+        # Treat ghost cell
+        # dTfdt[lbound[1]-1] = ...
+    else
+        @warn "Multiple chunks of ice may not be handled correctly." lbound rbound
+    end
+    if length(rbound) == 0
+        #nothing
+    elseif length(rbound == 1)
+        # Treat ghost cell
+        # dTfdt[rbound[1]+1] = ...
+    else
+        @warn "Multiple chunks of ice may not be handled correctly." lbound rbound
+    end
+
+
+    # Alternatively: freeze Tf values that no longer have ice, use them as is.
+    # That seems like a bad idea though.
+
+
+
+    # wallBC = params[:Kgl]/kf*(Tgl - Tf[ir])
+
+    # dTfdr = fill(0.0, dom.nr)
+    # dTfdr[dom.nr] = no_ice[dom.nr] ? 0 : wallBC
+    # for ir in 2:dom.nr-1
+    #     dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
+    # end
+    # d2Tfdr2 = fill(0.0, dom.nr)
+    # # dTfdr[1] = 0
+    # # dTfdr[dom.nr] = no_ice[dom.nr] ? 0 : params[:Kgl]/kf*(Tgl - Tf[ir])
+    # d2Tfdr2[1] = (-2Tf[1] + 2Tf[2])*dom.dr2 # Adiabatic ghost cell
+    # d2Tfdr2[dom.nr] = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*wallBC)*dom.dr2 # Adiabatic ghost cell
+    # for ir in 2:dom.nr-1
+    #     d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
+    # end
+
+
+    # top_bound_term = fill(0.0, dom.nr)
+    # bot_bound_term = fill(0.0, dom.nr)
+    # for ir in axes(ϕ, 1)
+    #     if no_ice[ir]
+    #         continue
+    #     end
+    #     if top_contact[ir]
+    #         # Adiabatic boundary
+    #         top_bound_term = 0
+    #     else
+    #         # Stefan boundary
+    #         q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
+    #         top_bound_term = q - kf*dϕdr/dϕdz*dTfdr[ir]
+    #     end
+    #     if bot_contact[ir]
+    #         # Shelf boundary
+    #         bot_bound_term = params[:Kv]*(T[ir,begin] - params[:Tsh])
+    #     else
+    #         # Stefan boundary
+    #         q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
+    #         bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr[ir]
+    #     end
+    # end
+
+
+
+end
+
+
 # -------------------------- Heat transfer only functions
 
 
