@@ -120,9 +120,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
         # Check if in frozen domain; if so, fix pressure at arbitrary value
         if pϕ <= 0
             add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-            # rhs[imx] = 1.1p_sub
             rhs[imx] = calc_psub(Tf[ir])
-            # rhs[imx] = p_ch
             continue
         end
 
@@ -238,7 +236,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
                     rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else # Very small θ
-                    # @info "hmm, west" θr dr ir iz
                     pc += -2bp*dr2 # Regular
                     ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1)
                     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
@@ -263,7 +260,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             nϕ = ϕ[ir, iz+1]
             # Check for Stefan front
             if nϕ < 0 # Front is within a cell of boundary
-                # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
                 if θz > θ_thresh
@@ -272,11 +268,9 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 else
                     # First: use Neumann BC to get ghost cell left
                     # Second: extrapolate using left ghost cell across front
-                    
                     pc += -2bp*dz2/(θz+1)
                     rhs[imx] -= 2psub_l*dz2*bp/(θz+1)
                 end
-                # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
                 # p. 65, 66 of project notes
@@ -299,9 +293,8 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     pc += -2bp*dz2/θz -2/Rp0*dz1 - dbz/bp/Rp0
                     rhs[imx] -= 2*psub_l*bp*dz2/θz + p_ch/Rp0*(dbz/bp + 2dz1)
                 else
-                    # First: use Neumann BC to get ghost cell left
+                    # First: use Robin BC to get ghost cell left
                     # Second: extrapolate using left ghost cell across front
-                    
                     pc += (-2bp*dz2 + dbz*dz1 - (dbz/bp + 2*θz*dz1)/Rp0)/(θz+1)
                     rhs[imx] -= (psub_l*(2dz2*bp - dbz*dz1) + p_ch/Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
                 end
@@ -313,11 +306,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 sc +=  2bp*dz2
                 rhs[imx] -= p_ch*(dbz/bp + 2dz1)/Rp0
             end
-            #
-            # BC4 = p_ch
-            # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-            # rhs[imx] = BC4
-            # continue
 
         else # Bulk in z, still need to check for Stefan front
             nϕ = ϕ[ir, iz+1]
@@ -336,7 +324,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     sc += bp*dz2 - dbz*0.5*dz1
                     rhs[imx] -= psub_l*(bp*dz2 + dbz*0.5*dz1)/θz
                 else
-                    # @info "hmm, north" θz dz ir iz
                     pc += -2bp*dz2
                     sc += (2*bp*θz*dz2 - dbz*dz1)/(θz+1)
                     rhs[imx] -= psub_l*(2bp*dz2 + dbz*dz1)/(θz+1)
@@ -367,9 +354,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
         wc != 0 && add_to_vcr!(vcr, dom, imx, (-1, 0), wc)
         nc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 1), nc)
         sc != 0 && add_to_vcr!(vcr, dom, imx, ( 0,-1), sc)
-        # if (ir, iz) == (49, 36) || (ir, iz) == (49, 49)
-        #     @info "psolve" ir iz pc ec wc nc sc rhs[imx]
-        # end
 
     end
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
