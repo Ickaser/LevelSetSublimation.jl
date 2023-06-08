@@ -16,31 +16,40 @@ function dudt_heatmass!(du, u, integ_pars, t)
     params = integ_pars[2]
     p_last = integ_pars[3]
     dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    ϕ, Tf, Tgl = ϕ_T_from_u_view(u, dom)
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
-    if any(Tf .!= clamp.(Tf, 200, 350))
-        @warn "Crazy Tf, clamped" Tf
-        clamp!(Tf, 200, 350)
-    end
-    if Tgl != clamp(Tgl, 200, 400)
-        @warn "Crazy Tgl, clamped"
-        Tgl = clamp(Tgl, 200, 400)
-    end
-    T = solve_T(u, dom, params)
+    # if any(Tf .!= clamp.(Tf, 200, 350))
+    #     @warn "Crazy Tf, clamped" Tf
+    #     clamp!(Tf, 200, 350)
+    # end
+    # if Tgl != clamp(Tgl, 200, 400)
+    #     @warn "Crazy Tgl, clamped"
+    #     Tgl = clamp(Tgl, 200, 400)
+    # end
+    # T = solve_T(u, dom, params)
 
-    p_sub = calc_psub.(Tf)
-    # If no sublimation occurring, just let temperature increase
-    if all(p_sub .< params[:p_ch]) # No driving force for mass transfer: no ice loss, just temperature change
-        Qice, Qgl = compute_Qice_noflow(u, T, dom, params)
-        # TODO 
-        dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-8) # Prevent explosion during last time step by not letting volume go to 0
-        dTgl .= (Q_gl_RF - Qgl) / m_cp_gl
-        dϕ .= 0.0
-        return nothing
-    end
+    # p_sub = calc_psub.(Tf)
+    # # If no sublimation occurring, just let temperature increase
+    # if all(p_sub .< params[:p_ch]) # No driving force for mass transfer: no ice loss, just temperature change
+    #     Qice, Qgl = compute_Qice_noflow(u, T, dom, params)
+    #     # TODO 
+    #     dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-8) # Prevent explosion during last time step by not letting volume go to 0
+    #     dTgl .= (Q_gl_RF - Qgl) / m_cp_gl
+    #     dϕ .= 0.0
+    #     return nothing
+    # end
 
-    p = solve_p(u, T, dom, params, p_last)
+    # p = solve_p(u, T, dom, params, p_last)
+
+    # Use the dynamically updated Tf as a guess, internally
+    Tfs, T, p = pseudosteady_Tf_T_p(u, dom, params)
+
+    # Drive guess in the direction of the solved value, with approximate dt
+    dTf .= (Tfs - Tf) / 60
+    # Store pseudosteady in u, for use in other functions
+    Tf .= Tfs
+
     integ_pars[3] .= p # Cache current state of p as a guess for next timestep
     vf, dϕdx_all = compute_frontvel_mass(u, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
@@ -50,10 +59,8 @@ function dudt_heatmass!(du, u, integ_pars, t)
     # TODO
     Qice, Qgl = compute_Qice(u, T, p, dom, params)
     # dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
-    dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
+    # dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
     dTgl .= (Q_gl_RF - Qgl) / m_cp_gl
-    # du[ntot+1] .= dTfdt
-    # du[ntot+2] .= dTgldt
 
     # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
@@ -88,9 +95,9 @@ function dudt_heatmass!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf
+    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf Tgl
     if minimum(dϕ) < 0
-        @info "whole thing" dϕ ϕ
+        @info "negative dϕ" findall(dϕ.<0)
     end
     return nothing
 end
@@ -175,7 +182,13 @@ function local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
     return qflux + ΔH*mflux, dϕdr, dϕdz
 end
 
-function dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom, params)
+function dTfdt_radial(u, T, p, dϕdx_all, dom::Domain, params)
+    dTfdt = similar(u, dom.nr)
+    dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom, params)
+    return dTfdt
+end
+
+function dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom::Domain, params)
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     @unpack ρf, Cpf, kf, Q_ic = params
 
