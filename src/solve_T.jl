@@ -292,15 +292,20 @@ function add_to_vcr!(vcr, dom, p_imx, shift, val)
     push!(rows, p_imx)
 end
 
-
 function pseudosteady_Tf_T_p(u, dom, params; abstol=1e-2)
+    T0 = solve_T(u, dom, params)
+    p0 = solve_p(u, T0, dom, params)
+    return pseudosteady_Tf_T_p(u, dom, params, p0; abstol=abstol)
+end
+
+function pseudosteady_Tf_T_p(u, dom, params, pg; abstol=1e-2)
     ϕ, Tf, Tgl = ϕ_T_from_u_view(u, dom)
     @unpack kf, ρf, Cpf = params
 
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
     T0 = solve_T(u, dom, params)
-    p0 = solve_p(u, T0, dom, params)
+    p0 = solve_p(u, T0, dom, params, pg)
     α = kf/ρf/Cpf
     CFL = 0.4
     dt = CFL / (α/dom.dr^2)

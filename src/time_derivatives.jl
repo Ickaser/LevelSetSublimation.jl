@@ -43,7 +43,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     # p = solve_p(u, T, dom, params, p_last)
 
     # Use the dynamically updated Tf as a guess, internally
-    Tfs, T, p = pseudosteady_Tf_T_p(u, dom, params)
+    Tfs, T, p = pseudosteady_Tf_T_p(u, dom, params, p_last)
 
     # Drive guess in the direction of the solved value, with approximate dt
     dTf .= (Tfs - Tf) /300 
