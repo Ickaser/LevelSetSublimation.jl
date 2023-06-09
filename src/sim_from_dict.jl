@@ -225,13 +225,15 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     end
     # --- Solve
     if dudt_func == dudt_heatmass!
-        CFL = 0.5
-        α = params[:kf]/params[:ρf]/params[:Cpf]
-        dt = CFL / (α/dom.dr^2)
+        # CFL = 0.5
+        # α = params[:kf]/params[:ρf]/params[:Cpf]
+        # dt = CFL / (α/dom.dr^2)
+        dt = 300
         if verbose
             @info "Timestepping:" dt
         end
         sol = solve(prob, SSPRK33(), dt=dt, callback=cbs; ) # Fixed timestepping: 1 minute
+        # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     else
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     end
