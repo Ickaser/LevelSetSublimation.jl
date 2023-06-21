@@ -15,6 +15,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params = integ_pars[2]
     p_last = integ_pars[3]
+    Tf_last = integ_pars[4]
     dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
     ϕ, Tf, Tgl = ϕ_T_from_u_view(u, dom)
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
@@ -42,8 +43,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
 
     # p = solve_p(u, T, dom, params, p_last)
 
-    # Use the dynamically updated Tf as a guess, internally
-    Tfs, T, p = pseudosteady_Tf_T_p(u, dom, params, p_last)
+    Tfs, T, p = pseudosteady_Tf_T_p(u, dom, params, Tf_last, p_last)
 
     # Drive guess in the direction of the solved value, with approximate dt
     dTf .= (Tfs - Tf) /300 
@@ -51,6 +51,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     Tf .= Tfs
 
     integ_pars[3] .= p # Cache current state of p as a guess for next timestep
+    integ_pars[4] .= Tfs
     vf, dϕdx_all = compute_frontvel_mass(u, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:, :, 1]
@@ -95,7 +96,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf Tgl
+    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) Tgl
     if minimum(dϕ) < 0
         @info "negative dϕ" findall(dϕ.<0)
     end
@@ -188,7 +189,7 @@ function dTfdt_radial(u, T, p, dϕdx_all, dom::Domain, params)
     return dTfdt
 end
 
-function dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom::Domain, params)
+function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     @unpack ρf, Cpf, kf, Q_ic = params
 
@@ -248,7 +249,7 @@ function dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom::Domain, params)
     rbound = [i for i in 1:dom.nr-1 if (has_ice[i] && no_ice[i+1])]
     if length(lbound) == 0
         #nothing
-    elseif length(lbound == 1)
+    elseif length(lbound) == 1
         # Treat ghost cell
         # dTfdt[lbound[1]-1] = ...
     else
@@ -256,7 +257,7 @@ function dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom::Domain, params)
     end
     if length(rbound) == 0
         #nothing
-    elseif length(rbound == 1)
+    elseif length(rbound) == 1
         # Treat ghost cell
         # dTfdt[rbound[1]+1] = ...
     else

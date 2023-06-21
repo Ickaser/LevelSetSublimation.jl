@@ -188,14 +188,15 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
 
-    # Cached array for using last pressure state as guess
+    # Cached array for using last pressure and Tf states as guess
     # This gets ignored for heat-only simulation, but shouldn't cause any problems
     p_sub = calc_psub(ustrip(u"K", Tf0))
     p_last = fill(p_sub, size(dom))
+    Tf_last = fill(ustrip(u"K", Tf0), dom.nr)
 
 
     # ---- Set up ODEProblem
-    prob_pars = (dom, params, p_last)
+    prob_pars = (dom, params, p_last, Tf_last)
     tspan = (0, tf)
     prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
 
@@ -228,7 +229,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         # CFL = 0.5
         # α = params[:kf]/params[:ρf]/params[:Cpf]
         # dt = CFL / (α/dom.dr^2)
-        dt = 300
+        dt = 60
         if verbose
             @info "Timestepping:" dt
         end

@@ -293,17 +293,19 @@ function add_to_vcr!(vcr, dom, p_imx, shift, val)
 end
 
 function pseudosteady_Tf_T_p(u, dom, params; abstol=1e-2)
+    Tf0 = ϕ_T_from_u(u, dom)[2]
     T0 = solve_T(u, dom, params)
     p0 = solve_p(u, T0, dom, params)
-    return pseudosteady_Tf_T_p(u, dom, params, p0; abstol=abstol)
+    return pseudosteady_Tf_T_p(u, dom, params, Tf0, p0; abstol=abstol)
 end
 
-function pseudosteady_Tf_T_p(u, dom, params, pg; abstol=1e-2)
+function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
     ϕ, Tf, Tgl = ϕ_T_from_u_view(u, dom)
     @unpack kf, ρf, Cpf = params
 
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
+    Tf .= Tfg
     T0 = solve_T(u, dom, params)
     p0 = solve_p(u, T0, dom, params, pg)
     α = kf/ρf/Cpf
@@ -315,7 +317,7 @@ function pseudosteady_Tf_T_p(u, dom, params, pg; abstol=1e-2)
 
     for it in 1:nt
         # @info "step: it=$it, ext=$(extrema(dTfdt))"
-        dTfdt_radial!(dTfdt, u, T0, p0, dϕdx_all, dom, params)
+        dTfdt_radial!(dTfdt, u, Tfg, T0, p0, dϕdx_all, dom, params)
         if calc_err_reg(dTfdt, :L∞) < abstol
             @info "num steps to pseudosteady" it
             break
@@ -326,8 +328,6 @@ function pseudosteady_Tf_T_p(u, dom, params, pg; abstol=1e-2)
     end
 
     # @info "max steps reached" nt dTfdt
-
-    
     return Tf, T0, p0
 
 end
