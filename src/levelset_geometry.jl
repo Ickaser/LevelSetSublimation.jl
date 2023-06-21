@@ -250,3 +250,52 @@ function compute_iceht_bottopcont(ϕ, dom)
     end
     return heights, bottom_contact, top_contact
 end
+
+function compute_discrete_delta(i::Int, j::Int, ϕ, dom::Domain; ϵ=1e-8)
+    rp_room = checkbounds(Bool, ϕ, i+1, j)
+    rm_room = checkbounds(Bool, ϕ, i-1, j)
+    zp_room = checkbounds(Bool, ϕ, i, j+1)
+    zm_room = checkbounds(Bool, ϕ, i, j-1)
+    if !rp_room
+        D0r = (ϕ[i,j]-ϕ[i-1,j])*dom.dr1
+    elseif !rm_room
+        D0r = (ϕ[i+1,j]-ϕ[i,j])*dom.dr1
+    else
+        D0r = (ϕ[i+1,j]-ϕ[i-1,j])*0.5dom.dr1
+    end
+    if !zp_room
+        D0z = (ϕ[i,j]-ϕ[i,j-1])*dom.dr1
+    elseif !zm_room
+        D0z = (ϕ[i,j+1]-ϕ[i,j])*dom.dr1
+    else
+        D0z = (ϕ[i,j+1]-ϕ[i,j-1])*0.5dom.dr1
+    end
+
+    norm∇ϕ = sqrt(D0r^2 + D0z^2 + ϵ)
+    if rp_room && ϕ[i,j]*ϕ[i+1,j] <= 0
+        D⁺r = (ϕ[i+1,j]-ϕ[i,j])*dom.dr1
+        δr⁺ = abs(ϕ[i+1,j]*D0r)/abs(D⁺r)/norm∇ϕ*dom.dr1*dom.dz1
+    else
+        δr⁺ = 0
+    end
+    if rm_room && ϕ[i,j]*ϕ[i-1,j] <= 0
+        D⁻r = (ϕ[i,j]-ϕ[i-1,j])*dom.dr1
+        δr⁻ = abs(ϕ[i-1,j]*D0r)/abs(D⁻r)/norm∇ϕ*dom.dr1*dom.dz1
+    else
+        δr⁻ = 0
+    end
+    if zp_room && ϕ[i,j+1]*ϕ[i,j] <= 0
+        D⁺z = (ϕ[i,j+1]-ϕ[i,j])*dom.dr1
+        δz⁺ = abs(ϕ[i,j+1]*D0z)/abs(D⁺z)/norm∇ϕ*dom.dr1*dom.dz1
+    else
+        δz⁺ = 0
+    end
+    if zm_room && ϕ[i,j]*ϕ[i,j-1] <= 0
+        D⁻z = (ϕ[i,j]-ϕ[i,j-1])*dom.dr1
+        δz⁻ = abs(ϕ[i,j-1]*D0z)/abs(D⁻z)/norm∇ϕ*dom.dr1*dom.dz1
+    else
+        δz⁻ = 0
+    end
+
+    δ = δr⁺ + δr⁻ + δz⁺ + δz⁻
+end
