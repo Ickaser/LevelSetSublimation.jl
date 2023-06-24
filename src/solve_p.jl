@@ -59,7 +59,7 @@ If `κ=0`, no spatial variation due to pressure occurs.
 """
 function eval_b(T, p, params)
     @unpack l, κ, R, Mw, μ = params
-    b = @. Mw/R/T * (l*sqrt(R*max(T,1)/Mw) + κ/μ*p)
+    b = @. Mw/R/T * (l*sqrt(R*T/Mw) + κ/μ*p)
 end
 
 """
