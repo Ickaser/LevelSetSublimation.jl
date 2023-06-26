@@ -89,10 +89,16 @@ const ρ_wat = 997.0u"kg/m^3"
 # IAPWS for ice: use triple point value for simplicity
 const Cp_ice = 0.209e4 * u"J/kg/K"
 
+# Water vapor heat capacity near triple point
+const Cp_vap = 1.86u"kJ/kg/K"
+
 # From McCarthy and Fabre, 1989 book chapter
 # Thermal conductivity of sucrose, Caster grade powder
 const ρ_sucrose = 892u"kg/m^3"
 const k_sucrose = 0.139u"W/m/K"
+
+# From NIST, multiple sources
+const Cp_sucrose = 422.50u"J/mol/K" / 342.3u"g/mol"
 
 # From a solar paper and nanomaterials paper.
 # Not clear what temperature (or even state) this is for
