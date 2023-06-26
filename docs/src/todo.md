@@ -1,12 +1,15 @@
-# To Do
+# Backlog
 
-- Use `u_from_ϕ_T` and similar functions everywhere, so that no state indices are hard-coded
-- When building a "thermocouple" function for Tf, don't interpolate full system (just Tf at center), so that it's cheaper?
 - Pull all level set geometry calculations into functions, write unit tests for all of those
+- Compare level set geometry against discrete delta calculations
 
+- Incorporate discrete delta into Tf
 
-- Begin adding variation in Tf: first, try with a full set of Tf variables, and see if it takes tiny time steps
-    - Geometric: detecting where there's ice, what its height is, local surface area (mini contour)
+- Improve speed of pseudosteady calculation
+
+- Change process conditions (Tsh, Pch, etc.) into a time-dependent function, rather than a callback (currently holds back the time stepping)
+
+- Make plots of LyoPRONTO comparison
 
 - Build in some doctests
 - Begin building test suite for every function, especially the edge cases
@@ -20,3 +23,10 @@
 - Reinit happens at almost every time step. Speed up the check for determining if necessary?
 - Docs for new reinit behavior
 - Unify error region across all methods
+
+# Next TODO
+
+- Formulate axisymmetric volume, surface area in terms of delta function integrals
+
+- Build discrete delta integral
+- Tests for discrete delta integral

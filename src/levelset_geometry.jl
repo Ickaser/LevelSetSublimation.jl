@@ -251,7 +251,7 @@ function compute_iceht_bottopcont(ϕ, dom)
     return heights, bottom_contact, top_contact
 end
 
-function compute_discrete_delta(i::Int, j::Int, ϕ, dom::Domain; ϵ=1e-8)
+function compute_discrete_delta(i::Int, j::Int, ϕ, dom::Domain; ϵ=1e-10)
     rp_room = checkbounds(Bool, ϕ, i+1, j)
     rm_room = checkbounds(Bool, ϕ, i-1, j)
     zp_room = checkbounds(Bool, ϕ, i, j+1)
@@ -278,7 +278,7 @@ function compute_discrete_delta(i::Int, j::Int, ϕ, dom::Domain; ϵ=1e-8)
     else
         δr⁺ = 0
     end
-    if rm_room && ϕ[i,j]*ϕ[i-1,j] <= 0
+    if rm_room && ϕ[i,j]*ϕ[i-1,j] < 0
         D⁻r = (ϕ[i,j]-ϕ[i-1,j])*dom.dr1
         δr⁻ = abs(ϕ[i-1,j]*D0r)/abs(D⁻r)/norm∇ϕ*dom.dr1*dom.dz1
     else
@@ -290,7 +290,7 @@ function compute_discrete_delta(i::Int, j::Int, ϕ, dom::Domain; ϵ=1e-8)
     else
         δz⁺ = 0
     end
-    if zm_room && ϕ[i,j]*ϕ[i,j-1] <= 0
+    if zm_room && ϕ[i,j]*ϕ[i,j-1] < 0
         D⁻z = (ϕ[i,j]-ϕ[i,j-1])*dom.dr1
         δz⁻ = abs(ϕ[i,j-1]*D0z)/abs(D⁻z)/norm∇ϕ*dom.dr1*dom.dz1
     else
@@ -298,4 +298,9 @@ function compute_discrete_delta(i::Int, j::Int, ϕ, dom::Domain; ϵ=1e-8)
     end
 
     δ = δr⁺ + δr⁻ + δz⁺ + δz⁻
+end
+
+function compute_icesurf_δ(ϕ, dom)
+    δ = compute_discrete_delta.(1:dom.nr, permutedims(1:dom.nz), [ϕ], [dom])
+    SA = 2π*sum(δ .* dom.rgrid)*dom.dr*dom.dz
 end
