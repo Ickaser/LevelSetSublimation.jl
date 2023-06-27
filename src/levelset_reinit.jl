@@ -235,6 +235,10 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
             F[c] = (rij_list[i] * sum(ϕ[Sij]) - ϕ[c]) / dx
         end
         rhs .= S .* (𝒢.-1) .- 0.5F
+        if any(isnan.(rhs))
+            @warn "NaN in reinit!" findall(isnan.(rhs))
+            rhs[isnan.(rhs)] .= 0
+        end
         @. ϕ -= rhs * dτ
         # if maximum(abs.(rhs))*dτ < 
         #     @info "Exiting reinit because maxiu"
