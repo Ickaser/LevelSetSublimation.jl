@@ -32,7 +32,7 @@ function solve_p(u, T, dom::Domain, params, p0; maxit=20, reltol=1e-6)
     for i in 1:maxit
         b = eval_b(T, p0, params)
         p⁺ .= solve_p_given_b(ϕ, b, Tf, dom, params)
-        relerr = calc_err_reg((p⁺ .- p0) ./ p⁺, :L∞, :)
+        relerr = norm((p⁺ .- p0) ./ p⁺, Inf)
         if relerr < reltol
             # @info "Number of p iterations: $i"
             return p⁺

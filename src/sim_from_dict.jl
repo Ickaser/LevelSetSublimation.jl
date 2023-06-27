@@ -84,7 +84,7 @@ function needs_reinit(u, t, integ)
     ϕ = ϕ_T_from_u(u, dom)[1]
     # err = sdf_err_L1(ϕ, dom)
     B = identify_B(ϕ, dom)
-    err = calc_err_reg(𝒢_weno_all(ϕ, dom).-1, :L∞, B)
+    err = norm(𝒢_weno_all(ϕ, dom)[B].-1, Inf)
     tol = 0.02 # Based on Luddens 2015
     # @info "error from sdf" err-tol
     return err > tol

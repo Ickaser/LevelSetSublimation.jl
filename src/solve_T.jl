@@ -318,7 +318,7 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
     for it in 1:nt
         # @info "step: it=$it, ext=$(extrema(dTfdt))"
         dTfdt_radial!(dTfdt, u, Tfg, T0, p0, dϕdx_all, dom, params)
-        if calc_err_reg(dTfdt, :L∞) < abstol
+        if norm(dTfdt, Inf) < abstol
             @info "num steps to pseudosteady" it
             break
         end
