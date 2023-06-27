@@ -120,10 +120,10 @@ function sdf_err_L1(ϕ, dom; region=:B)
         Bf = identify_B(ϕ, dom)
         B = findall(Bf)
         𝒢 = 𝒢_weno.([ϕ], B, [dom])
-        return sum(abs.(𝒢 .-1)) / length(B)
+        return norm(𝒢 .-1, 1) 
     elseif region == :all
         𝒢 = 𝒢_weno_all(ϕ, dom)
-        return sum(abs.(𝒢 .-1)) / dom.ntot
+        return norm(𝒢 .-1, 1) 
     else
         @error "Bad region to error calc; expect `:B` or `:all`." region
     end
@@ -144,37 +144,38 @@ function sdf_err_L∞(ϕ, dom; region=:B)
     else
         @error "Bad region to error calc; expect `:B` or `:all`." region
     end
-    return maximum(abs.(𝒢 .-1)) 
+    return norm(𝒢 .-1, Inf) 
 end
 
-"""
-    calc_err_reg(arr, norm=:L∞, region=Colon())
+# """
+#     calc_err_reg(arr, norm_p=:L∞, region=Colon())
 
-Compute the given norm (`:L1`, `:L2`, or `:L∞`) of the given array, in provided `region` 
-(which must be a valid set of indices for provided `arr`).
+# Compute the norm with given `norm_p` (e.g. `1`, `2`, or `Inf`) of the given array, in provided `region` 
+# (which must be a valid set of indices for provided `arr`).
 
-`region` defaulting to `Colon()` means looking at the full array.
-A `BitArray` or vector of `CartesianIndex`es, as result from e.g. `ϕ .> 0` or `findall(ϕ .> 0)` are valid options.
-"""
-function calc_err_reg(arr, norm=:L∞, region=Colon())
-    # if region == :B
-    #     reg = identify_B(ϕ, dom)
-    # elseif region == :all
-    #     reg = Colon()
-    # else
-    #     @error "Bad region to error calc; expect `:B` or `:all`." region
-    # end
+# `region` defaulting to `Colon()` means looking at the full array.
+# A `BitArray` or vector of `CartesianIndex`es, as result from e.g. `ϕ .> 0` or `findall(ϕ .> 0)` are valid options.
+# """
+# function calc_err_reg(arr, norm_p=Inf, region=Colon())
+#     # if region == :B
+#     #     reg = identify_B(ϕ, dom)
+#     # elseif region == :all
+#     #     reg = Colon()
+#     # else
+#     #     @error "Bad region to error calc; expect `:B` or `:all`." region
+#     # end
 
-    if norm == :L∞
-        return maximum(abs.(arr[region]))
-    elseif norm == :L1
-        return sum(abs.(arr[region]))
-    elseif norm == :L2
-        return sqrt(sum((arr[region]).^2))
-    else
-        @error "Bad norm to error calc; expect `:B` or `:all`." norm
-    end
-end
+#     # if norm_name == :L∞
+#     #     return norm(arr[region], Inf)
+#     # elseif norm_name == :L1
+#     #     return norm(arr[region], 1)
+#     # elseif norm_name == :L2
+#     #     return norm(arr[region], 2)
+#     # else
+#     #     @error "Bad norm to error calc; expect `:B` or `:all`." norm
+#     # end
+#     norm(arr[region], norm_p)
+# end
 
 """
     reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=:B)
@@ -216,7 +217,7 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
 
     for v in 1:maxsteps
         𝒢 .= 𝒢_weno_all(ϕ, dom; signs=signs)
-        if calc_err_reg(𝒢 .- 1, :L∞, region) < tol
+        if norm(𝒢[region] .- 1, Inf) < tol
             # @info "Early reinit finish. Steps:" v-1
             break
         end
