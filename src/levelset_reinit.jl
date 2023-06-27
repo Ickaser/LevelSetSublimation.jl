@@ -235,6 +235,9 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
             # Eq. 21b
             F[c] = (rij_list[i] * sum(ϕ[Sij]) - ϕ[c]) / dx
         end
+
+        # TODO: see Della Rocca and Blanquart 2014 to handle boundaries
+
         rhs .= S .* (𝒢.-1) .- 0.5F
         if any(isnan.(rhs))
             @warn "NaN in reinit!" findall(isnan.(rhs))

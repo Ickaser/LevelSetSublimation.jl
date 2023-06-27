@@ -1,7 +1,6 @@
 # Backlog
 
 - Pull all level set geometry calculations into functions, write unit tests for all of those
-- Compare level set geometry against discrete delta calculations
 
 - Incorporate discrete delta into Tf
 
@@ -21,8 +20,9 @@
 
 - Reinit: steady state check for iteration
 - Reinit happens at almost every time step. Speed up the check for determining if necessary?
-- Docs for new reinit behavior
+- Docs for new reinit behavior in simulation
 - Unify error region across all methods
+- Use Della Rocca and Blanquart, 2014 for reinitialization at boundaries
 
 # Next TODO
 
