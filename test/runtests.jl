@@ -18,6 +18,8 @@ include(testdir("tests_setup.jl"))
 
 include(testdir("tests_reinit.jl"))
 
+include(testdir("tests_levelsetgeometry.jl"))
+
 @testset "T solution: nothing here" begin
     # Compare to analytical:
     # 1D r direction, no ice 
@@ -51,6 +53,7 @@ end
 include(testdir("tests_lyopronto.jl"))
 
 include(testdir("tests_radialT.jl"))
+
 
 ti = time() - ti
 println("\nTesting took:")

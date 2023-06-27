@@ -1,12 +1,35 @@
-using DrWatson, Test
-@quickactivate :LevelSetSublimation
+# using DrWatson, Test
+# @quickactivate :LevelSetSublimation
 
-const LSS = LevelSetSublimation
+# const LSS = LevelSetSublimation
 
-dom1 = Domain(25, 24, 1.3, 2.0)
-dom2 = Domain(45, 35, 1.2, 2.1)
+rmax = 2.2
+zmax = 1.0
+dom1 = Domain(25, 24,   rmax, zmax)
+dom2 = Domain(47, 49,   rmax, zmax)
 
 ϕ1a = make_ϕ0(:circ, dom1)
 reinitialize_ϕ_HCR!(ϕ1a, dom1)
+ϕ2a = make_ϕ0(:circ, dom2) 
+reinitialize_ϕ_HCR!(ϕ2a, dom2)
 
-# @test 
+a = dom1.rmax/1.1
+c = dom1.zmax/1.1
+if c < a # Oblate spheroid
+    e = sqrt(1 - c^2/a^2)
+    spheroid_surf = 2π*a^2*(1 + (1-e^2)/e*atanh(e))  / 2 # Half for half a spheroid
+    # spheroid_surf = 2π*a^2 +  π*c^2/e*log((1+e)/(1-e))  / 2 # Half for half a spheroid
+else # Prolate spheroid
+    e = sqrt(1 - a^2/c^2)
+    spheroid_surf = 2π*a^2*(1 + c/a/e*asin(e))  / 2
+end
+
+@testset "surface areas" begin
+    @test spheroid_surf ≈ LSS.compute_icesurf_δ(ϕ1a, dom1) atol=dom1.dz
+    @test spheroid_surf ≈ LSS.compute_icesurf_δ(ϕ2a, dom2) atol=dom2.dz
+    @test spheroid_surf ≈ LSS.compute_icesurf(ϕ1a, dom1)  atol=dom1.dz
+    @test spheroid_surf ≈ LSS.compute_icesurf(ϕ2a, dom2)  atol=dom2.dz
+end
+
+
+

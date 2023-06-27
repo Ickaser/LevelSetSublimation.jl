@@ -307,6 +307,63 @@ function compute_discrete_delta(i::Int, j::Int, ϕ, dom::Domain; ϵ=1e-10)
 end
 
 function compute_icesurf_δ(ϕ, dom)
-    δ = compute_discrete_delta.(1:dom.nr, permutedims(1:dom.nz), [ϕ], [dom])
+    # δ = compute_discrete_delta.(1:dom.nr, permutedims(1:dom.nz), [ϕ], [dom])
+    δ = compute_discrete_delta_MG.(CartesianIndices(ϕ), [ϕ], [dom])
     SA = 2π*sum(δ .* dom.rgrid)*dom.dr*dom.dz
+end
+
+# --------------- Min & Gibou 2008 on surface integrals
+
+Pij(Pi, Pj, ϕi, ϕj) = Pi*ϕj/(ϕj-ϕi) + Pj*ϕi/(ϕi-ϕj)
+Pi(i, j, dom) = [dom.rgrid[i], dom.zgrid[j]]
+Pi(ij, dom) = [dom.rgrid[Tuple(ij)[1]], dom.zgrid[Tuple(ij)[2]]]
+distance(Pii, Pjj) = norm(Pii.-Pjj, 2)
+
+"""
+
+Table 1 from Min & Gibou 2008
+"""
+function calc_δ0(ϕ0, ϕ1, ϕ2, P0, P1, P2)
+    s0, s1, s2 = sign.([ϕ0, ϕ1, ϕ2])
+    if s0 == s1 && s1 == s2
+        δ0 = 0
+    elseif s0 == s1 && s0 != s2
+        P02 = Pij(P0, P2, ϕ0, ϕ2)
+        P12 = Pij(P1, P2, ϕ1, ϕ2)
+        δ0 = distance(P02, P12)/2 * ϕ2/(ϕ2-ϕ0)
+    elseif s0 != s1 && s0 == s2
+        P01 = Pij(P0, P1, ϕ0, ϕ1)
+        P21 = Pij(P2, P1, ϕ2, ϕ1)
+        δ0 = distance(P01, P21)/2*ϕ1/(ϕ1-ϕ0)
+    elseif s0 != s1 && s0 != s2
+        P01 = Pij(P0, P1, ϕ0, ϕ1)
+        P02 = Pij(P0, P2, ϕ0, ϕ2)
+        δ0 = distance(P01, P02)/2 * (ϕ1/(ϕ1-ϕ0) + ϕ2/(ϕ2-ϕ0))
+    else
+        @warn "Uncaught case somehow"
+    end
+    return δ0
+end
+
+function compute_discrete_delta_MG(ij::CartesianIndex, ϕ, dom)
+    δij = 0
+    simplex_vec = []
+    if checkbounds(Bool, ϕ, ij + CI(1,1))
+        push!(simplex_vec, [ij] .+ [CI(0,0), CI(1,0), CI(1,1)])
+        push!(simplex_vec, [ij] .+ [CI(0,0), CI(0,1), CI(1,1)])
+    end
+    if checkbounds(Bool, ϕ, ij + CI(-1, -1))
+        push!(simplex_vec, [ij] .+ [CI(0,0), CI(-1,0), CI(-1,-1)])
+        push!(simplex_vec, [ij] .+ [CI(0,0), CI(0,-1), CI(-1,-1)])
+    end
+    if checkbounds(Bool, ϕ, ij + CI(1, -1))
+        push!(simplex_vec, [ij] .+ [CI(0,0), CI(1,0), CI(0,-1)])
+    end
+    if checkbounds(Bool, ϕ, ij + CI(-1, 1))
+        push!(simplex_vec, [ij] .+ [CI(0,0), CI(-1,0), CI(0,1)])
+    end
+    for simplex in simplex_vec
+        δij += calc_δ0(ϕ[simplex]..., Pi.(simplex, [dom])...)
+    end
+    return δij*dom.dr1*dom.dz1
 end
