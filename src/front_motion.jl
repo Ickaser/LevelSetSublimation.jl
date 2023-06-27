@@ -64,7 +64,7 @@ Compute the total heat input into frozen domain from volumetric, shelf, and glas
 Contrast with `compute_Qice_noflow` and `compute_Qice`, which include heat to dried domain.
 """
 function compute_Qice_nodry(u, T, dom::Domain, params)
-    @unpack Kv, Kgl, Q_ic, Q_ck, Tsh= params
+    @unpack Kv, Kgl, Q_ic, Q_ck, Tsh = params
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
