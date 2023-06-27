@@ -24,12 +24,19 @@ else # Prolate spheroid
     spheroid_surf = 2π*a^2*(1 + c/a/e*asin(e))  / 2
 end
 
+spheroid_vol = 4/3*π*a*a*c/2
+
 @testset "surface areas" begin
     @test spheroid_surf ≈ LSS.compute_icesurf_δ(ϕ1a, dom1) atol=dom1.dz
     @test spheroid_surf ≈ LSS.compute_icesurf_δ(ϕ2a, dom2) atol=dom2.dz
-    @test spheroid_surf ≈ LSS.compute_icesurf(ϕ1a, dom1)  atol=dom1.dz
-    @test spheroid_surf ≈ LSS.compute_icesurf(ϕ2a, dom2)  atol=dom2.dz
+    @test spheroid_surf ≈ LSS.compute_icesurf(ϕ1a, dom1)  atol=dom1.dz 
+    @test spheroid_surf ≈ LSS.compute_icesurf(ϕ2a, dom2)  atol=dom2.dz 
 end
 
-
+@testset "volumes" begin
+    @test spheroid_vol ≈ LSS.compute_icevol_H(ϕ1a, dom1) atol=dom1.dz
+    @test spheroid_vol ≈ LSS.compute_icevol_H(ϕ2a, dom2) atol=dom2.dz
+    @test spheroid_vol ≈ LSS.compute_icevol(ϕ1a, dom1)  atol=dom1.dz 
+    @test spheroid_vol ≈ LSS.compute_icevol(ϕ2a, dom2)  atol=dom2.dz 
+end
 
