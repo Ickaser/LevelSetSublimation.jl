@@ -8,7 +8,7 @@ using DrWatson, Reexport
 @reexport using Unitful
 using CSV
 using ProgressMeter
-using LinearAlgebra
+using LinearAlgebra: norm
 
 export contour
 if !isdefined(LevelSetSublimation, :contour)
