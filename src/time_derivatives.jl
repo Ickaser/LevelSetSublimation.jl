@@ -185,12 +185,12 @@ end
 
 function dTfdt_radial(u, T, p, dϕdx_all, dom::Domain, params)
     dTfdt = similar(u, dom.nr)
-    dTfdt_radial!(dTfdt, u, T, p, dϕdx_all, dom, params)
+    dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
     return dTfdt
 end
 
 function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
     @unpack ρf, Cpf, kf, Q_ic = params
 
     Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
@@ -198,13 +198,31 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     has_ice = (Δξ .> 0)
     no_ice = (Δξ .== 0)
 
-    for ir in axes(dTfdt, 1)[has_ice]
+    for ir in axes(dTfdt, 1)
+        if no_ice[ir]
+            continue
+        end
+
         if ir == 1
             dTfdr = 0
             d2Tfdr2 = (-2Tf[1] + 2Tf[2])*dom.dr2 # Adiabatic ghost cell
         elseif ir == dom.nr
             dTfdr = params[:Kgl]/kf*(Tgl - Tf[ir])
             d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
+        elseif no_ice[ir-1] # On left side: away from center
+            @error "Not implemented"
+        elseif no_ice[ir+1] # On right side: pulled away from wall
+            integ_cells = [CI(ir+1, iz) for iz in 1:dom.nz if ϕ[ir,iz]<=0]
+            surf_integral = 0
+            for cell in integ_cells
+                q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, Tuple(cell)..., dϕdx_all, dom, params)
+                δ = compute_local_δ(cell, ϕ, dom )
+                surf_integral += dom.rgrid[ir+1]*q*δ*dom.dr*dom.dz / dϕdr
+            end
+
+            dTfdr = 1/kf/dom.rgrid[ir]/Δξ[ir] * surf_integral
+            # Use a ghost cell
+            d2Tfdr2 = (-2Tf[ir] + 2Tf[ir-1] + 2*dom.dr*dTfdr)*dom.dr2
         else
             dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
             d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
@@ -241,7 +259,6 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     # Need to define Tf one cell beyond the ice, actually, for other parts of implementation.
     # So: set up a ghost cell, with dTfdr defined by Stefan boundary
     # Question is: how to evaluate, exactly? Average across vertical direction?
-    # Probably need to derive an equation for this.
 
     # Perhaps can use a fictitious dTfdt at that point to define the ghost cell
 
