@@ -312,20 +312,49 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
     CFL = 0.4
     dt = CFL / (α/dom.dr^2)
     nt = max(3*dom.nr, ceil(Int, 100.0/dt))
+    Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
 
     dTfdt = zeros(dom.nr)
 
     for it in 1:nt
         # @info "step: it=$it, ext=$(extrema(dTfdt))"
         dTfdt_radial!(dTfdt, u, Tf, T0, p0, dϕdx_all, dom, params)
+        @. Tf += dTfdt*dt
+        T0 .= solve_T(u, dom, params)
+        p0 .= solve_p(u, T0, dom, params, p0)
         if norm(dTfdt, Inf) < abstol
             @info "num steps to pseudosteady" it
             break
         end
-        @. Tf += dTfdt*dt
-        T0 .= solve_T(u, dom, params)
-        p0 .= solve_p(u, T0, dom, params, p0)
     end
+
+    has_ice = (Δξ .> 0)
+    if findfirst(has_ice) > 1 
+        # Build a linear extrapolation
+        ir1 = findfirst(has_ice)
+        ir2 = ir1 + 1
+        Tf1 = Tf[ir1]
+        Tf2 = Tf[ir2]
+        # Assuming uniform grid, can work in indices rather than space
+        left_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
+        for ir in 1:ir1-1
+            Tf[ir] = extrap(ir)
+        end
+    end
+    if findlast(has_ice) < dom.nr
+        # Build a linear extrapolation
+        ir1 = findlast(has_ice)
+        ir2 = ir1 - 1
+        Tf1 = Tf[ir1]
+        Tf2 = Tf[ir2]
+        # Assuming uniform grid, can work in indices rather than space
+        right_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
+        for ir in ir1+1:dom.nr
+            Tf[ir] = right_Textrap(ir)
+        end
+    end
+
+
 
     # @info "max steps reached" nt dTfdt
     return Tf, T0, p0
