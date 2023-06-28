@@ -292,6 +292,29 @@ function add_to_vcr!(vcr, dom, p_imx, shift, val)
     push!(rows, p_imx)
 end
 
+function pseudosteady_Tf(u, dom, params)
+    ϕv, Tfv, Tglv = ϕ_T_from_u_view(u, dom)#[[true, false, true]]
+    @unpack ρf, Cpf, kf, Q_ic = params
+    dϕdx_all = dϕdx_all_WENO(ϕv, dom)
+
+    has_ice = (compute_iceht_bottopcont(ϕv, dom)[1] .> 0)
+    no_ice = .~ has_ice
+
+    # Note: residual function modifies u in-place
+    function resid!(dTfdt, Tf)
+        Tfv .= Tf
+        T = solve_T(u, dom, params)
+        p = solve_p(u, T, dom, params)
+        dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
+        extrap_Tf_noice!(Tf, has_ice, dom)
+        dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
+        @info "resid: $(norm(dTfdt, Inf))"
+        nothing
+    end
+
+    nlsolve(resid!, copy(Tfv))
+end
+
 function pseudosteady_Tf_T_p(u, dom, params; abstol=1e-2)
     Tf0 = ϕ_T_from_u(u, dom)[2]
     T0 = solve_T(u, dom, params)
@@ -313,6 +336,7 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
     dt = CFL / (α/dom.dr^2)
     nt = max(3*dom.nr, ceil(Int, 100.0/dt))
     Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
+    has_ice = (Δξ .> 0)
 
     dTfdt = zeros(dom.nr)
 
@@ -320,6 +344,7 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
         # @info "step: it=$it, ext=$(extrema(dTfdt))"
         dTfdt_radial!(dTfdt, u, Tf, T0, p0, dϕdx_all, dom, params)
         @. Tf += dTfdt*dt
+        extrap_Tf_noice!(Tf, has_ice, dom)
         T0 .= solve_T(u, dom, params)
         p0 .= solve_p(u, T0, dom, params, p0)
         if norm(dTfdt, Inf) < abstol
@@ -328,7 +353,15 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
         end
     end
 
-    has_ice = (Δξ .> 0)
+
+
+
+    # @info "max steps reached" nt dTfdt
+    return Tf, T0, p0
+
+end
+
+function extrap_Tf_noice!(Tf, has_ice, dom)
     if findfirst(has_ice) > 1 
         # Build a linear extrapolation
         ir1 = findfirst(has_ice)
@@ -352,11 +385,6 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
         for ir in ir1+1:dom.nr
             Tf[ir] = right_Textrap(ir)
         end
+        # @info "extrapolated" Tf[ir1:end]
     end
-
-
-
-    # @info "max steps reached" nt dTfdt
-    return Tf, T0, p0
-
 end
