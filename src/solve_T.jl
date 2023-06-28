@@ -28,11 +28,12 @@ Neumann boundaries use a ghost point & BC to define ghost cell, then use same st
 Coefficients computed in `gfm_extrap.ipynb`, using Sympy.  
 (For higher order, see Gibou and Fedkiw, 2005, "A fourth order accurate discretization ... Laplace ... ")  
 """
-function solve_T(u, dom::Domain, params)
+function solve_T(u, Tf, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
     @unpack Kgl, Kv, Q_ck, k, Tsh = params
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
 
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
@@ -43,10 +44,11 @@ function solve_T(u, dom::Domain, params)
     # end
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
-    vals = Vector{Float64}(undef, 0)
+    vals = Vector{eltype(Tf)}(undef, 0)
 
     vcr = (vals, cols, rows)
-    rhs = fill(0.0, ntot)
+    rhs = similar(Tf, ntot)
+    rhs .= 0
 
     # θ_thresh = dr / dom.rmax
     θ_thresh = 0.05
@@ -302,17 +304,18 @@ function pseudosteady_Tf(u, dom, params)
 
     # Note: residual function modifies u in-place
     function resid!(dTfdt, Tf)
-        Tfv .= Tf
-        T = solve_T(u, dom, params)
-        p = solve_p(u, T, dom, params)
+        # Tfv .= Tf
+        @info "resid"
+        # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
+        T = solve_T(u, Tf, dom, params)
+        p = solve_p(u, Tf, T, dom, params)
         dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
         extrap_Tf_noice!(Tf, has_ice, dom)
         dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
-        @info "resid: $(norm(dTfdt, Inf))"
         nothing
     end
 
-    nlsolve(resid!, copy(Tfv))
+    nlsolve(resid!, copy(Tfv), autodiff = :forward)
 end
 
 function pseudosteady_Tf_T_p(u, dom, params; abstol=1e-2)

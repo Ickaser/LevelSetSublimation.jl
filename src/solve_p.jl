@@ -16,15 +16,17 @@ Usually if it doesn't converge, it is because temperatures are outside the expec
 (Occasionally it means I incorrectly wrote a finite difference somewhere.)
 
 """
-function solve_p(u, T, dom::Domain, params; kwargs...) 
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+function solve_p(u, Tf, T, dom::Domain, params; kwargs...) 
+    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    ϕ = ϕ_T_from_u(u, dom)[1]
     # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
     b = eval_b(T, params[:p_ch], params)
     p0 = solve_p_given_b(ϕ, b, Tf, dom, params)
-    solve_p(u, T, dom::Domain, params, p0; kwargs...)
+    solve_p(u, Tf, T, dom::Domain, params, p0; kwargs...)
 end
-function solve_p(u, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+function solve_p(u, Tf, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
+    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    ϕ = ϕ_T_from_u(u, dom)[1]
 
     relerr::Float64 = 0.0
     p⁺ = copy(p0)
