@@ -20,26 +20,6 @@ function dudt_heatmass!(du, u, integ_pars, t)
     ϕ, Tf, Tgl = ϕ_T_from_u_view(u, dom)
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
-    # if any(Tf .!= clamp.(Tf, 200, 350))
-    #     @warn "Crazy Tf, clamped" Tf
-    #     clamp!(Tf, 200, 350)
-    # end
-    # if Tgl != clamp(Tgl, 200, 400)
-    #     @warn "Crazy Tgl, clamped"
-    #     Tgl = clamp(Tgl, 200, 400)
-    # end
-    # T = solve_T(u, dom, params)
-
-    # p_sub = calc_psub.(Tf)
-    # # If no sublimation occurring, just let temperature increase
-    # if all(p_sub .< params[:p_ch]) # No driving force for mass transfer: no ice loss, just temperature change
-    #     Qice, Qgl = compute_Qice_noflow(u, T, dom, params)
-    #     # TODO 
-    #     dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-8) # Prevent explosion during last time step by not letting volume go to 0
-    #     dTgl .= (Q_gl_RF - Qgl) / m_cp_gl
-    #     dϕ .= 0.0
-    #     return nothing
-    # end
 
     # p = solve_p(u, T, dom, params, p_last)
 
@@ -280,55 +260,6 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     else
         @warn "Multiple chunks of ice may not be handled correctly." lbound rbound
     end
-
-
-    # Alternatively: freeze Tf values that no longer have ice, use them as is.
-    # That seems like a bad idea though.
-
-
-
-    # wallBC = params[:Kgl]/kf*(Tgl - Tf[ir])
-
-    # dTfdr = fill(0.0, dom.nr)
-    # dTfdr[dom.nr] = no_ice[dom.nr] ? 0 : wallBC
-    # for ir in 2:dom.nr-1
-    #     dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
-    # end
-    # d2Tfdr2 = fill(0.0, dom.nr)
-    # # dTfdr[1] = 0
-    # # dTfdr[dom.nr] = no_ice[dom.nr] ? 0 : params[:Kgl]/kf*(Tgl - Tf[ir])
-    # d2Tfdr2[1] = (-2Tf[1] + 2Tf[2])*dom.dr2 # Adiabatic ghost cell
-    # d2Tfdr2[dom.nr] = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*wallBC)*dom.dr2 # Adiabatic ghost cell
-    # for ir in 2:dom.nr-1
-    #     d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
-    # end
-
-
-    # top_bound_term = fill(0.0, dom.nr)
-    # bot_bound_term = fill(0.0, dom.nr)
-    # for ir in axes(ϕ, 1)
-    #     if no_ice[ir]
-    #         continue
-    #     end
-    #     if top_contact[ir]
-    #         # Adiabatic boundary
-    #         top_bound_term = 0
-    #     else
-    #         # Stefan boundary
-    #         q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
-    #         top_bound_term = q - kf*dϕdr/dϕdz*dTfdr[ir]
-    #     end
-    #     if bot_contact[ir]
-    #         # Shelf boundary
-    #         bot_bound_term = params[:Kv]*(T[ir,begin] - params[:Tsh])
-    #     else
-    #         # Stefan boundary
-    #         q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
-    #         bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr[ir]
-    #     end
-    # end
-
-
 
 end
 
