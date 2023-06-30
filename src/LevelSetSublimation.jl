@@ -10,6 +10,8 @@ using CSV
 using ProgressMeter
 using LinearAlgebra: norm
 using NLsolve
+using NonlinearSolve
+using LinearSolve
 
 export contour
 if !isdefined(LevelSetSublimation, :contour)

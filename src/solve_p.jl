@@ -359,6 +359,9 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
 
     end
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
-    sol = mat_lhs \ rhs
+    prob = LinearProblem(mat_lhs, rhs)
+    # sol = solve(prob, SparspakFactorization()).u 
+    sol = solve(prob, UMFPACKFactorization()).u 
+    # sol = mat_lhs \ rhs
     psol = reshape(sol, nr, nz)
 end
