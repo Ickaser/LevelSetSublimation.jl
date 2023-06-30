@@ -277,7 +277,10 @@ function solve_T(u, Tf, dom::Domain, params)
 
     end
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
-    sol = mat_lhs \ rhs
+    prob = LinearProblem(mat_lhs, rhs)
+    # sol = solve(prob, SparspakFactorization()).u 
+    sol = solve(prob, UMFPACKFactorization()).u 
+    # sol = mat_lhs \ rhs
     T = reshape(sol, nr, nz)
 
     if minimum(T) <= 0
@@ -297,31 +300,40 @@ end
 function pseudosteady_Tf(u, dom, params)
     ϕv, Tfv, Tglv = ϕ_T_from_u_view(u, dom)#[[true, false, true]]
     @unpack ρf, Cpf, kf, Q_ic = params
+    @unpack kf, ρf, Cpf = params
     dϕdx_all = dϕdx_all_WENO(ϕv, dom)
 
     has_ice = (compute_iceht_bottopcont(ϕv, dom)[1] .> 0)
     no_ice = .~ has_ice
 
-    # Note: residual function modifies u in-place
-    function resid!(dTfdt, Tf)
+    T_cache = solve_T(u, Tfv, dom, params)
+    p_cache = solve_P(u, Tfv, T_cache, dom, params)
+    # function resid!(dTfdt, Tf)
+    function resid!(dTfdt, Tf, ssparams, t)
         # Tfv .= Tf
-        @info "resid"
+        # @info "resid"
         # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
-        T = solve_T(u, Tf, dom, params)
-        p = solve_p(u, Tf, T, dom, params)
-        dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
+        T_cache .= solve_T(u, Tf, dom, params)
+        p_cache .= solve_p(u, Tf, T_cache, dom, params, p0=p_cache)
+        dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
         extrap_Tf_noice!(Tf, has_ice, dom)
         dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
         nothing
     end
+    α = kf/ρf/Cpf
+    CFL = 0.4
+    dt = CFL / (α/dom.dr^2)
 
-    nlsolve(resid!, copy(Tfv), autodiff = :forward)
+    # Tfs = nlsolve(resid!, copy(Tfv)).zero
+    prob = SteadyStateProblem(resid!, copy(Tfv))
+    solve(prob, DynamicSS(Euler()), dt=dt)
+    # return resid!
 end
 
 function pseudosteady_Tf_T_p(u, dom, params; abstol=1e-2)
     Tf0 = ϕ_T_from_u(u, dom)[2]
-    T0 = solve_T(u, dom, params)
-    p0 = solve_p(u, T0, dom, params)
+    T0 = solve_T(u, Tf0, dom, params)
+    p0 = solve_p(u, Tf0, T0, dom, params)
     return pseudosteady_Tf_T_p(u, dom, params, Tf0, p0; abstol=abstol)
 end
 
@@ -332,8 +344,8 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
     Tf .= Tfg
-    T0 = solve_T(u, dom, params)
-    p0 = solve_p(u, T0, dom, params, pg)
+    T0 = solve_T(u, Tf, dom, params)
+    p0 = solve_p(u, Tf, T0, dom, params, pg)
     α = kf/ρf/Cpf
     CFL = 0.4
     dt = CFL / (α/dom.dr^2)
@@ -348,18 +360,19 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
         dTfdt_radial!(dTfdt, u, Tf, T0, p0, dϕdx_all, dom, params)
         @. Tf += dTfdt*dt
         extrap_Tf_noice!(Tf, has_ice, dom)
-        T0 .= solve_T(u, dom, params)
-        p0 .= solve_p(u, T0, dom, params, p0)
+        T0 .= solve_T(u, Tf, dom, params)
+        p0 .= solve_p(u, Tf, T0, dom, params, p0)
         if norm(dTfdt, Inf) < abstol
             @info "num steps to pseudosteady" it
-            break
+            # break
+            return Tf, T0, p0
         end
     end
 
 
 
 
-    # @info "max steps reached" nt dTfdt
+    @info "max steps reached" nt dTfdt
     return Tf, T0, p0
 
 end
