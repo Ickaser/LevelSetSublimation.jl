@@ -84,6 +84,14 @@ function compute_Qice_nodry(u, T, dom::Domain, params)
     return Qsh + Qgl + Qvol
 end
 
+function compute_Qgl(u, T, dom::Domain, params)
+    @unpack Kgl = params
+    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    # Heat flux from glass, at outer radius
+    zweights = compute_icegl_area_weights(ϕ, dom)
+    Qgl = 2π*dom.rmax * Kgl * sum(zweights .* ( Tgl .- T[end,:]))
+end
+
 """
     compute_topmassflux(ϕ, T, p, dom::Domain, params)
 
