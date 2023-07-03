@@ -127,13 +127,19 @@ function dudt_heatmass_params(u, config)
     dudt_heatmass(u, dom, params), dom, params
 end
 
+function set_params_at_t!(params, controls)
+end
+
+
 # ---------------------------
-function local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
+# For pseudosteady radial temperature
+
+function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
     @unpack k, ΔH = params
     b = eval_b_loc(T, p, ir, iz, params)
 
-    dTdr, dTdz = compute_Tderiv(u, T, ir, iz, dom, params)
-    dpdr, dpdz = compute_pderiv(u, T, p, ir, iz, dom, params)
+    dTdr, dTdz = compute_Tderiv(u, Tf, T, ir, iz, dom, params)
+    dpdr, dpdz = compute_pderiv(u, Tf, T, p, ir, iz, dom, params)
     # dϕdr = dpdr < 0 ? dϕdx_all[1][ir, iz] : dϕdx_all[2][ir, iz] # East or west based on mass flow
     # dϕdz = dpdz < 0 ? dϕdx_all[3][ir, iz] : dϕdx_all[4][ir, iz] # North or south based on mass flow
     dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, dpdr<0, dpdz<0, dϕdx_all, dom)
@@ -175,7 +181,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             integ_cells = [CI(ir+1, iz) for iz in 1:dom.nz if ϕ[ir,iz]<=0]
             surf_integral = 0
             for cell in integ_cells
-                q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, Tuple(cell)..., dϕdx_all, dom, params)
+                q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
                 δ = compute_local_δ(cell, ϕ, dom )
                 surf_integral += dom.rgrid[ir+1]*q*δ*dom.dr*dom.dz / dϕdr
             end
@@ -194,7 +200,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         else
             # Stefan boundary
             iz = findlast(ϕ[ir,:] .<=0) + 1
-            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
+            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
             top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
         end
 
@@ -204,13 +210,14 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         else
             # Stefan boundary
             iz = findfirst(ϕ[ir,:] .<=0) - 1
-            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, T, p, ir, iz, dϕdx_all, dom, params)
+            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
             bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
         end
 
         # @info "vals" dTfdr d2Tfdr2 Q_ic top_bound_term bot_bound_term 
         dTfdt[ir] = (kf*((ir == 1 ? 0 : 1/dom.rgrid[ir])*dTfdr + d2Tfdr2) + Q_ic + 
             (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
+
     end
 
     dTfdt[no_ice] .= 0 # Set to 0 elsewhere

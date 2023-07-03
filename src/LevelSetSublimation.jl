@@ -12,6 +12,7 @@ using LinearAlgebra: norm
 using NLsolve
 using NonlinearSolve
 using LinearSolve
+using NaNMath
 
 export contour
 if !isdefined(LevelSetSublimation, :contour)

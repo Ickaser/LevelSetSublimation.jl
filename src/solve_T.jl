@@ -278,8 +278,8 @@ function solve_T(u, Tf, dom::Domain, params)
     end
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
     prob = LinearProblem(mat_lhs, rhs)
-    # sol = solve(prob, SparspakFactorization()).u 
-    sol = solve(prob, UMFPACKFactorization()).u 
+    sol = solve(prob, SparspakFactorization()).u 
+    # sol = solve(prob, UMFPACKFactorization()).u 
     # sol = mat_lhs \ rhs
     T = reshape(sol, nr, nz)
 
@@ -299,35 +299,51 @@ end
 
 function pseudosteady_Tf(u, dom, params)
     ϕv, Tfv, Tglv = ϕ_T_from_u_view(u, dom)#[[true, false, true]]
+    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)#[[true, false, true]]
     @unpack ρf, Cpf, kf, Q_ic = params
     @unpack kf, ρf, Cpf = params
     dϕdx_all = dϕdx_all_WENO(ϕv, dom)
 
     has_ice = (compute_iceht_bottopcont(ϕv, dom)[1] .> 0)
-    no_ice = .~ has_ice
 
-    T_cache = solve_T(u, Tfv, dom, params)
-    p_cache = solve_P(u, Tfv, T_cache, dom, params)
-    # function resid!(dTfdt, Tf)
-    function resid!(dTfdt, Tf, ssparams, t)
+
+
+    # T_cache = solve_T(u, Tfv, dom, params)
+    # p_cache = solve_p(u, Tfv, T_cache, dom, params)
+    function resid!(dTfdt, Tf)
+    # function resid!(dTfdt, Tf, ssparams, t)
         # Tfv .= Tf
+        if any(isnan.(Tf))
+            @warn "NaN found"
+        end
         # @info "resid"
         # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
-        T_cache .= solve_T(u, Tf, dom, params)
-        p_cache .= solve_p(u, Tf, T_cache, dom, params, p0=p_cache)
-        dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
+        # T_cache .= solve_T(u, Tf, dom, params)
+        # p_cache .= solve_p(u, Tf, T_cache, dom, params, p_cache)
+        # dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
+        # Tf_extrap = copy(Tf)
         extrap_Tf_noice!(Tf, has_ice, dom)
-        dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
+        T = solve_T(u, Tf, dom, params)
+        p = solve_p(u, Tf, T, dom, params)
+        dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
+        # dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
+        # @info "resid" extrema(dTfdt) extrema(Tf) extrema(Tf_extrap)
         nothing
     end
     α = kf/ρf/Cpf
     CFL = 0.4
     dt = CFL / (α/dom.dr^2)
 
-    # Tfs = nlsolve(resid!, copy(Tfv)).zero
-    prob = SteadyStateProblem(resid!, copy(Tfv))
-    solve(prob, DynamicSS(Euler()), dt=dt)
+    guess = deepcopy(Tfv)
+    sol = nlsolve(resid!, guess, autodiff=:forward, ftol=1e-10, iterations=5000)
+    Tfs = sol.zero
+    # extrap_Tf_noice!(Tfs, has_ice, dom)
+    # return sol, Tfs, resid!
+    # prob = SteadyStateProblem(resid!, copy(Tfv))
+    # solve(prob, DynamicSS(Euler(), abstol=1e-2), dt=dt)
+    # solve(NonlinearProblem(prob), NewtonRaphson())
     # return resid!
+    return Tfs
 end
 
 function pseudosteady_Tf_T_p(u, dom, params; abstol=1e-2)
@@ -346,11 +362,11 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
     Tf .= Tfg
     T0 = solve_T(u, Tf, dom, params)
     p0 = solve_p(u, Tf, T0, dom, params, pg)
+    Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
     α = kf/ρf/Cpf
     CFL = 0.4
-    dt = CFL / (α/dom.dr^2)
+    dt = CFL / (α/dom.dr^2) #* max(0.01, minimum(Δξ)/dom.zmax)
     nt = max(3*dom.nr, ceil(Int, 100.0/dt))
-    Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
     has_ice = (Δξ .> 0)
 
     dTfdt = zeros(dom.nr)

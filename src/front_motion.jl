@@ -119,11 +119,11 @@ Compute (`∂T/∂r`, `∂T/∂z`) at point `(ir, iz)`, given system state `u`, 
 
 Quadratic ghost cell extrapolation (into frozen domain), second order finite differences, for T.
 """
-function compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
+function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack k, Kv, Kgl, Tsh = params
 
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
     pT = T[ir, iz]
     ϕp = ϕ[ir, iz]
     r = dom.rgrid[ir]
@@ -229,10 +229,10 @@ Quadratic ghost cell extrapolation (into frozen domain), second order finite dif
 
 The distinction in discretization between this and `compute_Tderiv` is essentially just the boundary treatments.
 """
-function compute_pderiv(u, T, p, ir::Int, iz::Int, dom::Domain, params)
+function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack p_ch, Rp0 = params
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
     

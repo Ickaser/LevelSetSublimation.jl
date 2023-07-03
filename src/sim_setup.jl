@@ -65,13 +65,13 @@ function params_nondim_setup(cparams, controls)
 
     for pk in keys(cparams)
         try
-            params[pk] = ustrip.(PBU[pk], cparams[pk])
+            params[pk] = ustrip.(PBD[pk], cparams[pk])
         catch DomainError
-            @error "Bad dimensions in passed parameter." pk params[pk] PBU[pk]   
+            @error "Bad dimensions in passed parameter." pk params[pk] PBD[pk]   
         end
     end
     for mk in keys(controls)
-        nondim_controls[mk] = ustrip.(PBU[mk], controls[mk])
+        nondim_controls[mk] = ustrip.(PBD[mk], controls[mk])
     end
     if length(nondim_controls[:t_samp]) == 1
         nondim_controls[:t_samp] = [0.0]
@@ -94,7 +94,17 @@ function params_nondim_setup(cparams, controls)
     return params, arr_keys, nondim_controls
 end
 
-const PBU = const PARAMS_BASE_UNITS = Dict{Symbol, Any}(
+function nondim_control(varname::Symbol, control_dim::RampedVariable)
+    if dimension(control_dim(0)) != dimension(PBD[varname])
+        @error "Bad units on ramped variable." varname control_dim PBD[varname]
+    end
+    base_un = PBD[varname]
+    # control_ndim = RampedVariable(ustrip.(control_dim.setps)), ustrip.(upreferred.(control_dim.ramps))
+    # control_dim
+    
+end
+
+const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     :Kgl => u"W/m^2/K",
     :Kv => u"W/m^2/K",
     :Q_ic => u"W/m^3",

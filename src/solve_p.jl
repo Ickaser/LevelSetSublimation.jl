@@ -21,15 +21,17 @@ function solve_p(u, Tf, T, dom::Domain, params; kwargs...)
     ϕ = ϕ_T_from_u(u, dom)[1]
     # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
     b = eval_b(T, params[:p_ch], params)
-    p0 = solve_p_given_b(ϕ, b, Tf, dom, params)
+    p0 = similar(Tf, size(dom)) 
+    p0 .= solve_p_given_b(ϕ, b, Tf, dom, params)
     solve_p(u, Tf, T, dom::Domain, params, p0; kwargs...)
 end
 function solve_p(u, Tf, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
     # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
     ϕ = ϕ_T_from_u(u, dom)[1]
 
-    relerr::Float64 = 0.0
-    p⁺ = copy(p0)
+    relerr::eltype(Tf) = 0.0
+    # p⁺ = copy(p0)
+    p⁺ = similar(Tf, size(dom))
     # Iterate up to maxit times
     for i in 1:maxit
         b = eval_b(T, p0, params)
@@ -61,7 +63,7 @@ If `κ=0`, no spatial variation due to pressure occurs.
 """
 function eval_b(T, p, params)
     @unpack l, κ, R, Mw, μ = params
-    b = @. Mw/R/T * (l*sqrt(R*T/Mw) + κ/μ*p)
+    b = @. Mw/R/T * (l*NaNMath.sqrt(R*T/Mw) + κ/μ*p)
 end
 
 """
@@ -73,7 +75,7 @@ function eval_b_loc(T, p, ir, iz, params)
     @unpack l, κ, R, Mw, μ = params
     lloc = (length(l) > 1) ? l[ir,iz] : l
     κloc = (length(κ) > 1) ? κ[ir,iz] : κ
-    b = Mw/R/T[ir,iz] * (lloc*sqrt(R*T[ir,iz]/Mw) + κloc/μ*p[ir,iz])
+    b = Mw/R/T[ir,iz] * (lloc*NaNMath.sqrt(R*T[ir,iz]/Mw) + κloc/μ*p[ir,iz])
 end
 
 """
@@ -105,12 +107,17 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
         ϕ = copy(ϕ)
         ϕ[argmin(ϕ)] = - max(dr, dz)
     end
+    if any(isnan.(Tf))
+        @warn "NaN found"
+    end
 
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
-    vals = Vector{Float64}(undef, 0)
+    vals = Vector{eltype(Tf)}(undef, 0)
+
     vcr = (vals, cols, rows)
-    rhs = fill(0.0, ntot)
+    rhs = similar(Tf, ntot)
+    rhs .= 0
 
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration
@@ -360,8 +367,8 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
     end
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
     prob = LinearProblem(mat_lhs, rhs)
-    # sol = solve(prob, SparspakFactorization()).u 
-    sol = solve(prob, UMFPACKFactorization()).u 
+    sol = solve(prob, SparspakFactorization()).u 
+    # sol = solve(prob, UMFPACKFactorization()).u 
     # sol = mat_lhs \ rhs
     psol = reshape(sol, nr, nz)
 end
