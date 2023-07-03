@@ -16,6 +16,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     params = integ_pars[2]
     p_last = integ_pars[3]
     Tf_last = integ_pars[4]
+    # controls = integ_pars[5]
     dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
     ϕ, Tf, Tgl = ϕ_T_from_u_view(u, dom)
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
@@ -37,36 +38,15 @@ function dudt_heatmass!(du, u, integ_pars, t)
     vr = @view vf[:, :, 1]
     vz = @view vf[:, :, 2]
 
-    # TODO
-    Qice, Qgl = compute_Qice(u, T, p, dom, params)
+    # Compute time derivatives for 
     # dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
     # dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
+    Qgl = compute_Qgl(u, T, dom, params)
     dTgl .= (Q_gl_RF - Qgl) / m_cp_gl
 
     # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
-
-        # # Boundary cases: use internal derivative
-        # if ir == dom.nr # Right boundary
-        #     dϕdr = dϕdr_w[ind]
-        # elseif ir == 1 # Left boundary
-        #     dϕdr = dϕdr_e[ind]
-        # else
-        #     dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
-        # end
-        # # Boundary cases: use internal derivative
-        # if iz == dom.nz # Top boundary
-        #     dϕdz = dϕdz_s[ind]
-        # elseif iz == 1 # Bottom boundary
-        #     dϕdz = dϕdz_n[ind]
-        # else
-        #     dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
-        # end
-
-        # # Don't treat boundaries differently
-        # dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
-        # dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
 
         dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind] > 0, vz[ind] >0, dϕdx_all, dom)
 
