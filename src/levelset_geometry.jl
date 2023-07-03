@@ -225,19 +225,19 @@ function compute_iceht_bottopcont(ϕ, dom)
     heights = fill(0.0, dom.nr)
     ice_contig = fill(true, dom.nr)
     for ir in axes(ϕ, 1)
-        # Begin with 1 grid space per frozen cell
-        heights[ir] += dom.dz * sum(ϕ[ir,:] .<= 0) 
+        # # Begin with 1 grid space per frozen cell
+        # heights[ir] += dom.dz * sum(ϕ[ir,:] .<= 0) 
         interfaces = 0
         for iz in 1:dom.nz-1
             ϕd, ϕu = ϕ[ir, iz:iz+1]
             if ϕd <= 0 && ϕu <= 0
                 heights[ir] += dom.dz
             elseif ϕd <= 0
-                θz = -(ϕd/(ϕd - ϕu))
+                θz = (ϕd/(ϕd - ϕu))
                 heights[ir] += dom.dz*θz
                 interfaces += 1
             elseif ϕu <= 0
-                θz = -(ϕu/(ϕu - ϕd))
+                θz = (ϕu/(ϕu - ϕd))
                 heights[ir] += dom.dz*θz
                 interfaces += 1
             # else # Nothing needed to do in this case
