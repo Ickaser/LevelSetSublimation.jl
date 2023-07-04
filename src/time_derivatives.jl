@@ -31,6 +31,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
 
     # Store pseudosteady in u, for use in other functions
     # Tf .= Tfs
+    # dTf = (Tf - Tfg)/60
 
     integ_pars[3] .= p # Cache current state of p as a guess for next timestep
     integ_pars[4] .= Tf

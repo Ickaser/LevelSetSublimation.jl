@@ -98,7 +98,7 @@ end
 
 function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
     @unpack sol, dom = simresults
-    u, T, p = calc_uTfTp_res(t, simresults, simconfig; p0=p0)    
+    u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; p0=p0)    
     ϕ = ϕ_T_from_u(u, dom)[1]
     return u, ϕ, T, p
 end

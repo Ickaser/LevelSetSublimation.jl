@@ -326,11 +326,6 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         if any(isnan.(Tf))
             @warn "NaN found"
         end
-        if any(Tf .> 1000)
-            @info "Super Tf" Tf
-            dTfdt[Tf .> 400] = NaN
-            return
-        end
         # @info "resid"
         # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
         # T_cache .= solve_T(u, Tf, dom, params)
