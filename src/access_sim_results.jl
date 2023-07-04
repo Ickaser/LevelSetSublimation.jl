@@ -1,4 +1,4 @@
-export calc_uϕTp_res, calc_uTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
+export calc_uϕTp_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
 export get_subf_z, get_subf_r, get_ϕ
 
 function get_t_Tf(simresults::Dict)
@@ -14,9 +14,9 @@ function get_t_Tf_subflux(simresults::Dict, simconfig::Dict)
     Tf = sol[dom.ntot+1,:] .* u"K"
     md = map(sol.t) do ti
         params = calc_params_at_t(ti, simconfig)
-        uTp = calc_uTp_res(ti, simresults, simconfig)
-        Tfi = ϕ_T_from_u(uTp[1], dom)[2]
-        md = compute_topmassflux(uTp..., dom, params) * u"kg/s"
+        uTfTp = calc_uTfTp_res(ti, simresults, simconfig)
+        Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
+        md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(md) == -1
             @info "md=$md" ti Tfi calc_psub(Tfi)
         end
@@ -39,9 +39,9 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
     Tf = sol(ts_ndim, idxs=dom.ntot+1).u .* u"K"
     md = map(ts_ndim) do ti
         params = calc_params_at_t(ti, simconfig)
-        uTp = calc_uTp_res(ti, simresults, simconfig)
-        Tfi = ϕ_T_from_u(uTp[1], dom)[2]
-        mdi = compute_topmassflux(uTp..., dom, params) * u"kg/s"
+        uTfTp = calc_uTfTp_res(ti, simresults, simconfig)
+        Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
+        mdi = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(mdi) == -1
             @info "md=$mdi" ti Tfi calc_psub(Tfi)
         end
@@ -98,28 +98,29 @@ end
 
 function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
     @unpack sol, dom = simresults
-    u, T, p = calc_uTp_res(t, simresults, simconfig; p0=p0)    
+    u, T, p = calc_uTfTp_res(t, simresults, simconfig; p0=p0)    
     ϕ = ϕ_T_from_u(u, dom)[1]
     return u, ϕ, T, p
 end
 
 
-function calc_uTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
+function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
     @unpack sol, dom = simresults
     params = calc_params_at_t(t, simconfig)
     
     u = sol(t)
+    Tf = pseudosteady_Tf(u, dom, params)
     # p_sub = calc_psub(Tf)
-    T = solve_T(u, dom, params)
+    T = solve_T(u, Tf, dom, params)
     if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatonly!
-        return u, T, zeros(size(ϕ))
+        return u, Tf, T, zeros(size(ϕ))
     end
     if isnothing(p0)
-        p = solve_p(u, T, dom, params)
+        p = solve_p(u, Tf, T, dom, params)
     else
-        p = solve_p(u, T, dom, params, p0)
+        p = solve_p(u, Tf, T, dom, params, p0)
     end
-    return u, T, p
+    return u, Tf, T, p
 end
 
 

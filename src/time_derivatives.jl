@@ -18,22 +18,23 @@ function dudt_heatmass!(du, u, integ_pars, t)
     Tf_last = integ_pars[4]
     # controls = integ_pars[5]
     dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
-    ϕ, Tf, Tgl = ϕ_T_from_u_view(u, dom)
+    ϕ, Tgl = ϕ_T_from_u_view(u, dom)[[true, false, true]]
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
 
     # p = solve_p(u, T, dom, params, p_last)
 
-    Tfs, T, p = pseudosteady_Tf_T_p(u, dom, params, Tf_last, p_last)
+    # Tf = pseudosteady_Tf_T_p(u, dom, params, Tf_last, p_last)
+    Tf = pseudosteady_Tf(u, dom, params, Tf_last)
+    T = solve_T(u, Tf, dom, params)
+    p = solve_p(u, Tf, T, dom, params)
 
-    # Drive guess in the direction of the solved value, with approximate dt
-    dTf .= (Tfs - Tf) /60 
     # Store pseudosteady in u, for use in other functions
-    Tf .= Tfs
+    # Tf .= Tfs
 
     integ_pars[3] .= p # Cache current state of p as a guess for next timestep
-    integ_pars[4] .= Tfs
-    vf, dϕdx_all = compute_frontvel_mass(u, T, p, dom, params)
+    integ_pars[4] .= Tf
+    vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:, :, 1]
     vz = @view vf[:, :, 2]
@@ -56,9 +57,13 @@ function dudt_heatmass!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) Tgl
+    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tgl
     if minimum(dϕ) < 0
         @info "negative dϕ" findall(dϕ.<0)
+    end
+    if maximum(dϕ) > 1
+        @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
+        display(heat(T, dom))
     end
     return nothing
 end
@@ -275,7 +280,7 @@ function dudt_heatonly!(du, u, integ_pars, t)
     dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
 
-    T = solve_T(u, dom, params)
+    T = solve_T(u, Tf, dom, params)
 
     vf, dϕdx_all = compute_frontvel_heat(u, T, dom, params)
     extrap_v_fastmarch!(vf, u, dom)

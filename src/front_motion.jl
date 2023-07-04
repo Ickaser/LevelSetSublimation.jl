@@ -97,8 +97,8 @@ end
 
 Compute total mass flow through top of the cake (that is, mass flux integrated across top surface).
 """
-function compute_topmassflux(u, T, p, dom::Domain, params)
-    dpdz = [compute_pderiv(u, T, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
+function compute_topmassflux(u, Tf, T, p, dom::Domain, params)
+    dpdz = [compute_pderiv(u, Tf, T, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
     b = eval_b(T, p, params)[:,end] # all r, top of z
     rweights = zeros(Float64, dom.nr) 
     for ir in 1:dom.nr-1
@@ -341,11 +341,11 @@ end
 
 
 """
-    compute_frontvel_mass(ϕ, T, p, dom::Domain, params; debug=false)
+    compute_frontvel_mass(ϕ, Tf, T, p, dom::Domain, params; debug=false)
 
 Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on Γ with ϕ>0). 
 """
-function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
+function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
 
     @unpack k, ΔH, ρf, ϵ = params
     ϕ = ϕ_T_from_u(u, dom)[1]
@@ -361,7 +361,7 @@ function compute_frontvel_mass(u, T, p, dom::Domain, params; debug=false)
 
     for c in Γ⁺
         ir, iz = Tuple(c)
-        dpr, dpz = compute_pderiv(u, T, p, ir, iz, dom, params)
+        dpr, dpz = compute_pderiv(u, Tf, T, p, ir, iz, dom, params)
         # if dpr > 0
         #     neighbors = [CI(i,j) for i in -1:1, j in 0]
         #     pnb = p[[c].+neighbors]
@@ -418,7 +418,7 @@ end
 
 Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on Γ with ϕ>0). 
 """
-function compute_frontvel_heat(u, T, dom::Domain, params; debug=false)
+function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
 
     @unpack k, ΔH, ρf, ϵ = params
     ϕ = ϕ_T_from_u(u, dom)[1]
@@ -435,7 +435,7 @@ function compute_frontvel_heat(u, T, dom::Domain, params; debug=false)
 
     for c in Γ⁺
         ir, iz = Tuple(c)
-        dTr, dTz = compute_Tderiv(u, T, ir, iz, dom, params)
+        dTr, dTz = compute_Tderiv(u, Tf, T, ir, iz, dom, params)
 
         # Boundary cases: use internal derivative
         if ir == dom.nr # Right boundary

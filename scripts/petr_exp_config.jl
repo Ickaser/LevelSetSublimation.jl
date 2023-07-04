@@ -101,8 +101,8 @@ u0 = make_u0_ndim(init_prof, Tf0, Tf0, dom)
 # u0[dom.ntot+1] = ustrip(u"K", Tf0)
 # u0[dom.ntot+2] = ustrip(u"K", Tf0)
 # reinitialize_ϕ_HCR!(ϕ0, dom)
-T0 = solve_T(u0, dom, params)
-p0 = solve_p(u0, T0, dom, params)
+# T0 = solve_T(u0, dom, params)
+# p0 = solve_p(u0, T0, dom, params)
 
 
 

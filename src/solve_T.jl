@@ -8,7 +8,7 @@ export solve_T
 # end 
 
 """
-    solve_T(u, dom::Domain, params)
+    solve_T(u, Tf, dom::Domain, params)
 
 Compute 2D axisymmetric T profile, returning ghost cell values, for given state `u`.
 
@@ -42,6 +42,11 @@ function solve_T(u, Tf, dom::Domain, params)
     #     ϕ = copy(ϕ)
     #     ϕ[argmin(ϕ)] = - max(dr, dz)
     # end
+    if any(clamp.(Tf, 200, 400) .!= Tf)
+        @info "Crazy Tf" Tf
+    end
+
+
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
     vals = Vector{eltype(Tf)}(undef, 0)
@@ -211,7 +216,6 @@ function solve_T(u, Tf, dom::Domain, params)
                     pc += -2*k*dz2/θz
                     rhs[imx] -= 2*Tf[ir]*k*dz2/θz + BC4*2*dz1
                 else
-                    # # Have an exact value given by BC + front
                     pc += -2k*dz2/(θz+1)
                     rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1) 
                 end
@@ -267,6 +271,7 @@ function solve_T(u, Tf, dom::Domain, params)
             end
         end
 
+
         # Assign all computed stencil values into matrix
         pc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 0), pc)
         ec != 0 && add_to_vcr!(vcr, dom, imx, ( 1, 0), ec)
@@ -274,6 +279,7 @@ function solve_T(u, Tf, dom::Domain, params)
         nc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 1), nc)
         sc != 0 && add_to_vcr!(vcr, dom, imx, ( 0,-1), sc)
         rhs[imx] += - Q_ck 
+
 
     end
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
@@ -298,13 +304,17 @@ function add_to_vcr!(vcr, dom, p_imx, shift, val)
 end
 
 function pseudosteady_Tf(u, dom, params)
-    ϕv, Tfv, Tglv = ϕ_T_from_u_view(u, dom)#[[true, false, true]]
-    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)#[[true, false, true]]
+    # ϕv, Tfv, Tglv = ϕ_T_from_u(u, dom)#[[true, false, true]]
+    Tfg = ϕ_T_from_u(u, dom)[2]
+    pseudosteady_Tf(u, dom, params, Tfg)
+end
+function pseudosteady_Tf(u, dom, params, Tf_g)
+    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
     @unpack ρf, Cpf, kf, Q_ic = params
     @unpack kf, ρf, Cpf = params
-    dϕdx_all = dϕdx_all_WENO(ϕv, dom)
+    dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
-    has_ice = (compute_iceht_bottopcont(ϕv, dom)[1] .> 0)
+    has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
 
 
 
@@ -315,6 +325,11 @@ function pseudosteady_Tf(u, dom, params)
         # Tfv .= Tf
         if any(isnan.(Tf))
             @warn "NaN found"
+        end
+        if any(Tf .> 1000)
+            @info "Super Tf" Tf
+            dTfdt[Tf .> 400] = NaN
+            return
         end
         # @info "resid"
         # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
@@ -330,12 +345,11 @@ function pseudosteady_Tf(u, dom, params)
         # @info "resid" extrema(dTfdt) extrema(Tf) extrema(Tf_extrap)
         nothing
     end
-    α = kf/ρf/Cpf
-    CFL = 0.4
-    dt = CFL / (α/dom.dr^2)
+    # α = kf/ρf/Cpf
+    # CFL = 0.4
+    # dt = CFL / (α/dom.dr^2)
 
-    guess = deepcopy(Tfv)
-    sol = nlsolve(resid!, guess, autodiff=:forward, ftol=1e-10, iterations=5000)
+    sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
     Tfs = sol.zero
     # extrap_Tf_noice!(Tfs, has_ice, dom)
     # return sol, Tfs, resid!
