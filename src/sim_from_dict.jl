@@ -91,7 +91,7 @@ function needs_reinit(u, t, integ)
 end
 
 
-function input_measurements!(integ, meas_keys, controls)
+function input_measurements!(integ, meas_keys::Base.KeySet, controls::Dict)
     if isnothing(meas_keys)
         return
     end
@@ -103,6 +103,12 @@ function input_measurements!(integ, meas_keys, controls)
     params = integ.p[2]
     for key in meas_keys
         params[key] = controls[key][ti]
+    end
+end
+
+function input_measurements!(params, t::Number, controls)
+    for key in keys(controls)
+        params[key] = controls[key](t)
     end
 end
 
@@ -173,7 +179,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # ----- Nondimensionalize everything
 
-    params, meas_keys, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
+    params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
     if verbose
         @info "Variables used in callback:" meas_keys
     end
@@ -196,7 +202,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
 
     # ---- Set up ODEProblem
-    prob_pars = (dom, params, p_last, Tf_last)
+    prob_pars = (dom, params, p_last, Tf_last, ncontrols)
     tspan = (0, tf)
     prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
 
@@ -215,11 +221,12 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     cb_end = ContinuousCallback(cond_end, terminate!)
 
     # ----- Set up  measurement callback
-    meas_affect!(integ) = input_measurements!(integ, meas_keys, ncontrols)
-    cb_meas = PresetTimeCallback(ncontrols[:t_samp], meas_affect!, filter_tstops=true)
+    # meas_affect!(integ) = input_measurements!(integ, meas_keys, ncontrols)
+    # cb_meas = PresetTimeCallback(ncontrols[:t_samp], meas_affect!, filter_tstops=true)
 
     # ------- Put together callbacks 
-    cbs = CallbackSet(cb_reinit, cb_end, cb_meas)
+    # cbs = CallbackSet(cb_reinit, cb_end, cb_meas)
+    cbs = CallbackSet(cb_reinit, cb_end)
 
     if verbose
         @info "Beginning solve"

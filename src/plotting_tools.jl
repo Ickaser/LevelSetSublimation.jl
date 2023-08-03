@@ -154,13 +154,14 @@ If given, `maxT` sets an upper limit for the associated colorbar.
 function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, p0=nothing)
     @unpack sol, dom = simresults
 
-    u, ϕ, T, p = calc_uϕTp_res(t, simresults, simconfig; p0=p0)
     if heatvar == :ϕ 
+        ϕ = ϕ_T_from_u(sol(t), dom)[1]
         heatvar_vals = ϕ
         clab = "ϕ, m"
         cmap = :algae
         cont_c = :black
     elseif heatvar == :T 
+        u, ϕ, T, p = calc_uϕTp_res(t, simresults, simconfig; p0=p0)
         # T = solve_T(u, dom, params)
         heatvar_vals = T .- 273.15
         clab = " \nT, °C"
@@ -171,6 +172,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
             cont_c = :white
         end
     elseif heatvar == :p
+        u, ϕ, T, p = calc_uϕTp_res(t, simresults, simconfig; p0=p0)
         # T = solve_T(u, dom, params)
         # p = solve_p(u, T, dom, params, p0)
         heatvar_vals = ustrip.(u"mTorr", p.*u"Pa")

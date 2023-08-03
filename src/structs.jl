@@ -155,7 +155,7 @@ function RampedVariable(setpts, ramprates, holds)
         @error "Number of set points should be 1 more than ramps/holds, since initial is included"
     end
     for i in axes(ramprates, 1)
-        @show timestops
+        # @show timestops
         timestops[2i] = timestops[2i-1] + (setpts[i+1]-setpts[i])/ramprates[i]
         timestops[2i+1] = timestops[2i] + holds[i]
     end

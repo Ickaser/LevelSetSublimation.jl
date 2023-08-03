@@ -71,37 +71,47 @@ function params_nondim_setup(cparams, controls)
         end
     end
     for mk in keys(controls)
-        nondim_controls[mk] = ustrip.(PBD[mk], controls[mk])
+        # nondim_controls[mk] = ustrip.(PBD[mk], controls[mk])
+        nondim_controls[mk] = nondim_controlvar(mk, controls[mk])
+        params[mk] = nondim_controls[mk](0)
     end
-    if length(nondim_controls[:t_samp]) == 1
-        nondim_controls[:t_samp] = [0.0]
-    end
+    # if length(nondim_controls[:t_samp]) == 1
+    #     nondim_controls[:t_samp] = [0.0]
+    # end
 
-    arr_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])>1)]
-    sc_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])==1)]
-    for ki in sc_keys
-        params[ki] = nondim_controls[ki]
-    end
-    for ki in arr_keys
-        if length(controls[ki]) != length(controls[:t_samp])
-            @error "Improper length of measurement vector. Must match time vector length." ki length(controls[ki]) length(controls[:t_samp])
-        end
-        params[ki] = nondim_controls[ki][1]
-    end
-    if length(arr_keys) == 0
-        arr_keys = nothing
-    end
-    return params, arr_keys, nondim_controls
+    # arr_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])>1)]
+    # sc_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])==1)]
+    # for ki in sc_keys
+    #     params[ki] = nondim_controls[ki]
+    # end
+    # for ki in arr_keys
+    #     # if length(controls[ki]) != length(controls[:t_samp])
+    #     #     @error "Improper length of measurement vector. Must match time vector length." ki length(controls[ki]) length(controls[:t_samp])
+    #     # end
+    #     params[ki] = nondim_controls[ki](0)
+    # end
+    # if length(arr_keys) == 0
+    #     arr_keys = nothing
+    # end
+    # return params, arr_keys, nondim_controls
+
+    return params, nondim_controls
 end
 
-function nondim_control(varname::Symbol, control_dim::RampedVariable)
-    if dimension(control_dim(0)) != dimension(PBD[varname])
+function nondim_controlvar(varname::Symbol, control_dim::RampedVariable)
+    if dimension(control_dim(0u"s")) != dimension(PBD[varname])
         @error "Bad units on ramped variable." varname control_dim PBD[varname]
     end
     base_un = PBD[varname]
-    # control_ndim = RampedVariable(ustrip.(control_dim.setps)), ustrip.(upreferred.(control_dim.ramps))
-    # control_dim
-    
+    if length(control_dim.setpts) > 1
+        setpts = ustrip.(base_un, control_dim.setpts)
+        ramprates = ustrip.(base_un/u"s", control_dim.ramprates)
+        holds = ustrip.(u"s", control_dim.holds)
+        control_ndim = RampedVariable(setpts, ramprates, holds)
+    else
+        control_ndim = RampedVariable(ustrip.(base_un, control_dim.setpts))
+    end
+    return control_ndim
 end
 
 const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(

@@ -16,7 +16,10 @@ function dudt_heatmass!(du, u, integ_pars, t)
     params = integ_pars[2]
     p_last = integ_pars[3]
     Tf_last = integ_pars[4]
-    # controls = integ_pars[5]
+    controls = integ_pars[5]
+
+    input_measurements!(params, t, controls)
+
     dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
     ϕ, Tgl = ϕ_T_from_u_view(u, dom)[[true, false, true]]
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params

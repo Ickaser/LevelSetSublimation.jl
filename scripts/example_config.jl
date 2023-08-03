@@ -2,14 +2,15 @@
 cparams = make_default_params()
 init_prof = :circ
 Tf0 = 233.15u"K"
-Q_gl_RF = 0.002u"W" # = volumetric * relevant vial volume
-t_samp = (0:0.1:1) .* u"hr"
-Tsh = 263.15u"K"
-Q_ic = 0.3u"W/cm^3"
-p_ch = 100u"mTorr"
+Q_gl_RF = RampedVariable(0.002u"W") # = volumetric * relevant vial volume
+# t_samp = (0:0.1:1) .* u"hr"
+# Tsh = 263.15u"K"
+Tsh = RampedVariable([233.15u"K", 263.15u"K"], [1u"K/minute"], [10u"hr"])
+Q_ic = RampedVariable(0.3u"W/cm^3")
+p_ch = RampedVariable(100u"mTorr")
 
 controls = Dict{Symbol, Any}()
-@pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
+@pack! controls = Q_gl_RF, Tsh, Q_ic, p_ch
 
 
 vialsize = "10R"
@@ -20,7 +21,7 @@ config = Dict{Symbol, Any}()
 
 
 # Set up stuff to make debugging easier
-params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
+params, ncontrols = params_nondim_setup(cparams, controls)
 
 r_vial = get_vial_radii(vialsize)[1]
 z_fill = fillvol / π / r_vial^2

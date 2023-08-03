@@ -74,25 +74,9 @@ end
 function calc_params_at_t(t::Float64, simconfig::Dict)
     @unpack cparams, controls = simconfig
     
-    params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
+    params, ncontrols = params_nondim_setup(cparams, controls)
 
-    t_samp = get(ncontrols, :t_samp, 0.0)
-    if meas_keys !== nothing
-        # Interpolation here
-        if t > t_samp[end] # Past end of sampling interval
-            for ki in meas_keys
-                params[ki] = ncontrols[ki][end]
-            end
-        else
-            tim = findlast(t_samp .<= t)
-            tim = clamp(tim, 1, length(t_samp)-1)
-            tip = tim + 1
-            tfrac = clamp((t - t_samp[tim]) / (t_samp[tip] - t_samp[tim]), 0, 1)
-            for ki in meas_keys
-                params[ki] = (ncontrols[ki][tip] - ncontrols[ki][tim])*tfrac  + ncontrols[ki][tim]
-            end
-        end
-    end
+    input_measurements!(params, t, ncontrols)
     return params
 end
 

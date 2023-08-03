@@ -17,25 +17,26 @@ A1 = 16u"cm*hr*Torr/g"
 Tguess = 260u"K"
 l_bulk = sqrt(cparams[:R]*Tguess/cparams[:Mw]) / A1
 
-r_vial = get_vial_radii(vialsize)[1]
-L = fillvol / π/r_vial^2
-dz_approx = L / simgridsize[2]
+# r_vial = get_vial_radii(vialsize)[1]
+# L = fillvol / π/r_vial^2
+# dz_approx = L / simgridsize[2]
 # l_surf = l_bulk * (A1 / (R0/dz_approx ))
 # l_surf = l_bulk * .05 # Experimental fit attempt
 
-l_bulk = upreferred(l_bulk)
+# l_bulk = upreferred(l_bulk)
 
 
 
 init_prof = :flat
 
-# Shortly after ramp stops, no more t_samp: no need for callback to interfere
-t_samp = range(0, 2, step=1//60) .* u"hr"
-# T_sh = [233.15
-Tsh = fill(10.0u"°C", length(t_samp))
-# Tsh[1:101] .= range(-40u"°C", 10u"°C", length=101)
-Tsh[1:101] .-= range(50u"K", 0u"K", length=101) # Ramp from -40 to 10
-# @show Tsh
+# # Shortly after ramp stops, no more t_samp: no need for callback to interfere
+# t_samp = range(0, 2, step=1//60) .* u"hr"
+# # T_sh = [233.15
+# Tsh = fill(10.0u"°C", length(t_samp))
+# # Tsh[1:101] .= range(-40u"°C", 10u"°C", length=101)
+# Tsh[1:101] .-= range(50u"K", 0u"K", length=101) # Ramp from -40 to 10
+# # @show Tsh
+Tsh = RampedVariable([233.15u"K", 283.15u"K"], [1u"K/minute"], [10u"hr"])
 
 # ----------- Fitting parameters! 
 # With all four, get: 
@@ -46,8 +47,8 @@ Tsh[1:101] .-= range(50u"K", 0u"K", length=101) # Ramp from -40 to 10
 
 # With fixed vial mass including whole vial...
 cparams[:m_cp_gl] = 7.9u"g" * 840u"J/kg/K"
-Q_ic = 0.16u"W/cm^3"
-Q_gl_RF = 0.13u"W" # = volumetric * relevant vial volume
+Q_ic = RampedVariable(0.16u"W/cm^3")
+Q_gl_RF = RampedVariable(0.13u"W") # = volumetric * relevant vial volume
 cparams[:Kgl] = 100.0u"W/m^2/K"
 
 # With fixed vial mass, varying l_surf
@@ -72,10 +73,11 @@ cparams[:Kgl] = 100.0u"W/m^2/K"
 
 cparams[:l] = l_bulk
 
-p_ch = 100u"mTorr"
+p_ch = RampedVariable(100u"mTorr")
 
 controls = Dict{Symbol, Any}()
-@pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
+# @pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
+@pack! controls = Q_gl_RF, Tsh, Q_ic, p_ch
 
 
 
@@ -85,12 +87,6 @@ config = Dict{Symbol, Any}()
 
 # # Set up stuff to make debugging easier
 params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
-
-# r_vial = get_vial_radii(vialsize)[1]
-# z_fill = fillvol / π / r_vial^2
-
-# rmax = ustrip(u"m", r_vial)
-# zmax = ustrip(u"m", z_fill)
 
 dom = Domain(config)
 
