@@ -86,7 +86,7 @@ config = Dict{Symbol, Any}()
 
 
 # # Set up stuff to make debugging easier
-params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
+params, ncontrols = params_nondim_setup(cparams, controls)
 
 dom = Domain(config)
 
