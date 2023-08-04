@@ -180,9 +180,9 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # ----- Nondimensionalize everything
 
     params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
-    if verbose
-        @info "Variables used in callback:" meas_keys
-    end
+    # if verbose
+    #     @info "Variables used in callback:" meas_keys
+    # end
 
     u0 = make_u0_ndim(init_prof, Tf0, Tgl0, dom)
 
@@ -219,6 +219,10 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # ContinuousCallback gets thrown when `cond` evaluates to 0
     # `terminate!` ends the solve there
     cb_end = ContinuousCallback(cond_end, terminate!)
+
+    # # Check after each time step, rather than seeking exact end time
+    # cond_end(u, t, integ) = all(u .>= 0)
+    # cb_end = DiscreteCallback(cond_end, terminate!)
 
     # ----- Set up  measurement callback
     # meas_affect!(integ) = input_measurements!(integ, meas_keys, ncontrols)
@@ -363,10 +367,10 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     Tf0 = ustrip(u"K", Tf0)
     Tgl0 = ustrip(u"K", Tgl0)
-    params, meas_keys, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
-    if verbose
-        @info "Variables used in callback:" meas_keys
-    end
+    params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
+    # if verbose
+    #     @info "Variables used in callback:" meas_keys
+    # end
     
 
 
