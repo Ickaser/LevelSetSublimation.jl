@@ -119,6 +119,8 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
     rhs = similar(Tf, ntot)
     rhs .= 0
 
+    θ_thresh = 0.05
+
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration
         imx = ir + (iz-1)*nr
@@ -137,9 +139,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
         r = rgrid[ir]
         r1 = 1/r
         
-        # θ_thresh = dr/dom.rmax
-        θ_thresh = 0.05
-
         # Stencil values: initialize to 0
         ec = 0
         pc = 0
@@ -154,22 +153,16 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             eϕ = ϕ[ir+1, iz]
             # Check for Stefan front
             if eϕ < 0 # Front is within a cell of boundary
-                # p. 65 of project notes
                 θr = pϕ/(pϕ-eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
                 if θr >= θ_thresh
                     pc += -2bp*dr2/θr
                     rhs[imx] -= 2bp*psub_l*dr2/θr #+ BC1*(r1 - 2dr1)
-                else # Front is within dr/r cells of boundary
-                    # Have an exact value given by BC + front
-                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    # rhs[imx] = p_sub - θr*BC1*dr
-                    # continue
+                else # Front is within .05 cells of boundary
                     pc += -2bp*dr2/(θr+1)
                     rhs[imx] -= 2psub_l*bp*dr2/(θr+1) 
                 end
-                # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
@@ -177,7 +170,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 # For gradient of conductivity: multiplied by gradient, which is BC, which is 0
                 pc += -2bp*dr2
                 ec +=  2bp*dr2
-                # rhs[imx] += BC1*(2*dr1 - r1)
                 rhs[imx] += 0 # r=0, so 1/r = NaN
             end
         elseif ir == nr
@@ -226,12 +218,10 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
                 if θr >= θ_thresh
-                    # @info "hmm, east" θr dr ir iz
                     pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/θr
                     wc +=  bp*(-0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
                     rhs[imx] -= psub_l*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else
-                    # @info "hmm, east" θr dr ir iz
                     pc += -2bp*dr2 # Regular
                     wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                     rhs[imx] -= psub_l*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap

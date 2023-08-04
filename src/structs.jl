@@ -170,7 +170,7 @@ function (rv::RampedVariable)(t)
     if im == length(rv.timestops)
         return rv.setpts[end]
     elseif iseven(im)
-        return rv.setpts[im/2]
+        return rv.setpts[im ÷ 2 + 1]
     else
         ip = im+1
         return (rv.setpts[ip÷2+1] - rv.setpts[ip÷2])/(rv.timestops[ip] - rv.timestops[im])*(t - rv.timestops[im]) + rv.setpts[im]

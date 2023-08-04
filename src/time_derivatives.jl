@@ -21,6 +21,9 @@ function dudt_heatmass!(du, u, integ_pars, t)
     input_measurements!(params, t, controls)
 
     dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
+
+    dTf .= 0 # Just in case some weird stuff got left there
+
     ϕ, Tgl = ϕ_T_from_u_view(u, dom)[[true, false, true]]
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
@@ -61,7 +64,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tgl
+    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tgl[1] params[:Tsh]
     if minimum(dϕ) < 0
         @info "negative dϕ" findall(dϕ.<0)
     end
@@ -107,18 +110,18 @@ Compute the time derivative of `u` with given parameters.
 
 Wraps a call on `dudt_heatmass!`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function dudt_heatmass(u, dom::Domain, params)
-    integ_pars = (dom, params, zeros(Float64, size(dom)))
+function dudt_heatmass(u, dom::Domain, params, ncontrols)
+    integ_pars = (dom, params, fill(100.0, size(dom)), fill(233.15, dom.nr), ncontrols)
     du = similar(u)
     dudt_heatmass!(du, u, integ_pars, 0.0)
     return du
 end
-function dudt_heatmass(u, config)
+function dudt_heatmass(u, config, t=0)
     # Set up simulation domain & parameters
     dom = Domain(config)
     params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
-
-    dudt_heatmass(u, dom, params)
+    input_measurements!(params, t, ncontrols)
+    dudt_heatmass(u, dom, params, ncontrols)
 end
 
 """

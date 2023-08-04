@@ -14,6 +14,7 @@ Currently allowed setups:
 - `:rad`, `:cyl`  -- interface at rmax*(1 - ϵ)
 - `:box`          -- interface at both zmax*(1-ϵ) and rmax*(1-ϵ)
 - `:cone`         -- interface a line decreasing in r
+- `:midflat`      -- interface at zmax*0.5
 - `:ell_bub `     -- ellipse in center of vial, separated from boundaries
 - `:circ `        -- circle at r=0, z=0 
 - `:tinycirc `    -- circle at r=0, z=0, very small radius
@@ -22,6 +23,8 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     # ϵ *= sqrt(dom.rmax * dom.zmax)
     if ϕtype == :top || ϕtype == :flat
         ϕ0 = [z - dom.zmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
+    elseif ϕtype == :midflat
+        ϕ0 = [z - dom.zmax*0.5 for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :rad || ϕtype == :cyl
         ϕ0 = [r - dom.rmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :box
@@ -109,7 +112,7 @@ function nondim_controlvar(varname::Symbol, control_dim::RampedVariable)
         holds = ustrip.(u"s", control_dim.holds)
         control_ndim = RampedVariable(setpts, ramprates, holds)
     else
-        control_ndim = RampedVariable(ustrip.(base_un, control_dim.setpts))
+        control_ndim = RampedVariable(ustrip(base_un, control_dim.setpts[1]))
     end
     return control_ndim
 end

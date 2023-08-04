@@ -55,7 +55,6 @@ function solve_T(u, Tf, dom::Domain, params)
     rhs = similar(Tf, ntot)
     rhs .= 0
 
-    # θ_thresh = dr / dom.rmax
     θ_thresh = 0.05
 
     for iz in 1:nz, ir in 1:nr
@@ -88,24 +87,21 @@ function solve_T(u, Tf, dom::Domain, params)
             eϕ = ϕ[ir+1, iz]
             # Check for Stefan front
             if eϕ < 0 # Front is within a cell of boundary
-                # p. 65 of project notes
                 θr = pϕ/(pϕ-eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 if θr >= θ_thresh
                     pc += -2k*dr2/θr
                     rhs[imx] -= 2k*Tf_loc*dr2/θr #+ BC1*(r1 - 2dr1)
-                else # Front is within dr/r cells of boundary
+                else # Front is within .05 cells of boundary
                     pc += -2k*dr2/(θr+1)
                     rhs[imx] -= 2Tf_loc*k*dr2/(θr+1) 
                 end
-                # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
                 pc += -2k*dr2
                 ec +=  2k*dr2
-                # rhs[imx] += BC1*(2*dr1 - r1)
                 rhs[imx] += 0 # r=0, so 1/r = NaN
             end
         elseif ir == nr
@@ -403,7 +399,9 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
 end
 
 function extrap_Tf_noice!(Tf, has_ice, dom)
-    if findfirst(has_ice) > 1 
+    if all(.~ has_ice)
+        return
+    elseif findfirst(has_ice) > 1 
         # Build a linear extrapolation
         ir1 = findfirst(has_ice)
         ir2 = ir1 + 1
