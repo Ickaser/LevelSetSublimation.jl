@@ -187,8 +187,23 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         elseif ir == dom.nr
             dTfdr = params[:Kgl]/kf*(Tgl - Tf[ir])
             d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
+        elseif no_ice[ir-1] && no_ice[ir+1] # Ice on both sides
+            @warn "Not implemented correctly. Treating ice surrounded by gap: how?." has_ice sum(has_ice)
+            # dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
+            # d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
         elseif no_ice[ir-1] # On left side: away from center
-            @error "Not implemented"
+            @warn "Not implemented carefully. Double check this math" ir has_ice[ir-1:ir+1] sum(has_ice) 
+            integ_cells = [CI(ir-1, iz) for iz in 1:dom.nz if ϕ[ir,iz]<=0]
+            surf_integral = 0
+            for cell in integ_cells
+                q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
+                δ = compute_local_δ(cell, ϕ, dom )
+                surf_integral += dom.rgrid[ir+1]*q*δ*dom.dr*dom.dz / dϕdr
+            end
+
+            dTfdr = 1/kf/dom.rgrid[ir]/Δξ[ir] * surf_integral
+            # Use a ghost cell
+            d2Tfdr2 = (-2Tf[ir] + 2Tf[ir-1] + 2*dom.dr*dTfdr)*dom.dr2
         elseif no_ice[ir+1] # On right side: pulled away from wall
             integ_cells = [CI(ir+1, iz) for iz in 1:dom.nz if ϕ[ir,iz]<=0]
             surf_integral = 0
@@ -234,31 +249,24 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
     dTfdt[no_ice] .= 0 # Set to 0 elsewhere
 
-    # TODO
-    # Need to define Tf one cell beyond the ice, actually, for other parts of implementation.
-    # So: set up a ghost cell, with dTfdr defined by Stefan boundary
-    # Question is: how to evaluate, exactly? Average across vertical direction?
-
-    # Perhaps can use a fictitious dTfdt at that point to define the ghost cell
-
-    lbound = [i for i in 2:dom.nr if (has_ice[i] && no_ice[i-1])]
-    rbound = [i for i in 1:dom.nr-1 if (has_ice[i] && no_ice[i+1])]
-    if length(lbound) == 0
-        #nothing
-    elseif length(lbound) == 1
-        # Treat ghost cell
-        # dTfdt[lbound[1]-1] = ...
-    else
-        @warn "Multiple chunks of ice may not be handled correctly." lbound rbound
-    end
-    if length(rbound) == 0
-        #nothing
-    elseif length(rbound) == 1
-        # Treat ghost cell
-        # dTfdt[rbound[1]+1] = ...
-    else
-        @warn "Multiple chunks of ice may not be handled correctly." lbound rbound
-    end
+    # lbound = [i for i in 2:dom.nr if (has_ice[i] && no_ice[i-1])]
+    # rbound = [i for i in 1:dom.nr-1 if (has_ice[i] && no_ice[i+1])]
+    # if length(lbound) == 0
+    #     #nothing
+    # elseif length(lbound) == 1
+    #     # Treat ghost cell
+    #     # dTfdt[lbound[1]-1] = ...
+    # else
+    #     @warn "Multiple chunks of ice may not be handled correctly." lbound rbound
+    # end
+    # if length(rbound) == 0
+    #     #nothing
+    # elseif length(rbound) == 1
+    #     # Treat ghost cell
+    #     # dTfdt[rbound[1]+1] = ...
+    # else
+    #     @warn "Multiple chunks of ice may not be handled correctly." lbound rbound
+    # end
 
 end
 
