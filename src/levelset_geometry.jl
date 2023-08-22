@@ -246,6 +246,7 @@ function compute_iceht_bottopcont(ϕ, dom)
                 ice_contig[ir] = false
                 @warn "Along a column, ice is not contiguous--more than two interfaces.
                     This case is not properly treated."
+                    
             end
         end
     end

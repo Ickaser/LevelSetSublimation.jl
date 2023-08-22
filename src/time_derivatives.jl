@@ -68,10 +68,10 @@ function dudt_heatmass!(du, u, integ_pars, t)
     if minimum(dϕ) < 0
         @info "negative dϕ" findall(dϕ.<0)
     end
-    if maximum(dϕ) > 1
-        @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
-        display(heat(T, dom))
-    end
+    # if maximum(dϕ) > 1
+    #     @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
+    #     display(heat(T, dom))
+    # end
     return nothing
 end
 
@@ -187,12 +187,14 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         elseif ir == dom.nr
             dTfdr = params[:Kgl]/kf*(Tgl - Tf[ir])
             d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
-        elseif no_ice[ir-1] && no_ice[ir+1] # Ice on both sides
-            @warn "Not implemented correctly. Treating ice surrounded by gap: how?." has_ice sum(has_ice)
-            # dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
-            # d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
+        # elseif no_ice[ir-1] && no_ice[ir+1] # Ice on both sides
+        #     @warn "Ice surrounded by gap: ignore radial gradients, treat only vertical." has_ice[ir-1:ir+1] 
+        #     dTfdr = 0
+        #     d2Tfdr2 = 0
+        #     # dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
+        #     # d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
         elseif no_ice[ir-1] # On left side: away from center
-            @warn "Not implemented carefully. Double check this math" ir has_ice[ir-1:ir+1] sum(has_ice) 
+            # @warn "Not implemented carefully. Double check this math" ir has_ice[ir-1:ir+1] sum(has_ice) 
             integ_cells = [CI(ir-1, iz) for iz in 1:dom.nz if ϕ[ir,iz]<=0]
             surf_integral = 0
             for cell in integ_cells

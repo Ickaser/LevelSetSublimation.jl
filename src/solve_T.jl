@@ -312,6 +312,11 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
 
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
 
+    if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
+        return Tf_g
+    end
+        
+
 
 
     # T_cache = solve_T(u, Tfv, dom, params)
@@ -401,7 +406,12 @@ end
 function extrap_Tf_noice!(Tf, has_ice, dom)
     if all(.~ has_ice)
         return
-    elseif findfirst(has_ice) > 1 
+    elseif sum(has_ice) == 1 # Only one ice cell: extrapolate to everywhere
+        Tf[:] .= Tf[findfirst(has_ice)]
+        return
+    end
+
+    if findfirst(has_ice) > 1 && has_ice[findfirst(has_ice)+1]
         # Build a linear extrapolation
         ir1 = findfirst(has_ice)
         ir2 = ir1 + 1
@@ -413,7 +423,7 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
             Tf[ir] = extrap(ir)
         end
     end
-    if findlast(has_ice) < dom.nr
+    if findlast(has_ice) < dom.nr && has_ice[findlast(has_ice)-1]
         # Build a linear extrapolation
         ir1 = findlast(has_ice)
         ir2 = ir1 - 1
@@ -424,6 +434,5 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         for ir in ir1+1:dom.nr
             Tf[ir] = right_Textrap(ir)
         end
-        # @info "extrapolated" Tf[ir1:end]
     end
 end
