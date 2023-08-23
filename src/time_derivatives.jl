@@ -66,7 +66,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
     @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tgl[1] params[:Tsh]
     if minimum(dϕ) < 0
-        @info "negative dϕ" findall(dϕ.<0)
+        @info "negative dϕ" spy(dϕ)
     end
     # if maximum(dϕ) > 1
     #     @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
