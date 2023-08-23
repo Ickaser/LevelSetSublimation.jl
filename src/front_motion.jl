@@ -359,36 +359,8 @@ function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
     for c in Γ⁺
         ir, iz = Tuple(c)
         dpr, dpz = compute_pderiv(u, Tf, T, p, ir, iz, dom, params)
-        # if dpr > 0
-        #     neighbors = [CI(i,j) for i in -1:1, j in 0]
-        #     pnb = p[[c].+neighbors]
-        #     bnb = b[[c].+neighbors]
-        #     Tnb = T[[c].+neighbors]
-        #     @warn "positive dpdr" c dpr pnb bnb Tnb
-        # end
 
-        # Boundary cases: use internal derivative
-        if ir == dom.nr # Right boundary
-            dϕdr = dϕdr_w[c]
-        elseif ir == 1 # Left boundary
-            dϕdr = dϕdr_e[c]
-        else # Not at boundary: use according to pressure gradient
-            dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        end
-        if iz == dom.nz # Top boundary
-            dϕdz = dϕdz_s[c]
-        elseif iz == 1 # Bottom boundary
-            dϕdz = dϕdz_n[c]
-        else
-            dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        end
-        
-        # # With extrapolation, no need for special boundary treatment
-        # dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        # dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        # # Use dϕdr towards the interface, not according to pressure gradient
-        # dϕdr = ((dϕdr_w[c] + dϕdr_e[c]) > 0 ? dϕdr_w[c] : dϕdr_e[c])
-        # dϕdz = ((dϕdz_s[c] + dϕdz_n[c]) > 0 ? dϕdz_s[c] : dϕdz_n[c])
+        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, dpr<0, dpz<0, dϕdx_all, dom) 
         
         # Normal is out of the ice
         # md = -b∇p⋅∇ϕ , >0 for sublimation occurring
@@ -397,13 +369,6 @@ function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
         vtot = md_l / ρf / ϵ 
         vf[c,1] = -vtot * dϕdr
         vf[c,2] = -vtot * dϕdz
-        # if sign(vf[c,1]*dϕdr) != sign(vf[c,2]*dϕdz) && (dϕdr != 0 && dϕdz != 0)
-        #     @warn "Velocity is messed up" vtot vf[c,1] dϕdr vf[c,2] dϕdz
-        # end
-
-        # if iz ∈ [2, 3]
-        #     @info iz vf[c,2]
-        # end
 
     end
     

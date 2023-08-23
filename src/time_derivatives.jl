@@ -96,7 +96,9 @@ function choose_dϕdx_boundary(ir, iz, west_true::Bool, south_true::Bool, dϕdx_
     # # Don't treat boundaries differently
     # dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
     # dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
-    return dϕdr, dϕdz
+    # return dϕdr, dϕdz
+    normed = hypot(dϕdr, dϕdz)
+    return dϕdr/normed, dϕdz/normed
 end
 
 
