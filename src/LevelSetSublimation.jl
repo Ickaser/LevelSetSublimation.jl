@@ -9,6 +9,7 @@ using DrWatson, Reexport
 using CSV
 using ProgressMeter
 using LinearAlgebra: norm
+using UnicodePlots: spy
 using NLsolve
 using NonlinearSolve
 using LinearSolve
