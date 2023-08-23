@@ -245,9 +245,9 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
 
     # Enforce BCs explicitly for boundary cells
     if ir == 1 
-        dpr = 0
+        dpr = 0.0
     elseif ir == nr
-        dpr = 0
+        dpr = 0.0
     else 
         # Bulk
         eϕ = ϕ[ir+1, iz]
@@ -269,8 +269,8 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
             psub_l = calc_psub(Tf_loc)
             if θr > θ_thresh
-                dpr = (-psub_l/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
-                # dpr = (pp - psub_l)/θr*dr1 # Linear extrapolation
+                # dpr = (-psub_l/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+                dpr = (pp - psub_l)/θr*dr1 # Linear extrapolation
             else 
                 dpr = (pe - psub_l)/(θr+1)*dr1 # Linear extrapolation, further out
             end
@@ -279,17 +279,14 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
             psub_l = calc_psub(Tf_loc)
             if θr > θ_thresh
-                dpr = ( psub_l/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
-                # dpr = (psub_l - pp)/θr*dr1 # Linear extrapolation
+                # dpr = ( psub_l/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
+                dpr = (psub_l - pp)/θr*dr1 # Linear extrapolation
             else
                 dpr = (psub_l - pw)/(θr+1)*dr1 # Linear extrapolation, further out
             end
         else # No ghost cells
             dpr = (pe - pw) * 0.5*dr1 # Centered difference
         end
-        # if (ir, iz) == (43, 38)
-        # @info "pderiv" ir iz wϕ ϕp eϕ  pw pp pe dpr
-        # end
 
     end
             
@@ -317,19 +314,19 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             dpz = 0.5*dz1*(psub_l - pp)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
-            if θz >  θ_thresh
-                dpz = (-psub_l/(1+θz)/θz + pp*(1-θz)/θz + pn*θz/(θz+1))*dz1 # Quadratic
-                # dpz = (pp-psub_l)/θz*dz1 # Linear
+            if θz > θ_thresh
+                # dpz = (-psub_l/(1+θz)/θz + pp*(1-θz)/θz + pn*θz/(θz+1))*dz1 # Quadratic
+                dpz = (pp-psub_l)/θz*dz1 # Linear
             else
-                dpz = (pn - psub_l)/(θz+1)*dz1 # Linear, further out
+                dpz = (pn - psub_l)/(θz+1)*dz1 # Linear, outside
             end
         elseif nϕ <= 0 # North ghost cell
             θz = ϕp /(ϕp - nϕ)
             if θz >  θ_thresh
-                dpz = ( psub_l/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                # dpz = (psub_l - pp)/θz*dz1 # Linear extrapolation
+                # dpz = ( psub_l/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                dpz = (psub_l - pp)/θz*dz1 # Linear extrapolation
             else
-                dpz = (psub_l - ps )/(θz+1)*dz1 #Linear, further out
+                dpz = (psub_l - ps )/(θz+1)*dz1 #Linear, outside
             end
         else # No ghost cells
             dpz = (pn - ps) * 0.5*dz1 # Centered difference
