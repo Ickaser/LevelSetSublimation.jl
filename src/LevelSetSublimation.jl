@@ -14,6 +14,7 @@ using NLsolve
 using NonlinearSolve
 using LinearSolve
 using NaNMath
+using PrecompileTools
 
 export contour
 if !isdefined(LevelSetSublimation, :contour)
@@ -37,5 +38,7 @@ include(srcdir("time_derivatives.jl"))
 include(srcdir("sim_from_dict.jl"))
 include(srcdir("access_sim_results.jl"))
 include(srcdir("levelset_geometry.jl"))
+
+include(srcdir("precompile.jl"))
 
 end # module LevelSetSublimation
