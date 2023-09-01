@@ -10,10 +10,10 @@ Return a heatmap of `field`, scaled to fit on `dom`.
 
 This function generates a *new* plot.
 """
-function heat(field, dom::Domain)
+function heat(field, dom::Domain; kwargs...)
     return heatmap(dom.rgrid, dom.zgrid, field'; 
                     xlim=(dom.rmin,dom.rmax), ylim=(dom.zmin, dom.zmax),
-                     aspect_ratio=:equal)
+                     aspect_ratio=:equal, kwargs...)
 end
 """
     plot_contour(phi, dom::Domain; lab="", c=:black)
@@ -151,7 +151,7 @@ Unpack simulation results and plot the state at time `t`.
 `heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
-function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, p0=nothing)
+function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, p0=nothing, clims=nothing)
     @unpack sol, dom = simresults
 
     if heatvar == :ϕ 
@@ -165,7 +165,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
         # T = solve_T(u, dom, params)
         heatvar_vals = T .- 273.15
         clab = " \nT, °C"
-        cmap = :thermal
+        cmap = :plasma
         if maximum(ϕ_T_from_u(u, dom)[2]) > maximum(T) # Tf > T
             cont_c = :black
         else
@@ -184,9 +184,11 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
         @warn "Invalid value of heatvar passed to `plotframe`. Should be :ϕ, :T, or :p." heatvar
     end
 
-    clims = extrema(heatvar_vals)
-    if clims[2] - clims[1] < 1e-4 && heatvar != :ϕ
-        clims = clims .+ (0, 0.10)
+    if isnothing(clims)
+        clims = extrema(heatvar_vals)
+        if clims[2] - clims[1] < 1e-4 && heatvar != :ϕ
+            clims = clims .+ (0, 0.10)
+        end
     end
 
     tr = round(t/3600, digits=2)
@@ -263,7 +265,7 @@ Generate a .gif of the given simresults, with filename `casename_heatvar_evol.gi
 Pass either `:p` or `:T` as `heatvar`. Passing `ϕ` will probably cause filename problems
 
 """
-function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T)
+function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T, clims=nothing)
     @unpack sol, dom = simresults
     @unpack cparams= simconfig
 
@@ -275,7 +277,7 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=
     heatvals = fill(0.0, size(dom))
     # end
     anim = @animate for ti ∈ frames
-        pl, heatvals = plotframe(ti, simresults, simconfig, heatvar=heatvar, p0=heatvals)
+        pl, heatvals = plotframe(ti, simresults, simconfig, heatvar=heatvar, p0=heatvals, clims=clims)
         # heat_p_min = heat_ex[1] - 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # heat_p_max = heat_ex[2] + 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # plot!(p, clims=(heat_p_min, heat_p_max))
