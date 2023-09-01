@@ -25,6 +25,9 @@
 
 - Improve speed of pseudosteady calculation
 
+# Things to clean up later
+- Passing structure inside time derivatives and simulation "parameters"
+
 # Done (I think?)
 
 - Formulate axisymmetric volume, surface area in terms of delta function integrals
