@@ -191,7 +191,7 @@ function make_default_params()
 
 
     params = Dict{Symbol, Any}()
-    @pack! params = Kgl, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
+    @pack! params = Kgl, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, Rp0, R, Mw, μ, Cpf
     return params
 end
         
@@ -262,6 +262,14 @@ function make_u0_ndim(init_prof, Tf0, Tgl0, dom)
     u0[dom.ntot+1:dom.ntot+dom.nr] .= Tf0_nd 
     u0[end] = Tgl0_nd
     return u0
+end
+
+function make_u0_ndim(config::Dict)
+    # dom = Domain(config)
+    # Tf0_nd = ustrip.(u"K", config[:Tf0])
+    # Tgl0_nd = ustrip(u"K", get(config, :Tgl0, config[:Tf0]))
+    make_u0_ndim(config[:init_prof], config[:Tf0], 
+                get(config, :Tgl0, config[:Tf0]), Domain(config))
 end
 
 # """
