@@ -42,9 +42,6 @@ function solve_T(u, Tf, dom::Domain, params)
     #     ϕ = copy(ϕ)
     #     ϕ[argmin(ϕ)] = - max(dr, dz)
     # end
-    if any(clamp.(Tf, 200, 400) .!= Tf)
-        @info "Crazy Tf" Tf
-    end
 
 
     rows = Vector{Int}(undef, 0)
@@ -327,16 +324,24 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         if any(isnan.(Tf))
             @warn "NaN found"
         end
+        extrap_Tf_noice!(Tf, has_ice, dom)
+        if any(clamp.(Tf, 200, 400) .!= Tf)
+            if typeof(Tf[1]) <: AbstractFloat
+                @info "Crazy Tf" Tf has_ice
+            else
+                @info "Crazy Tf" [Tfi.value for Tfi in Tf] has_ice
+            end
+        end
         # @info "resid"
         # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
         # T_cache .= solve_T(u, Tf, dom, params)
         # p_cache .= solve_p(u, Tf, T_cache, dom, params, p_cache)
         # dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
         # Tf_extrap = copy(Tf)
-        extrap_Tf_noice!(Tf, has_ice, dom)
         T = solve_T(u, Tf, dom, params)
         p = solve_p(u, Tf, T, dom, params)
         dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
+
         # dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
         # @info "resid" extrema(dTfdt) extrema(Tf) extrema(Tf_extrap)
         nothing
@@ -411,6 +416,7 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         return
     end
 
+
     if findfirst(has_ice) > 1 && has_ice[findfirst(has_ice)+1]
         # Build a linear extrapolation
         ir1 = findfirst(has_ice)
@@ -422,6 +428,8 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         for ir in 1:ir1-1
             Tf[ir] = extrap(ir)
         end
+    elseif findfirst(has_ice) > 1 # No neighboring ice, so constant extrapolation
+        Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
     end
     if findlast(has_ice) < dom.nr && has_ice[findlast(has_ice)-1]
         # Build a linear extrapolation
@@ -433,6 +441,20 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         right_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
         for ir in ir1+1:dom.nr
             Tf[ir] = right_Textrap(ir)
+        end
+    elseif findlast(has_ice) < dom.nr # No neighboring ice, so constant extrapolation
+        Tf[findlast(has_ice)+1:end] .= Tf[findlast(has_ice)]
+    end
+
+    edges = has_ice[1:end-1] .⊻ has_ice[2:end]
+    if sum(edges) > 2
+        gaps = findall(edges)[2:end-1] 
+        for g in gaps
+            if g-1 ∉ gaps && g+1 ∉ gaps
+                Tf[g] = (Tf[g-1] + Tf[g+1]) / 2
+            else
+                @warn "unhandled: large gaps in ice"
+            end
         end
     end
 end
