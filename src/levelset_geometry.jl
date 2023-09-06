@@ -242,13 +242,17 @@ function compute_iceht_bottopcont(ϕ, dom)
                 interfaces += 1
             # else # Nothing needed to do in this case
             end
-            if interfaces > 2 || (interfaces == 2 && ϕ[ir,begin] > 0)
-                ice_contig[ir] = false
-                @warn "Along a column, ice is not contiguous--more than two interfaces.
-                    This case is not properly treated."
-                    
-            end
         end
+        if interfaces > 2 || (interfaces == 2 && bottom_contact[ir])
+            ice_contig[ir] = false
+            @warn "Along a column, ice is not contiguous--more than two interfaces.
+                This case is not properly treated." interfaces 
+            println(ϕ[ir, :] .<= 0)
+                
+        end
+    end
+    if !any(bottom_contact)
+        display(heat(ϕ, dom))
     end
     return heights, bottom_contact, top_contact
 end
