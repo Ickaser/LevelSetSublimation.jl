@@ -17,16 +17,20 @@ Usually if it doesn't converge, it is because temperatures are outside the expec
 
 """
 function solve_p(u, Tf, T, dom::Domain, params; kwargs...) 
-    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
     ϕ = ϕ_T_from_u(u, dom)[1]
     # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
     b = eval_b(T, params[:p_ch], params)
     p0 = similar(Tf, size(dom)) 
     p0 .= solve_p_given_b(ϕ, b, Tf, dom, params)
-    solve_p(u, Tf, T, dom::Domain, params, p0; kwargs...)
+    if params[:κ] == 0
+        return p0
+    else
+        solve_p(u, Tf, T, dom::Domain, params, p0; kwargs...)
+    end
 end
 function solve_p(u, Tf, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
-    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
     ϕ = ϕ_T_from_u(u, dom)[1]
 
     relerr::eltype(Tf) = 0.0
@@ -37,7 +41,7 @@ function solve_p(u, Tf, T, dom::Domain, params, p0; maxit=20, reltol=1e-6)
         b = eval_b(T, p0, params)
         p⁺ .= solve_p_given_b(ϕ, b, Tf, dom, params)
         relerr = norm((p⁺ .- p0) ./ p⁺, Inf)
-        if relerr < reltol
+        if relerr < reltol || params[:κ] == 0
             # @info "Number of p iterations: $i"
             return p⁺
         end
@@ -119,7 +123,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
     rhs = similar(Tf, ntot)
     rhs .= 0
 
-    θ_thresh = 0.05
+    θ_thresh = 0.01
 
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration
@@ -225,19 +229,59 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     pc += -2bp*dr2 # Regular
                     wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                     rhs[imx] -= psub_l*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
+                    # rhs[imx] = calc_psub(Tf[ir])
+                    # continue
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
                 if θr >= θ_thresh # Regular magnitude θ
-                    pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                    ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                    # # Linear ghost cell extrapolation
+                    # pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
+                    # ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
+                    # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                    # Quadratic ghost cell extrapolation
+                    pc += (bp*(-2*dr2+(1-θr)*dr1*r1) + dbr*(1-θr)*dr1)/θr
+                    ec += (bp*( dr1*r1*θr + 2dr2) + dbr*dr1*θr )/(θr+1)# Regular + b gradient
+                    rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                 else # Very small θ
-                    pc += -2bp*dr2 # Regular
-                    ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1)
-                    rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # Treat as constant
+                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
+                    # rhs[imx] = calc_psub(Tf[ir])
+                    # continue
+
+                    # # Linear extrapolation, looking a cell further out
+                    # pc += -2bp*dr2 
+                    # ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
+                    # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    
+                    if iz == nz
+                        # No special treatment
+                        pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
+                        ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
+                        rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                        # Constant extrapolation
+                        # pc += -2bp*dr2
+                        # ec += bp*(dr2  + 0.5dr1*r1) + 0.5dbr*r1
+                        # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - 0.5dbr*dr1)
+                    else
+                        # pc += -2bp*dr2 # Regular
+                        # ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1)
+                        # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                        pc += (bp*(-2*dr2+(1-θr)*dr1*r1) + dbr*(1-θr)*dr1)/θr
+                        ec += (bp*( dr1*r1*θr + 2dr2) + dbr*dr1*θr )/(θr+1)# Regular + b gradient
+                        rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
+                    end
+                    # Constant extrapolation
+                    # pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
+                    # ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
+                    # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                    # Funny custom linear extrapolation
+                    # pc += -2bp*dr2 - bp*0.5dr1*r1 - dbr*0.5dr1
+                    # ec += ((3+θr)*dbr*dr + (3+θr)*bp*dr1*r1 + 2*(θr-1)*bp*dr2)*0.5/(θr+1)
+                    # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                 end
 
             else # Bulk, not at front 
@@ -297,13 +341,12 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     pc += (-2bp*dz2 + dbz*dz1 - (dbz/bp + 2*θz*dz1)/Rp0)/(θz+1)
                     rhs[imx] -= (psub_l*(2dz2*bp - dbz*dz1) + p_ch/Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
                 end
-                # No way to treat other equations, so cut it here
             else
-                # Using Robin boundary to define ghost point: north p= south T - 2dz/bp*Rp0*(pi - p_ch)
-                # p. 65, 66 of project notes
+                # Using Robin boundary to define ghost point: north p= south p - 2dz/bp/Rp0*(pi - p_ch)
                 pc += -2bp*dz2 - (2*dz1 + dbz/bp)/Rp0
                 sc +=  2bp*dz2
                 rhs[imx] -= p_ch*(dbz/bp + 2dz1)/Rp0
+                # @info "here" ir pc sc rhs[imx]
             end
 
         else # Bulk in z, still need to check for Stefan front
@@ -326,6 +369,9 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     pc += -2bp*dz2
                     sc += (2*bp*θz*dz2 - dbz*dz1)/(θz+1)
                     rhs[imx] -= psub_l*(2bp*dz2 + dbz*dz1)/(θz+1)
+                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
+                    # rhs[imx] = calc_psub(Tf[ir])
+                    # continue
                 end
             elseif sϕ <= 0
                 θz = pϕ / (pϕ - sϕ)
@@ -337,6 +383,9 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     pc += -2bp*dz2
                     nc += (2*bp*θz*dz2 + dbz*dz1)/(θz+1)
                     rhs[imx] -= psub_l*(2bp*dz2 - dbz*dz1)/(θz+1)
+                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
+                    # rhs[imx] = calc_psub(Tf[ir])
+                    # continue
                 end
 
             else # Bulk, no Stefan front
@@ -346,6 +395,10 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 rhs[imx] += 0
             end
         end
+
+        # if wc == 0 && nc == 0
+        #     @info "doubleghost" ir iz pc ec sc rhs[imx]
+        # end
 
         # Assign all computed stencil values into matrix
         pc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 0), pc)
