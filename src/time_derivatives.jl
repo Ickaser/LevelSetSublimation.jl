@@ -5,7 +5,7 @@ export dudt_heatmass, dudt_heatonly
 
 Evaluate local time rate of change for `u` and put results in `du`.
 
-Splitting `u` and `du` into `ϕ`, `Tf`, and `Tgl` is handled by `ϕ_T_from_u` and `ϕ_T_from_u_view`.
+Splitting `u` and `du` into `ϕ`, `Tf`, and `Tw` is handled by `ϕ_T_from_u` and `ϕ_T_from_u_view`.
 
 Parameters `p` assumed to be `(dom::Domain, params)`
 This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
@@ -20,16 +20,16 @@ function dudt_heatmass!(du, u, integ_pars, t)
 
     input_measurements!(params, t, controls)
 
-    dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
+    dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
 
     dTf .= 0 # Just in case some weird stuff got left there
 
-    ϕ, Tgl = ϕ_T_from_u_view(u, dom)[[true, false, true]]
+    ϕ, Tw = ϕ_T_from_u_view(u, dom)[[true, false, true]]
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
     if minimum(ϕ) > 0 # No ice left
-        dϕ .= 0
-        dTgl .= 0
+        # dϕ .= 0
+        # dTw .= 0
         return nothing
     end
 
@@ -55,7 +55,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     # dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
     # dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
     Qgl = compute_Qgl(u, T, dom, params)
-    dTgl .= (Q_gl_RF - Qgl) / m_cp_gl
+    dTw .= (Q_gl_RF - Qgl) / m_cp_gl
 
     # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
@@ -69,9 +69,12 @@ function dudt_heatmass!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tgl[1] params[:Tsh]
+    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
     if minimum(dϕ) < 0
-        @info "negative dϕ" spy(ϕ) spy(dϕ) 
+        @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) 
+        # pl1 = heat(vr, dom)
+        # pl2 = heat(vz, dom)
+        # display(plot(pl1, pl2))
     end
     # if maximum(dϕ) > 1
     #     @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
@@ -113,7 +116,7 @@ end
     
 Compute the time derivative of `u` with given parameters.
 
-`u` has `dom.ntot` entries for `ϕ`, `dom.nr` for `Tf`, and 1 for `Tgl`.
+`u` has `dom.ntot` entries for `ϕ`, `dom.nr` for `Tf`, and 1 for `Tw`.
 
 Wraps a call on `dudt_heatmass!`, for convenience in debugging and elsewhere that efficiency is less important
 """
@@ -175,7 +178,7 @@ function dTfdt_radial(u, T, p, dϕdx_all, dom::Domain, params)
 end
 
 function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
-    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
     @unpack ρf, Cpf, kf, Q_ic = params
 
     Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
@@ -192,7 +195,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             dTfdr = 0
             d2Tfdr2 = (-2Tf[1] + 2Tf[2])*dom.dr2 # Adiabatic ghost cell
         elseif ir == dom.nr
-            dTfdr = params[:Kgl]/kf*(Tgl - Tf[ir])
+            dTfdr = params[:Kw]/kf*(Tw - Tf[ir])
             d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
         # elseif no_ice[ir-1] && no_ice[ir+1] # Ice on both sides
         #     @warn "Ice surrounded by gap: ignore radial gradients, treat only vertical." has_ice[ir-1:ir+1] 
@@ -288,10 +291,10 @@ end
 
 Evaluate local time rate of change for `u` and put results in `du`.
 
-This function leaves `Tf` and `Tgl` untouched, since there isn't a way to govern their dynamics without mass transfer.
+This function leaves `Tf` and `Tw` untouched, since there isn't a way to govern their dynamics without mass transfer.
 
 `u` and `du` are both structured as follows:
-First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`, `dom.ntot+2` index is glass temperature `Tgl`
+First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`, `dom.ntot+2` index is glass temperature `Tw`
 
 Parameters `p` assumed to be `(dom::Domain, params)`
 This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
@@ -301,8 +304,8 @@ function dudt_heatonly!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params = integ_pars[2]
     p_last = integ_pars[3]
-    dϕ, dTf, dTgl = ϕ_T_from_u_view(du, dom)
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
+    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
 
     T = solve_T(u, Tf, dom, params)
 
@@ -312,7 +315,7 @@ function dudt_heatonly!(du, u, integ_pars, t)
     vz = @view vf[:, :, 2]
 
     dTf .= 0
-    dTgl .= 0
+    dTw .= 0
 
     # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
@@ -341,7 +344,7 @@ function dudt_heatonly!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
     # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[:Tsh] Tgl extrema(vr) extrema(vz)
+    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[:Tsh] Tw extrema(vr) extrema(vz)
     return nothing
 end
 

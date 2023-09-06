@@ -25,7 +25,7 @@ Tsh = RampedVariable([233.15u"K", 283.15u"K"], [1u"K/minute"], [10u"hr"])
 cparams[:m_cp_gl] = 7.9u"g" * 840u"J/kg/K"
 Q_ic = RampedVariable(0.16u"W/cm^3")
 Q_gl_RF = RampedVariable(0.13u"W") # = volumetric * relevant vial volume
-cparams[:Kgl] = 100.0u"W/m^2/K"
+cparams[:Kw] = 100.0u"W/m^2/K"
 
 # -------------------------
 cparams[:l] = l_bulk

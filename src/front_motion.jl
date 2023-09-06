@@ -15,7 +15,7 @@ In addition, the sublimation flux is simply evaluated on the top surface.
 function compute_Qice(u, T, p, dom::Domain, params)
 
     @unpack ΔH= params
-    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)[1]
+    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)[1]
 
     Q_glshvol, Qgl = compute_Qice_noflow(u, T, dom, params)
 
@@ -34,8 +34,8 @@ Compute the total heat input into frozen & dried domains, assuming mass flow is 
 """
 function compute_Qice_noflow(u, T, dom::Domain, params)
 
-    @unpack Kv, Kgl, Q_ic, Q_ck, Tsh= params
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    @unpack Kv, Kw, Q_ic, Q_ck, Tsh= params
+    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
     rweights = ones(Float64, dom.nr) 
@@ -45,7 +45,7 @@ function compute_Qice_noflow(u, T, dom::Domain, params)
     # Heat flux from glass, at outer radius
     zweights = ones(Float64, dom.nz) 
     zweights[begin] = zweights[end] = 0.5
-    Qgl = 2π*dom.rmax * Kgl * dom.dz * sum(zweights .* ( Tgl .- T[end,:]))
+    Qgl = 2π*dom.rmax * Kw * dom.dz * sum(zweights .* ( Tw .- T[end,:]))
 
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
@@ -64,8 +64,8 @@ Compute the total heat input into frozen domain from volumetric, shelf, and glas
 Contrast with `compute_Qice_noflow` and `compute_Qice`, which include heat to dried domain.
 """
 function compute_Qice_nodry(u, T, dom::Domain, params)
-    @unpack Kv, Kgl, Q_ic, Q_ck, Tsh = params
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    @unpack Kv, Kw, Q_ic, Q_ck, Tsh = params
+    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
     rweights = compute_icesh_area_weights(ϕ, dom)
@@ -74,7 +74,7 @@ function compute_Qice_nodry(u, T, dom::Domain, params)
 
     # Heat flux from glass, at outer radius
     zweights = compute_icegl_area_weights(ϕ, dom)
-    Qgl = 2π*dom.rmax * Kgl * sum(zweights .* ( Tgl .- T[end,:]))
+    Qgl = 2π*dom.rmax * Kw * sum(zweights .* ( Tw .- T[end,:]))
 
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
@@ -85,11 +85,11 @@ function compute_Qice_nodry(u, T, dom::Domain, params)
 end
 
 function compute_Qgl(u, T, dom::Domain, params)
-    @unpack Kgl = params
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    @unpack Kw = params
+    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
     # Heat flux from glass, at outer radius
     zweights = compute_icegl_area_weights(ϕ, dom)
-    Qgl = 2π*dom.rmax * Kgl * sum(zweights .* ( Tgl .- T[end,:]))
+    Qgl = 2π*dom.rmax * Kw * sum(zweights .* ( Tw .- T[end,:]))
 end
 
 """
@@ -121,9 +121,9 @@ Quadratic ghost cell extrapolation (into frozen domain), second order finite dif
 """
 function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack k, Kv, Kgl, Tsh = params
+    @unpack k, Kv, Kw, Tsh = params
 
-    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
     pT = T[ir, iz]
     ϕp = ϕ[ir, iz]
     r = dom.rgrid[ir]
@@ -139,7 +139,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     if ir == 1 # Symmetry
         dTr = 0
     elseif ir == nr # Robin: glass
-        dTr = Kgl/k*(Tgl - pT)
+        dTr = Kw/k*(Tw - pT)
     else 
         # Bulk
         eϕ = ϕ[ir+1, iz]
@@ -232,7 +232,7 @@ The distinction in discretization between this and `compute_Tderiv` is essential
 function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack p_ch, Rp0 = params
-    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
     

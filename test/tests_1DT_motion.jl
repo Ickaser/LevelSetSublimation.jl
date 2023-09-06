@@ -29,8 +29,8 @@ end
 
 function case3_analyt_compare(simres, config)
     @unpack sol, dom = simres
-    @unpack Kgl, k, ϵ, ρf, ΔH = config[:cparams]
-    Tgl = config[:Tgl0]
+    @unpack Kw, k, ϵ, ρf, ΔH = config[:cparams]
+    Tw = config[:Tw0]
     Tf = config[:Tf0]
 
     ts = sol.t *u"s"
@@ -39,8 +39,8 @@ function case3_analyt_compare(simres, config)
     # analytical easier in terms of ξ, not t
     R = dom.rmax*u"m"
     R0 = R*(1 - 1e-4)
-    rkk = R*Kgl/k
-    A = rkk*(Tgl-Tf)
+    rkk = R*Kw/k
+    A = rkk*(Tw-Tf)
     B = rkk
     rrs = rs
     B = uconvert(NoUnits, B)
@@ -62,7 +62,7 @@ pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
 params_base = make_default_params()
 params_base[:Q_ic] *= 0
 params_base[:Q_ck] *= 0
-params_base[:Kgl] *= 0
+params_base[:Kw] *= 0
 params_base[:Kv] *= 0
 
 dudt_func = LSS.dudt_heatonly!
@@ -136,14 +136,14 @@ end
     @test err2b < dom.dz
 end
 
-@testset "Case 3: Radial motion, constant Tgl" begin
+@testset "Case 3: Radial motion, constant Tw" begin
     
     casename = "sim_1D_r_glass"
 
     config_3a = deepcopy(config_base)
     config_3a[:init_prof] = :cyl
-    config_3a[:Tgl0] = 243.15u"K"
-    config_3a[:cparams][:Kgl] = 50u"W/m^2/K"
+    config_3a[:Tw0] = 243.15u"K"
+    config_3a[:cparams][:Kw] = 50u"W/m^2/K"
 
     config_3b = deepcopy(config_3a)
     config_3b[:simgridsize] = simgrid_fine

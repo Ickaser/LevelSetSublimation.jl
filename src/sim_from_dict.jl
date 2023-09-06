@@ -35,8 +35,8 @@ end
 
 #     # The main region of concern is the frozen region near interface
 #     # Find the largest value of dϕdt in that region
-#     ϕ, Tf, Tgl = ϕ_T_from_u(integ.u, dom)
-#     dϕ, dTfdt, dTgldt = ϕ_T_from_u(du, dom)
+#     ϕ, Tf, Tw = ϕ_T_from_u(integ.u, dom)
+#     dϕ, dTfdt, dTwdt = ϕ_T_from_u(du, dom)
 #     B = identify_B(ϕ, dom)
 #     B⁻ = B .& (ϕ .<= 0) # BitArray: Frozen region, near interface
 #     if sum(B⁻) > 0 # FOund a frozen region
@@ -73,7 +73,7 @@ end
 #     if verbose
 #         reinit_err = sdf_err_L∞(ϕ, dom)
 #         # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-#         @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tgl reinit_err #, next at t=$(integ.t+dt)" 
+#         @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tw reinit_err #, next at t=$(integ.t+dt)" 
 #     end
 
 #     return integ.t + dt
@@ -131,7 +131,7 @@ Employ Unitful to do unit conversions after simulation if necessary.
 - `vialsize`, a string (e.g. `"2R"`) giving vial size
 - `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
 - `Tf0`, an initial ice temperature with Unitful units 
-- `Tgl0`, an initial glass temperature (if the same as Tf0, can leave this out)
+- `Tw0`, an initial glass temperature (if the same as Tf0, can leave this out)
 - `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
     - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
     - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
@@ -139,7 +139,7 @@ Employ Unitful to do unit conversions after simulation if necessary.
     - `Q_ic`, ice RF heating. 
     - `p_ch` : pressure at top of cake
 - `cparams`, which in turn has fields with Unitful units
-    - `Kgl`, 
+    - `Kw`, 
     - `Kv` : heat transfer coefficients shelf
     - `Q_ck` : volumetric heating in cake 
     - `k`: thermal conductivity of cake
@@ -170,7 +170,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = fullconfig
 
     # Default values for non-essential parameters
-    Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    Tw0 = get(fullconfig, :Tw0, Tf0) # Default to same ice & glass temperature if glass initial not given
     dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to same ice & glass temperature if glass initial not given
 
     # --------- Set up simulation domain, including grid size (defaults to 51x51)
@@ -184,7 +184,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     #     @info "Variables used in callback:" meas_keys
     # end
 
-    u0 = make_u0_ndim(init_prof, Tf0, Tgl0, dom)
+    u0 = make_u0_ndim(init_prof, Tf0, Tw0, dom)
 
     ϕ0 = ϕ_T_from_u_view(u0, dom)[1]
     if verbose
@@ -268,8 +268,8 @@ end
 
 #     # The main region of concern is the frozen region near interface
 #     # Find the largest value of dϕdt in that region
-#     ϕ, Tf, Tgl = ϕ_T_from_u(integ.u, dom)
-#     dϕ, dTfdt, dTgldt = ϕ_T_from_u(du, dom)
+#     ϕ, Tf, Tw = ϕ_T_from_u(integ.u, dom)
+#     dϕ, dTfdt, dTwdt = ϕ_T_from_u(du, dom)
 #     B = identify_B(ϕ, dom)
 #     B⁻ = B .& (ϕ .<= 0)
 #     if sum(B⁻) > 0
@@ -298,7 +298,7 @@ end
 #     if verbose
 #         # reinit_err = sdf_err_L∞(ϕ, dom)
 #         # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-#         @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tgl integ.t/dryfrac #, next at t=$(integ.t+dt)" 
+#         @info "Reinit at t=$(integ.t), dt=$dt" dryfrac Tf Tw integ.t/dryfrac #, next at t=$(integ.t+dt)" 
 #     end
 
 #     return integ.t + dt
@@ -320,13 +320,13 @@ Maximum simulation time is specified by `tf`.
 - `vialsize`, a string (e.g. `"2R"`) giving vial size
 - `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
 - `Tf0`, an ice temperature with Unitful units 
-- `Tgl0`, a glass temperature (if the same as Tf0, can leave this out)
+- `Tw0`, a glass temperature (if the same as Tf0, can leave this out)
 - `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
     - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
     - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
     - `Q_ic`, ice RF heating. 
 - `cparams`, which in turn has fields with Unitful units
-    - `Kgl`, 
+    - `Kw`, 
     - `Kv` : heat transfer coefficients shelf
     - `Q_ck` : volumetric heating in cake 
     - `k`: thermal conductivity of cake
@@ -351,7 +351,7 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
     @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = fullconfig
 
     # Default values for non-essential parameters
-    Tgl0 = get(fullconfig, :Tgl0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    Tw0 = get(fullconfig, :Tw0, Tf0) # Default to same ice & glass temperature if glass initial not given
     simgridsize = get(fullconfig, :simgridsize, (51,51))
 
     # --------- Set up simulation domain
@@ -366,7 +366,7 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
     # ----- Nondimensionalize everything
 
     Tf0 = ustrip(u"K", Tf0)
-    Tgl0 = ustrip(u"K", Tgl0)
+    Tw0 = ustrip(u"K", Tw0)
     params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
     # if verbose
     #     @info "Variables used in callback:" meas_keys
@@ -386,11 +386,11 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     
     # Full array of starting state variables ------------
-    # u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tgl
+    # u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tw
     # u0[1:dom.ntot] .= ϕ0_flat
     # u0[dom.ntot+1] = Tf0 
-    # u0[dom.ntot+2] = Tgl0 
-    u0 = make_u0_ndim(init_prof, Tf0, Tgl0, dom)
+    # u0[dom.ntot+2] = Tw0 
+    u0 = make_u0_ndim(init_prof, Tf0, Tw0, dom)
 
     # Cached array for using last pressure state as guess
     p_last = fill(0.0, size(dom))

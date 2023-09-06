@@ -37,7 +37,7 @@ cparams[:l] = l_bulk
 cparams[:ϵ] = 0.95 
 
 cparams[:κ] *= 0 # Multiply by 0, to match dimensions
-cparams[:Kgl] *= 0
+cparams[:Kw] *= 0
 
 # Assemble parameters into objects -------------------------
 

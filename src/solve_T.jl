@@ -3,8 +3,8 @@ export solve_T
 # function radial_Tf(u, dom, params) 
 #     @unpack dr, dz, dr1, dz1, dr2, dz2, 
 #             rgrid, zgrid, nr, nz, ntot = dom
-#     @unpack Kgl, Kv, Q_ck, k, Tsh = params
-#     ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+#     @unpack Kw, Kv, Q_ck, k, Tsh = params
+#     ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
 # end 
 
 """
@@ -31,9 +31,9 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 function solve_T(u, Tf, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Kgl, Kv, Q_ck, k, Tsh = params
-    # ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
+    @unpack Kw, Kv, Q_ck, k, Tsh = params
+    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
 
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
@@ -108,22 +108,22 @@ function solve_T(u, Tf, dom::Domain, params)
                 θr = pϕ/(pϕ-wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_thresh
-                    pc += -2k*dr2/θr - Kgl*(r1 + 2dr1)
-                    rhs[imx] -= 2Tf_loc*k*dr2/θr + Kgl*Tgl*(r1 + 2dr1)
+                    pc += -2k*dr2/θr - Kw*(r1 + 2dr1)
+                    rhs[imx] -= 2Tf_loc*k*dr2/θr + Kw*Tw*(r1 + 2dr1)
                 else 
                     # First, use Robin BC to define an east ghost cell
                     # THen, extrapolate across Stefan boundary using east ghost & Stefan
-                    pc += (Kgl*(-r1 -2dr1*θr) + k*(r1*dr1 - 2dr2))/(θr+1)
-                    rhs[imx] -= (Tf_loc*k*(2dr2-r1*dr1) + Tgl*Kgl*(r1+2dr1*θr))/(θr+1)
+                    pc += (Kw*(-r1 -2dr1*θr) + k*(r1*dr1 - 2dr2))/(θr+1)
+                    rhs[imx] -= (Tf_loc*k*(2dr2-r1*dr1) + Tw*Kw*(r1+2dr1*θr))/(θr+1)
                 end
 
             else
                 # Using Robin boundary to define ghost point: east T= west T + 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2k*dr2 - Kgl*(r1 + 2dr1)
+                pc += -2k*dr2 - Kw*(r1 + 2dr1)
                 wc +=  2k*dr2
-                rhs[imx] -= Kgl*Tgl*(2dr1 + r1)
+                rhs[imx] -= Kw*Tw*(2dr1 + r1)
             end
 
         else # r direction bulk
@@ -297,12 +297,12 @@ function add_to_vcr!(vcr, dom, p_imx, shift, val)
 end
 
 function pseudosteady_Tf(u, dom, params)
-    # ϕv, Tfv, Tglv = ϕ_T_from_u(u, dom)#[[true, false, true]]
+    # ϕv, Tfv, Twv = ϕ_T_from_u(u, dom)#[[true, false, true]]
     Tfg = ϕ_T_from_u(u, dom)[2]
     pseudosteady_Tf(u, dom, params, Tfg)
 end
 function pseudosteady_Tf(u, dom, params, Tf_g)
-    ϕ, Tgl = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
     @unpack ρf, Cpf, kf, Q_ic = params
     @unpack kf, ρf, Cpf = params
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
@@ -369,7 +369,7 @@ function pseudosteady_Tf_T_p(u, dom, params; abstol=1e-2)
 end
 
 function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
-    ϕ, Tf, Tgl = ϕ_T_from_u_view(u, dom)
+    ϕ, Tf, Tw = ϕ_T_from_u_view(u, dom)
     @unpack kf, ρf, Cpf = params
 
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
