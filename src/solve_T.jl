@@ -1,18 +1,14 @@
-export solve_T, solve_T_original
-# y
+export solve_T
 
-
-# Construct sparse array with rows, cols, vals format, then construct sparse matrix
-
-function radial_Tf(u, dom, params) 
-    @unpack dr, dz, dr1, dz1, dr2, dz2, 
-            rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Kgl, Kv, Q_ck, k, Tsh = params
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
-end 
+# function radial_Tf(u, dom, params) 
+#     @unpack dr, dz, dr1, dz1, dr2, dz2, 
+#             rgrid, zgrid, nr, nz, ntot = dom
+#     @unpack Kw, Kv, Q_ck, k, Tsh = params
+#     ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+# end 
 
 """
-    solve_T(u, dom::Domain, params)
+    solve_T(u, Tf, dom::Domain, params)
 
 Compute 2D axisymmetric T profile, returning ghost cell values, for given state `u`.
 
@@ -32,26 +28,30 @@ Neumann boundaries use a ghost point & BC to define ghost cell, then use same st
 Coefficients computed in `gfm_extrap.ipynb`, using Sympy.  
 (For higher order, see Gibou and Fedkiw, 2005, "A fourth order accurate discretization ... Laplace ... ")  
 """
-function solve_T(u, dom::Domain, params)
+function solve_T(u, Tf, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Kgl, Kv, Q_ck, k, Tsh = params
-    ϕ, Tf, Tgl = ϕ_T_from_u(u, dom)
+    @unpack Kw, Kv, Q_ck, k, Tsh = params
+    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
+
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
-    if minimum(ϕ) > 0
-        # @info "Solving heat equation without any ice, artificially introducing some"
-        ϕ = copy(ϕ)
-        ϕ[argmin(ϕ)] = - max(dr, dz)
-    end
+    # if minimum(ϕ) > 0
+    #     # @info "Solving heat equation without any ice, artificially introducing some"
+    #     ϕ = copy(ϕ)
+    #     ϕ[argmin(ϕ)] = - max(dr, dz)
+    # end
+
+
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
-    vals = Vector{Float64}(undef, 0)
+    vals = Vector{eltype(Tf)}(undef, 0)
 
     vcr = (vals, cols, rows)
-    rhs = fill(0.0, ntot)
+    rhs = similar(Tf, ntot)
+    rhs .= 0
 
-    # θ_thresh = dr / dom.rmax
     θ_thresh = 0.05
 
     for iz in 1:nz, ir in 1:nr
@@ -59,11 +59,10 @@ function solve_T(u, dom::Domain, params)
         imx = ir + (iz-1)*nr
 
         pϕ = ϕ[ir, iz]
-
         # Check if in frozen domain; if so, fix temperature
         if pϕ <= 0
             add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-            rhs[imx] = Tf
+            rhs[imx] = Tf[ir]
             continue
         end
 
@@ -77,17 +76,7 @@ function solve_T(u, dom::Domain, params)
         wc = 0
         sc = 0
         nc = 0
-        # z = zgrid[iz]
         
-
-        # Check if on boundaries or in bulk, set up BC or diffeq  
-        # TODO 
-        # Currently, boundaries are not checking for interface crossing.
-
-
-        stefan_debug = false
-
-
         # R direction boundaries
         if ir == 1
             # Symmetry BC
@@ -95,52 +84,46 @@ function solve_T(u, dom::Domain, params)
             eϕ = ϕ[ir+1, iz]
             # Check for Stefan front
             if eϕ < 0 # Front is within a cell of boundary
-                # p. 65 of project notes
                 θr = pϕ/(pϕ-eϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 if θr >= θ_thresh
                     pc += -2k*dr2/θr
-                    rhs[imx] -= 2k*Tf*dr2/θr #+ BC1*(r1 - 2dr1)
-                else # Front is within dr/r cells of boundary
-                    # Have an exact value given by BC + front
-                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    # rhs[imx] = Tf - θr*BC1*dr
-                    # continue
+                    rhs[imx] -= 2k*Tf_loc*dr2/θr #+ BC1*(r1 - 2dr1)
+                else # Front is within .05 cells of boundary
                     pc += -2k*dr2/(θr+1)
-                    rhs[imx] -= 2Tf*k*dr2/(θr+1) 
+                    rhs[imx] -= 2Tf_loc*k*dr2/(θr+1) 
                 end
-                # No way to treat other equations, so cut it here
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
                 pc += -2k*dr2
                 ec +=  2k*dr2
-                # rhs[imx] += BC1*(2*dr1 - r1)
                 rhs[imx] += 0 # r=0, so 1/r = NaN
             end
         elseif ir == nr
             # Robin BC: glass
             wϕ = ϕ[ir-1, iz]
             if wϕ < 0 # Front is within a cell of boundary
-                # p. 119 of project notes
                 θr = pϕ/(pϕ-wϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_thresh
-                    pc += -2k*dr2/θr - Kgl*(r1 + 2dr1*θr)
-                    rhs[imx] -= 2Tf*k*dr2/θr + Kgl*Tgl*(r1 + 2dr1)
+                    pc += -2k*dr2/θr - Kw*(r1 + 2dr1)
+                    rhs[imx] -= 2Tf_loc*k*dr2/θr + Kw*Tw*(r1 + 2dr1)
                 else 
                     # First, use Robin BC to define an east ghost cell
                     # THen, extrapolate across Stefan boundary using east ghost & Stefan
-                    pc += (Kgl*(-r1 -2dr1*θr) + k*(r1*dr1 - 2dr2))/(θr+1)
-                    rhs[imx] -= (Tf*k*(2dr2-r1*dr1) + Tgl*Kgl*(r1+2dr1*θr))/(θr+1)
+                    pc += (Kw*(-r1 -2dr1*θr) + k*(r1*dr1 - 2dr2))/(θr+1)
+                    rhs[imx] -= (Tf_loc*k*(2dr2-r1*dr1) + Tw*Kw*(r1+2dr1*θr))/(θr+1)
                 end
 
             else
                 # Using Robin boundary to define ghost point: east T= west T + 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2k*dr2 - Kgl*(r1 + 2dr1)
+                pc += -2k*dr2 - Kw*(r1 + 2dr1)
                 wc +=  2k*dr2
-                rhs[imx] -= Kgl*Tgl*(2dr1 + r1)
+                rhs[imx] -= Kw*Tw*(2dr1 + r1)
             end
 
         else # r direction bulk
@@ -155,27 +138,29 @@ function solve_T(u, dom::Domain, params)
                 rhs[imx] += 0
             elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 if θr >= θ_thresh
                     pc += -2k*dr2 # Regular 
                     pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf_loc*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
                     pc += -2k*dr2 # Regular
                     wc += k*(-dr1*r1 + 2θr*dr2)/(θr+1)  
-                    rhs[imx] -= Tf*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf_loc*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
+                Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_thresh # Regular magnitude θ
                     pc += -2k*dr2 # Regular 
                     pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
                 else # Very small θ
                     pc += -2k*dr2 # Regular
                     ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
-                    rhs[imx] -= Tf*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
                 end
 
             else # Bulk, not at front 
@@ -199,22 +184,15 @@ function solve_T(u, dom::Domain, params)
                 θz = pϕ/(pϕ-nϕ)
                 if θz > θ_thresh
                     pc += -2k*dz2/θz - 2Kv*dz1
-                    rhs[imx] -= 2*Tf*k*dz2/θz + 2Kv*Tsh*dz1
+                    rhs[imx] -= 2*Tf[ir]*k*dz2/θz + 2Kv*Tsh*dz1
                 else
-                    # Have an exact value given by BC + front
-                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    # rhs[imx] = (k*Tf + Kv*Tsh*θz*dz) / (k + Kv*θz*dz)
-                    # continue
                     # First Robin ghost defined, then Stefan ghost extrap
                     pc += -2k*dz2 - 2Kv*dz1
                     nc +=  2k*dz2
                     rhs[imx] -= 2Kv*Tsh*dz1
                 end
-                # No way to treat other equations, so cut it here
             else
-                # Using Neumann boundary to define ghost point: south T= north T - 2BC1*dr
-                # p. 65, 66 of project notes
-                # FINISH THIS: NOT CORRECT
+                # Robin boundary
                 pc += -k*2dz2 - 2Kv*dz1
                 nc +=  k*2dz2
                 rhs[imx] -= 2Tsh*Kv*dz1
@@ -229,15 +207,10 @@ function solve_T(u, dom::Domain, params)
                 θz = pϕ/(pϕ-sϕ)
                 if θz > θ_thresh
                     pc += -2*k*dz2/θz
-                    rhs[imx] -= 2*Tf*k*dz2/θz + BC4*2*dz1
+                    rhs[imx] -= 2*Tf[ir]*k*dz2/θz + BC4*2*dz1
                 else
-                    # # Have an exact value given by BC + front
-                    # # No way to treat other equations, so add to matrix and stop here
-                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1) # P cell
-                    # rhs[imx] = Tf + θz*BC4*dz
-                    # continue
                     pc += -2k*dz2/(θz+1)
-                    rhs[imx] -= 2Tf*k*dz2/(θz+1) 
+                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1) 
                 end
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
@@ -263,11 +236,11 @@ function solve_T(u, dom::Domain, params)
                 if θz >= θ_thresh
                     pc += -k*dz2*(θz+1)/θz
                     sc += k*dz2
-                    rhs[imx] -= Tf*k*dz2/θz
+                    rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
                     pc += -2k*dz2
                     sc += 2*k*θz*dz2/(θz+1)
-                    rhs[imx] -= 2Tf*k*dz2/(θz+1)
+                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
                 end
             elseif sϕ <= 0
                 # stefan_debug = true
@@ -276,11 +249,11 @@ function solve_T(u, dom::Domain, params)
                 if θz >= θ_thresh
                     pc += -k*dz2*(θz+1)/θz
                     nc += k*dz2
-                    rhs[imx] -= Tf*k*dz2/θz
+                    rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
                     pc += -2k*dz2
                     nc += 2*k*θz*dz2/(θz+1)
-                    rhs[imx] -= 2Tf*k*dz2/(θz+1)
+                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
                 end
 
             else # Bulk, no Stefan front
@@ -291,30 +264,6 @@ function solve_T(u, dom::Domain, params)
             end
         end
 
-        # Stefan boundary debug
-        # if stefan_debug
-        #     println("ir=$ir, iz=$iz, pc=$pc, nc=$nc, sc=$sc,  ec=$ec, wc=$wc, rhs=$(rhs[imx])") 
-        # end
-
-        # Debug boundaries
-        # if iz==1
-        #     if sc != 0
-        #         @info "iz==1" ir pc nc sc ec wc rhs[imx]
-        #     end
-        # elseif iz == nz
-        #     if nc != 0
-        #         @info "iz==nz" ir pc nc sc ec wc rhs[imx]
-        #     end
-        # end
-        # if ir==1
-        #     if wc != 0
-        #         @info "ir==1" ir pc nc sc ec wc rhs[imx]
-        #     end
-        # elseif ir == nr
-        #     if ec != 0
-        #         @info "ir==nr" ir pc nc sc ec wc rhs[imx]
-        #     end
-        # end
 
         # Assign all computed stencil values into matrix
         pc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 0), pc)
@@ -324,25 +273,188 @@ function solve_T(u, dom::Domain, params)
         sc != 0 && add_to_vcr!(vcr, dom, imx, ( 0,-1), sc)
         rhs[imx] += - Q_ck 
 
-        # push!(vals,                     1.0dz2); push!(cols, imx-nr); push!(rows, imx) # S cell
-        # push!(vals,  1.0dr2 - 0.5dr1*r1       ); push!(cols, imx- 1); push!(rows, imx) # W cell
-        # push!(vals, -2.0dr2            -2.0dz2); push!(cols, imx   ); push!(rows, imx) # P cell
-        # push!(vals,  1.0dr2 + 0.5dr1*r1       ); push!(cols, imx+ 1); push!(rows, imx) # E cell
-        # push!(vals,                     1.0dz2); push!(cols, imx+nr); push!(rows, imx) # N cell
+
     end
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
-    sol = mat_lhs \ rhs
+    prob = LinearProblem(mat_lhs, rhs)
+    sol = solve(prob, SparspakFactorization()).u 
+    # sol = solve(prob, UMFPACKFactorization()).u 
+    # sol = mat_lhs \ rhs
     T = reshape(sol, nr, nz)
+
+    if minimum(T) <= 0
+        @info "negative temperatures" T
+    end
+    return T
 end
 
 function add_to_vcr!(vcr, dom, p_imx, shift, val)
     vals, cols, rows = vcr
     c_imx = p_imx + shift[1] + dom.nr*shift[2]
-    # println("p_imx = $p_imx, c_imx = $c_imx, shift=$shift")
     push!(vals, val)
     push!(cols, c_imx)
     push!(rows, p_imx)
 end
 
+function pseudosteady_Tf(u, dom, params)
+    # ϕv, Tfv, Twv = ϕ_T_from_u(u, dom)#[[true, false, true]]
+    Tfg = ϕ_T_from_u(u, dom)[2]
+    pseudosteady_Tf(u, dom, params, Tfg)
+end
+function pseudosteady_Tf(u, dom, params, Tf_g)
+    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
+    @unpack ρf, Cpf, kf, Q_ic = params
+    @unpack kf, ρf, Cpf = params
+    dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
-# solve_T = solve_T_original
+    has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
+
+    if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
+        return Tf_g
+    end
+        
+
+
+
+    # T_cache = solve_T(u, Tfv, dom, params)
+    # p_cache = solve_p(u, Tfv, T_cache, dom, params)
+    function resid!(dTfdt, Tf)
+    # function resid!(dTfdt, Tf, ssparams, t)
+        # Tfv .= Tf
+        if any(isnan.(Tf))
+            @warn "NaN found"
+        end
+        extrap_Tf_noice!(Tf, has_ice, dom)
+        if any(clamp.(Tf, 200, 400) .!= Tf)
+            if typeof(Tf[1]) <: AbstractFloat
+                @info "Crazy Tf" Tf has_ice
+            else
+                @info "Crazy Tf" [Tfi.value for Tfi in Tf] has_ice
+            end
+        end
+        # @info "resid"
+        # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
+        # T_cache .= solve_T(u, Tf, dom, params)
+        # p_cache .= solve_p(u, Tf, T_cache, dom, params, p_cache)
+        # dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
+        # Tf_extrap = copy(Tf)
+        T = solve_T(u, Tf, dom, params)
+        p = solve_p(u, Tf, T, dom, params)
+        dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
+
+        # dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
+        # @info "resid" extrema(dTfdt) extrema(Tf) extrema(Tf_extrap)
+        nothing
+    end
+    # α = kf/ρf/Cpf
+    # CFL = 0.4
+    # dt = CFL / (α/dom.dr^2)
+
+    sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
+    Tfs = sol.zero
+    # extrap_Tf_noice!(Tfs, has_ice, dom)
+    # return sol, Tfs, resid!
+    # prob = SteadyStateProblem(resid!, copy(Tfv))
+    # solve(prob, DynamicSS(Euler(), abstol=1e-2), dt=dt)
+    # solve(NonlinearProblem(prob), NewtonRaphson())
+    # return resid!
+    return Tfs
+end
+
+function pseudosteady_Tf_T_p(u, dom, params; abstol=1e-2)
+    Tf0 = ϕ_T_from_u(u, dom)[2]
+    T0 = solve_T(u, Tf0, dom, params)
+    p0 = solve_p(u, Tf0, T0, dom, params)
+    return pseudosteady_Tf_T_p(u, dom, params, Tf0, p0; abstol=abstol)
+end
+
+function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
+    ϕ, Tf, Tw = ϕ_T_from_u_view(u, dom)
+    @unpack kf, ρf, Cpf = params
+
+    dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+
+    Tf .= Tfg
+    T0 = solve_T(u, Tf, dom, params)
+    p0 = solve_p(u, Tf, T0, dom, params, pg)
+    Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
+    α = kf/ρf/Cpf
+    CFL = 0.4
+    dt = CFL / (α/dom.dr^2) #* max(0.01, minimum(Δξ)/dom.zmax)
+    nt = max(3*dom.nr, ceil(Int, 100.0/dt))
+    has_ice = (Δξ .> 0)
+
+    dTfdt = zeros(dom.nr)
+
+    for it in 1:nt
+        # @info "step: it=$it, ext=$(extrema(dTfdt))"
+        dTfdt_radial!(dTfdt, u, Tf, T0, p0, dϕdx_all, dom, params)
+        @. Tf += dTfdt*dt
+        extrap_Tf_noice!(Tf, has_ice, dom)
+        T0 .= solve_T(u, Tf, dom, params)
+        p0 .= solve_p(u, Tf, T0, dom, params, p0)
+        if norm(dTfdt, Inf) < abstol
+            @info "num steps to pseudosteady" it
+            # break
+            return Tf, T0, p0
+        end
+    end
+
+
+
+
+    @info "max steps reached" nt dTfdt
+    return Tf, T0, p0
+
+end
+
+function extrap_Tf_noice!(Tf, has_ice, dom)
+    if all(.~ has_ice)
+        return
+    elseif sum(has_ice) == 1 # Only one ice cell: extrapolate to everywhere
+        Tf[:] .= Tf[findfirst(has_ice)]
+        return
+    end
+
+
+    if findfirst(has_ice) > 1 && has_ice[findfirst(has_ice)+1]
+        # Build a linear extrapolation
+        ir1 = findfirst(has_ice)
+        ir2 = ir1 + 1
+        Tf1 = Tf[ir1]
+        Tf2 = Tf[ir2]
+        # Assuming uniform grid, can work in indices rather than space
+        left_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
+        for ir in 1:ir1-1
+            Tf[ir] = extrap(ir)
+        end
+    elseif findfirst(has_ice) > 1 # No neighboring ice, so constant extrapolation
+        Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
+    end
+    if findlast(has_ice) < dom.nr && has_ice[findlast(has_ice)-1]
+        # Build a linear extrapolation
+        ir1 = findlast(has_ice)
+        ir2 = ir1 - 1
+        Tf1 = Tf[ir1]
+        Tf2 = Tf[ir2]
+        # Assuming uniform grid, can work in indices rather than space
+        right_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
+        for ir in ir1+1:dom.nr
+            Tf[ir] = right_Textrap(ir)
+        end
+    elseif findlast(has_ice) < dom.nr # No neighboring ice, so constant extrapolation
+        Tf[findlast(has_ice)+1:end] .= Tf[findlast(has_ice)]
+    end
+
+    edges = has_ice[1:end-1] .⊻ has_ice[2:end]
+    if sum(edges) > 2
+        gaps = findall(edges)[2:end-1] 
+        for g in gaps
+            if g-1 ∉ gaps && g+1 ∉ gaps
+                Tf[g] = (Tf[g-1] + Tf[g+1]) / 2
+            else
+                @warn "unhandled: large gaps in ice"
+            end
+        end
+    end
+end

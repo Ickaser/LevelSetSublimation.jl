@@ -18,7 +18,7 @@ Here is a sample simulation setup, in a case where nothing complicated is happen
 
 ```@doctest
 cparams = make_default_params()
-ϕ0type = :circ
+init_prof = :circ
 Tf0 = 233.15u"K"
 Q_gl_RF = 0.002u"W" # = volumetric * relevant vial volume
 t_samp = (0:0.1:1) .* u"hr"
@@ -34,14 +34,14 @@ vialsize = "10R"
 fillvol = 2u"mL"
 
 config = Dict{Symbol, Any}()
-@pack! config = cparams, ϕ0type, Tf0, controls, vialsize, fillvol
+@pack! config = cparams, init_prof, Tf0, controls, vialsize, fillvol
 ```
 
 ## The Guts (not exported)
 
 ```@docs
-uevol_heatmass
-uevol_heatmass!
+dudt_heatmass
+dudt_heatmass!
 reinit_wrap
 next_reinit_time
 ```
@@ -50,6 +50,6 @@ next_reinit_time
 
 ```@docs
 sim_heatonly
-uevol_heatonly
-uevol_heatonly!
+dudt_heatonly
+dudt_heatonly!
 ```

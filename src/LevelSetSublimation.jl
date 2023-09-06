@@ -8,6 +8,13 @@ using DrWatson, Reexport
 @reexport using Unitful
 using CSV
 using ProgressMeter
+using LinearAlgebra: norm
+using UnicodePlots: spy
+using NLsolve
+using NonlinearSolve
+using LinearSolve
+using NaNMath
+using PrecompileTools
 
 export contour
 if !isdefined(LevelSetSublimation, :contour)
@@ -19,7 +26,7 @@ const CI = CartesianIndex
 
 include(srcdir("structs.jl"))
 include(srcdir("get_vial_dims.jl"))
-include(srcdir("levelset_plots.jl"))
+include(srcdir("plotting_tools.jl"))
 include(srcdir("levelset_reinit.jl"))
 include(srcdir("vel_extrap.jl"))
 include(srcdir("solve_T.jl"))
@@ -27,7 +34,11 @@ include(srcdir("physical_data.jl"))
 include(srcdir("solve_p.jl"))
 include(srcdir("front_motion.jl"))
 include(srcdir("sim_setup.jl"))
+include(srcdir("time_derivatives.jl"))
 include(srcdir("sim_from_dict.jl"))
-include(srcdir("plot_sim_results.jl"))
+include(srcdir("access_sim_results.jl"))
+include(srcdir("levelset_geometry.jl"))
+
+include(srcdir("precompile.jl"))
 
 end # module LevelSetSublimation

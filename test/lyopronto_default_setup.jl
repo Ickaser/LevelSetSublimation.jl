@@ -5,7 +5,7 @@ vialsize = "6R"
 fillvol = 2u"mL"
 
 simgridsize = (51, 51)
-ϕ0type = :flat 
+init_prof = :flat 
 
 
 # ---- Variables which can be controlled during a run
@@ -37,7 +37,7 @@ cparams[:l] = l_bulk
 cparams[:ϵ] = 0.95 
 
 cparams[:κ] *= 0 # Multiply by 0, to match dimensions
-cparams[:Kgl] *= 0
+cparams[:Kw] *= 0
 
 # Assemble parameters into objects -------------------------
 
@@ -45,7 +45,7 @@ controls = Dict{Symbol, Any}()
 @pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
 
 config = Dict{Symbol, Any}()
-@pack! config = cparams, ϕ0type, Tf0, controls, vialsize, fillvol
+@pack! config = cparams, init_prof, Tf0, controls, vialsize, fillvol
 
 
 # --------------------------------------
@@ -60,7 +60,7 @@ config = Dict{Symbol, Any}()
 
 # dom = Domain(51, 51, rmax, zmax)
 
-# ϕ0 = make_ϕ0(ϕ0type, dom)   
+# ϕ0 = make_ϕ0(init_prof, dom)   
 # u0 = zeros(dom.ntot+2)
 # u0[1:dom.ntot] = reshape(ϕ0, :)
 # u0[dom.ntot+1] = ustrip(u"K", Tf0)

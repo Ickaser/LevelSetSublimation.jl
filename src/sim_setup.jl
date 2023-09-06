@@ -1,6 +1,7 @@
-export make_artificial_params, make_default_params
+export make_default_params
 export make_ϕ0, make_ramp
-export params_nondim_setup
+export params_nondim_setup, make_u0_ndim
+export ϕ_T_from_u, ϕ_T_from_u_view
 
 """
     make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
@@ -13,6 +14,7 @@ Currently allowed setups:
 - `:rad`, `:cyl`  -- interface at rmax*(1 - ϵ)
 - `:box`          -- interface at both zmax*(1-ϵ) and rmax*(1-ϵ)
 - `:cone`         -- interface a line decreasing in r
+- `:midflat`      -- interface at zmax*0.5
 - `:ell_bub `     -- ellipse in center of vial, separated from boundaries
 - `:circ `        -- circle at r=0, z=0 
 - `:tinycirc `    -- circle at r=0, z=0, very small radius
@@ -21,6 +23,8 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     # ϵ *= sqrt(dom.rmax * dom.zmax)
     if ϕtype == :top || ϕtype == :flat
         ϕ0 = [z - dom.zmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
+    elseif ϕtype == :midflat
+        ϕ0 = [z - dom.zmax*0.5 for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :rad || ϕtype == :cyl
         ϕ0 = [r - dom.rmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :box
@@ -53,7 +57,7 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
 end
 
 """
-    params_setup(cparams, controls)
+    params_nondim_setup(cparams, controls)
     
 Return a copied `params` dictionary and list of keys from `controls` 
 to be updated at each time sampled point.
@@ -64,37 +68,57 @@ function params_nondim_setup(cparams, controls)
 
     for pk in keys(cparams)
         try
-            params[pk] = ustrip.(pbu[pk], cparams[pk])
+            params[pk] = ustrip.(PBD[pk], cparams[pk])
         catch DomainError
-            @error "Bad dimensions in passed parameter." pk params[pk] pbu[pk]   
+            @error "Bad dimensions in passed parameter." pk params[pk] PBD[pk]   
         end
     end
     for mk in keys(controls)
-        nondim_controls[mk] = ustrip.(pbu[mk], controls[mk])
+        # nondim_controls[mk] = ustrip.(PBD[mk], controls[mk])
+        nondim_controls[mk] = nondim_controlvar(mk, controls[mk])
+        params[mk] = nondim_controls[mk](0)
     end
-    if length(nondim_controls[:t_samp]) == 1
-        nondim_controls[:t_samp] = [0.0]
-    end
+    # if length(nondim_controls[:t_samp]) == 1
+    #     nondim_controls[:t_samp] = [0.0]
+    # end
 
-    arr_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])>1)]
-    sc_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])==1)]
-    for ki in sc_keys
-        params[ki] = nondim_controls[ki]
-    end
-    for ki in arr_keys
-        if length(controls[ki]) != length(controls[:t_samp])
-            @error "Improper length of measurement vector. Must match time vector length." ki length(controls[ki]) length(controls[:t_samp])
-        end
-        params[ki] = nondim_controls[ki][1]
-    end
-    if length(arr_keys) == 0
-        arr_keys = nothing
-    end
-    return params, arr_keys, nondim_controls
+    # arr_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])>1)]
+    # sc_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])==1)]
+    # for ki in sc_keys
+    #     params[ki] = nondim_controls[ki]
+    # end
+    # for ki in arr_keys
+    #     # if length(controls[ki]) != length(controls[:t_samp])
+    #     #     @error "Improper length of measurement vector. Must match time vector length." ki length(controls[ki]) length(controls[:t_samp])
+    #     # end
+    #     params[ki] = nondim_controls[ki](0)
+    # end
+    # if length(arr_keys) == 0
+    #     arr_keys = nothing
+    # end
+    # return params, arr_keys, nondim_controls
+
+    return params, nondim_controls
 end
 
-pbu = params_base_units = Dict{Symbol, Any}(
-    :Kgl => u"W/m^2/K",
+function nondim_controlvar(varname::Symbol, control_dim::RampedVariable)
+    if dimension(control_dim(0u"s")) != dimension(PBD[varname])
+        @error "Bad units on ramped variable." varname control_dim PBD[varname]
+    end
+    base_un = PBD[varname]
+    if length(control_dim.setpts) > 1
+        setpts = ustrip.(base_un, control_dim.setpts)
+        ramprates = ustrip.(base_un/u"s", control_dim.ramprates)
+        holds = ustrip.(u"s", control_dim.holds)
+        control_ndim = RampedVariable(setpts, ramprates, holds)
+    else
+        control_ndim = RampedVariable(ustrip(base_un, control_dim.setpts[1]))
+    end
+    return control_ndim
+end
+
+const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
+    :Kw => u"W/m^2/K",
     :Kv => u"W/m^2/K",
     :Q_ic => u"W/m^3",
     :Q_gl_RF => u"W",
@@ -102,13 +126,14 @@ pbu = params_base_units = Dict{Symbol, Any}(
     :k => u"W/m/K",
 
     :Tsh => u"K",
-    :Tgl0 => u"K",
+    :Tw0 => u"K",
     :Tf0 => u"K",
-    :Tgl => u"K",
+    :Tw => u"K",
     :Tf => u"K",
 
     :p_ch => u"Pa",
 
+    :kf => u"W/m/K",
     :ρf => u"kg/m^3",
     :Cpf => u"J/kg/K",
     :ΔH => u"J/kg",
@@ -136,11 +161,11 @@ function make_default_params()
             
     # Very artificial parameters
     # Heat transfer
-    Kgl = 1e2 *u"W/K/m^2" # 1/(Contact resistance 1e-4 + cylindrical resistance from outer wall 1e-3 to 1e-5)
+    Kw = 1e2 *u"W/K/m^2" # 1/(Contact resistance 1e-4 + cylindrical resistance from outer wall 1e-3 to 1e-5)
     Kv = 20 * u"W/K/m^2"
-    Q_ic = 0.3u"W/cm^3"
+    Q_ic = 0.0u"W/cm^3"
     Q_ck = 0.0u"W/m^3"
-    m_cp_gl = 5u"g" * cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
+    m_cp_gl = 5u"g" * LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
 
     # Mass transfer
     p_ch = 100u"mTorr" # 100 mTorr is about 13 Pa
@@ -159,70 +184,115 @@ function make_default_params()
     # ΔHsub = 678.0 # u"cal/g"
     ρf = ρ_ice 
     Cpf = Cp_ice
+    kf = LevelSetSublimation.kf
 
     # Rw = 8.3145 / .018 # J/molK * mol/kg
     # calc_ρvap(T) = calc_psub(T)/Rw/T
 
 
     params = Dict{Symbol, Any}()
-    @pack! params = Kgl, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, ρf, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
+    @pack! params = Kw, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, Rp0, R, Mw, μ, Cpf
+    # @pack! params = Kw, Kv, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, Rp0, R, Mw, μ, Cpf
     return params
 end
         
+# """
+#     make_ramp(ustart, uend, ramprate, ts)
+
+# Convenience function for filling out a time series during and after setpoint ramp.
+# `ustart` and `uend` are initial and final setpoints; `ts` the time points at which to sample.
+
+# `ts` need not start at 0, but should contain at least enough time for the full ramp.
+# """
+# function make_ramp(ustart, uend, ramprate, ts)
+#     du = uend - ustart
+#     dt = du / ramprate
+#     us = fill(ustart, size(ts))
+#     dus = min.((ts.-ts[begin])/dt, 1) .* (uend - ustart)
+#     return us .+ dus
+# end
+
+
+# --------- Functions mapping state `u` to level set and temperatures
+
 """
-    make_artificial_params()
+    ϕ_T_from_u_view(u, dom)
 
-Return a dictionary of `T_params`, with artificially chosen values.
-
-For convenience in testing code.
+Take the current system state `u` and return views corresponding to `ϕ`, `Tf`, and `Tw`.
+Nothing too fancy--just to avoid rewriting the same logic everywhere
 """
-function make_artificial_params()
-            
-    # Very artificial parameters
-    # Heat transfer
-    Kgl = 1.0
-    Kv = 1.0
-    Q_ic = 1.0
-    Q_ck = 0.0
-    k = 1.0
-    m_cp_gl = 5.0
-
-    # Mass transfer
-    p_ch = 5 # 100 mTorr is about 13 Pa
-    ϵ = 0.9
-    l = 1.0
-    κ = 0.5
-    R = 8.3145
-    Mw = .018 #mol/kg
-    μ = 1.0
-
-    # Sublimation
-    ΔH = 1.0
-    # ΔHsub = 678.0 # u"cal/g"
-    ρf = 100.0 
-    Cpf = 10.0
-
-    # Rw = 8.3145 / .018 # J/molK * mol/kg
-    # calc_ρvap(T) = calc_psub(T)/Rw/T
-
-
-    params = Dict{Symbol, Any}()
-    @pack! params = Kgl, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, ρf, p_ch, ϵ, l, κ, R, Mw, μ, Cpf
-    return params
+function ϕ_T_from_u_view(u, dom)
+    ϕ = @views reshape(u[1:dom.ntot], size(dom))
+    Tf = @view u[dom.ntot+1:dom.ntot+dom.nr]
+    Tw = @view u[end]
+    return ϕ, Tf, Tw
 end
 
 """
-    make_ramp(ustart, uend, ramprate, ts)
+    ϕ_T_from_u(u, dom)
 
-Convenience function for interpolating appropriate ramp values.
-`ustart` and `uend` are initial and final setpoints; `ts` the time points at which to sample.
-
-`ts` need not start at 0, but should contain at least enough time for the full ramp.
+Take the current system state `u` and break it into `ϕ`, `Tf`, and `Tw`.
+Nothing too fancy--just to avoid rewriting the same logic everywhere
 """
-function make_ramp(ustart, uend, ramprate, ts)
-    du = uend - ustart
-    dt = du / ramprate
-    us = fill(ustart, size(ts))
-    dus = min.((ts.-ts[begin])/dt, 1) .* (uend - ustart)
-    return us .+ dus
+function ϕ_T_from_u(u, dom)
+    ϕ = reshape(u[1:dom.ntot], size(dom))
+    Tf = u[dom.ntot+1:dom.ntot+dom.nr]
+    Tw = u[end]
+    return ϕ, Tf, Tw
 end
+
+"""
+    make_u0_ndim(init_prof, Tf0, Tw0, dom)
+
+Set up a vector of dynamic variables as initial state for simulation.
+
+Structure of vector `u`:
+- `dom.ntot` entries for level set function `ϕ`; initialized with profile using `make_ϕ0`.
+- `dom.nr` entries for frozen (ice) temperature `Tf`
+- 1 entry for glass (outer wall) temperature `Tw`
+"""
+function make_u0_ndim(init_prof, Tf0, Tw0, dom)
+    Tf0_nd = ustrip.(u"K", Tf0)
+    Tw0_nd = ustrip(u"K", Tw0)
+    # ϕ0 = make_ϕ0(init_prof, dom)
+    # ϕ0_flat = reshape(ϕ0, :)
+
+    ϕ0_flat = reshape(make_ϕ0(init_prof, dom), :)
+    u0 = similar(ϕ0_flat, dom.ntot+dom.nr+1) # Add 2 to length: Tf, Tw
+    u0[1:dom.ntot] .= ϕ0_flat
+    u0[dom.ntot+1:dom.ntot+dom.nr] .= Tf0_nd 
+    u0[end] = Tw0_nd
+    return u0
+end
+
+function make_u0_ndim(config::Dict)
+    # dom = Domain(config)
+    # Tf0_nd = ustrip.(u"K", config[:Tf0])
+    # Tw0_nd = ustrip(u"K", get(config, :Tw0, config[:Tf0]))
+    make_u0_ndim(config[:init_prof], config[:Tf0], 
+                get(config, :Tw0, config[:Tf0]), Domain(config))
+end
+
+# """
+#     ϕ_T_into_u!(u, ϕ, Tf, Tw, dom)
+
+# Take `ϕ`, `Tf`, and `Tw`, and stuff them into `u` with appropriate indices.
+# Nothing too fancy--just to keep indexing abstract
+# """
+# function ϕ_T_into_u!(u, ϕ, Tf, Tw, dom)
+#     u[1:dom.ntot] = reshape(ϕ, :)
+#     u[dom.ntot+dom.nr] = Tf
+#     u[end] = Tw
+#     return nothing
+# end
+# """
+#     T_into_u!(u, Tf, Tw, dom)
+
+# Take `Tf` and `Tw` and stuff them into `u` with appropriate indices.
+# Nothing too fancy--just to keep indexing abstract
+# """
+# function T_into_u!(u, Tf, Tw, dom)
+#     u[dom.ntot+1] = Tf
+#     u[dom.ntot+2] = Tw
+#     return nothing
+# end
