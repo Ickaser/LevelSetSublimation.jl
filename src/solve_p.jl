@@ -226,7 +226,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     wc +=  bp*(-0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
                     rhs[imx] -= psub_l*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else
-                    pc += -2bp*dr2 # Regular
+                    pc += -2bp*dr2 
                     wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                     rhs[imx] -= psub_l*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                     # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
@@ -252,28 +252,28 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     # rhs[imx] = calc_psub(Tf[ir])
                     # continue
 
-                    # # Linear extrapolation, looking a cell further out
-                    # pc += -2bp*dr2 
-                    # ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
-                    # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # Linear extrapolation, looking a cell further out
+                    pc += -2bp*dr2 
+                    ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
+                    rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                     
-                    if iz == nz
-                        # No special treatment
-                        pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                        ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                        rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
-                        # Constant extrapolation
-                        # pc += -2bp*dr2
-                        # ec += bp*(dr2  + 0.5dr1*r1) + 0.5dbr*r1
-                        # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - 0.5dbr*dr1)
-                    else
-                        # pc += -2bp*dr2 # Regular
-                        # ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1)
-                        # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-                        pc += (bp*(-2*dr2+(1-θr)*dr1*r1) + dbr*(1-θr)*dr1)/θr
-                        ec += (bp*( dr1*r1*θr + 2dr2) + dbr*dr1*θr )/(θr+1)# Regular + b gradient
-                        rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
-                    end
+                    # if iz == nz
+                    #     # No special treatment
+                    #     pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
+                    #     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
+                    #     rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                    #     # Constant extrapolation
+                    #     # pc += -2bp*dr2
+                    #     # ec += bp*(dr2  + 0.5dr1*r1) + 0.5dbr*r1
+                    #     # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - 0.5dbr*dr1)
+                    # else
+                    #     # pc += -2bp*dr2 # Regular
+                    #     # ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1)
+                    #     # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    #     pc += (bp*(-2*dr2+(1-θr)*dr1*r1) + dbr*(1-θr)*dr1)/θr
+                    #     ec += (bp*( dr1*r1*θr + 2dr2) + dbr*dr1*θr )/(θr+1)# Regular + b gradient
+                    #     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # end
                     # Constant extrapolation
                     # pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
                     # ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
@@ -396,8 +396,10 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             end
         end
 
-        # if wc == 0 && nc == 0
-        #     @info "doubleghost" ir iz pc ec sc rhs[imx]
+        # if ec == 0 && nc == 0
+        #     @info "doubleghost" ir iz pc wc sc rhs[imx]
+        # elseif nc == 0
+        #     @info "northghost" ir iz pc wc ec sc rhs[imx]
         # end
 
         # Assign all computed stencil values into matrix

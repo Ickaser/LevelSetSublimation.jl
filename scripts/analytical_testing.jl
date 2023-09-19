@@ -154,8 +154,8 @@ res
 
 Bi = cparams[:Kw]*R*u"m"/cparams[:k]
 ΔT = Tw0 - Tf0
-C1 = Bi*ΔT/(1 + Bi*log(R/Ri))
-T_sol(r, Ri) = C1*log(r/Ri) + Tf0
+# C1 = Bi*ΔT/(1 + Bi*log(R/Ri))
+T_sol(r, Ri) = Bi*ΔT/(1 + Bi*log(R/Ri))*log(r/Ri) + Tf0
 
 T_num = solve_T(um, Tfm, dom, params) 
 T_anl = ustrip.(u"K", [(r < Ri ? Tf0 : T_sol(r, Ri))
@@ -165,22 +165,20 @@ heat(T_anl , dom)
 heat(abs.(T_num .- T_anl) ./T_anl, dom)
 
 
+perturbs = range(0, 2dom.dr, length=201) 
+perturbs = perturbs .- step(perturbs)
+@time res = [gen_topprof_T(ei) for ei in perturbs]
+plot(dom.rgrid, res[1][1])
+plot!(dom.rgrid, res[2][1])
+plot!(dom.rgrid, res[3][1])
+plot!(dom.rgrid, res[4][1])
+vline!([dom.rgrid[22]], label="evaluation point")
+plot(perturbs./dom.dr, [ri[1][22] for ri in res])
+plot!(perturbs./dom.dr, [ri[2][22] for ri in res])
+plot(perturbs./dom.dr, [abs(ri[2][42].-ri[1][42])/ri[2][42] for ri in res], yscale=:log10)
+# plot(hcat(res...)')
+res
 
-plot(dom.rgrid, p_num[:,end], label="numerical")
-plot!(dom.rgrid, p_anl[:,end], label="analytical", c=:red)
-vline!([Ri])
-plot(p_num[:,end] .- p_anl[:,end])
-vline!([11, 12])
-plot!(xlim=(Ri*0.8, Ri*1.2))
-
-plot( p_num[:,end-1], label="numerical")
-plot!(p_anl[:,end-1], label="analytical", c=:red)
-plot(p_num[:,end-1] .- p_anl[:,end-1])
-# # Set up stuff to make debugging easier
-# rr = range(0.005, .01, length=100)
-# zz = range(0, L, length=110)
-# @time ps = [p_sol1(r, z) for z in zz, r in rr]
-# heatmap(rr, zz, ps, cmap=:plasma)
 
 
 
@@ -211,4 +209,17 @@ function gen_topprof(er)
     p_anl = [LSS.calc_psub(ustrip(u"K", T0)) + (r < Ri ? 0 : p_sol1(r, z))
                 for r in dom.rgrid, z in dom.zgrid]
     return [p_num[:,end], p_anl[:,end]]
+end
+
+function gen_topprof_T(er)
+    um = LSS.make_u0_ndim(config)
+    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm .+= .8dom.rmax + er - 0.99e-6#-2e-6
+
+    Ri = LSS.get_subf_r(ϕm, dom)
+
+    T_num = solve_T(um, Tfm, dom, params)
+    T_anl = ustrip.(u"K", [(r < Ri ? Tf0 : T_sol(r, Ri))
+                for r in dom.rgrid, z in dom.zgrid])
+    return [T_num[:,end], T_anl[:,end]]
 end
