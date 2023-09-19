@@ -7,13 +7,13 @@ using Plots
 using FastGaussQuadrature
 
 
-charfun_r(l) = besselj0(l*Ri)*bessely1(l*R) - bessely0(l*Ri)*besselj1(l*R)
-λj = [find_zero(charfun_r, (j-0.5)*π/(R-Ri)) for j in 1:400]
-plot(λj)
-ll = range(100, 1000, length=50)
-plot(ll, charfun_r.(ll))
-plot(λj[2:end] .- λj[1:end-1])
-hline!([2.5π/R])
+# charfun_r(l) = besselj0(l*Ri)*bessely1(l*R) - bessely0(l*Ri)*besselj1(l*R)
+# λj = [find_zero(charfun_r, (j-0.5)*π/(R-Ri)) for j in 1:400]
+# plot(λj)
+# ll = range(100, 1000, length=50)
+# plot(ll, charfun_r.(ll))
+# plot(λj[2:end] .- λj[1:end-1])
+# hline!([2.5π/R])
 
 
 function gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=100)
@@ -96,10 +96,14 @@ cparams[:l] = upreferred(l_bulk)
 cparams[:κ] = 0.0u"m^2"
 cparams[:Rp0] = Rp0*u"m/s"
 
+cparams[:Kv] *= 0
+cparams[:Kw] = 10u"W/m^2/K"
+
 simgridsize = (101, 101)
 Tfm = fill(ustrip(u"K", T0), simgridsize[1])
 Tdm = fill(ustrip(u"K", T0), simgridsize)
 Tf0 = T0
+Tw0 = T0 + 20u"K"
 
 controls = Dict{Symbol, Any}()
 # @pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
@@ -113,27 +117,72 @@ init_prof = :rad
 vialsize = "6R"
 fillvol = 5u"mL"
 config = Dict{Symbol, Any}()
-@pack! config = simgridsize, cparams, init_prof, Tf0, controls, vialsize, fillvol
+@pack! config = simgridsize, cparams, init_prof, Tf0, Tw0, controls, vialsize, fillvol
 
 dom = Domain(config)
 params, ncontrols = params_nondim_setup(cparams, controls)
 um = LSS.make_u0_ndim(config)
 ϕm = ϕ_T_from_u_view(um, dom)[1]
-ϕm .+= .8*dom.rmax - 1e-6 + 1e-8
+ϕm .+= .8*dom.rmax - 1e-6 - 1e-8
 
 R = dom.rmax
 L = dom.zmax
 Ri = LSS.get_subf_r(ϕm, dom)
 
-# LSS.eval_b(Tdm, Tdm, params)
-
-
-
 p_num = solve_p(um, Tfm, Tdm, dom, params)
-p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=250)
+p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=150)
 p_anl = [LSS.calc_psub(ustrip(u"K", T0)) + (r < Ri ? 0 : p_sol1(r, z))
             for r in dom.rgrid, z in dom.zgrid]
-pl1 = heat(p_num .- p_anl, dom)
+heat(p_num, dom)
+heat(p_anl, dom)
+pl1 = heat((p_num .- p_anl) ./ p_anl, dom)
+
+perturbs = range(0, 2dom.dr, length=9) 
+perturbs = perturbs .- step(perturbs)
+@time res = [gen_topprof(ei) for ei in perturbs]
+plot(dom.rgrid, res[1][1])
+plot!(dom.rgrid, res[2][1])
+plot!(dom.rgrid, res[3][1])
+plot!(dom.rgrid, res[4][1])
+vline!([dom.rgrid[22]], label="evaluation point")
+plot(perturbs./dom.dr, [ri[1][22] for ri in res])
+plot!(perturbs./dom.dr, [ri[2][22] for ri in res])
+plot(hcat(res...)')
+res
+
+# ---------------------- Temperature
+
+Bi = cparams[:Kw]*R*u"m"/cparams[:k]
+ΔT = Tw0 - Tf0
+C1 = Bi*ΔT/(1 + Bi*log(R/Ri))
+T_sol(r, Ri) = C1*log(r/Ri) + Tf0
+
+T_num = solve_T(um, Tfm, dom, params) 
+T_anl = ustrip.(u"K", [(r < Ri ? Tf0 : T_sol(r, Ri))
+            for r in dom.rgrid, z in dom.zgrid])
+heat(T_num , dom)
+heat(T_anl , dom)
+heat(abs.(T_num .- T_anl) ./T_anl, dom)
+
+
+
+plot(dom.rgrid, p_num[:,end], label="numerical")
+plot!(dom.rgrid, p_anl[:,end], label="analytical", c=:red)
+vline!([Ri])
+plot(p_num[:,end] .- p_anl[:,end])
+vline!([11, 12])
+plot!(xlim=(Ri*0.8, Ri*1.2))
+
+plot( p_num[:,end-1], label="numerical")
+plot!(p_anl[:,end-1], label="analytical", c=:red)
+plot(p_num[:,end-1] .- p_anl[:,end-1])
+# # Set up stuff to make debugging easier
+# rr = range(0.005, .01, length=100)
+# zz = range(0, L, length=110)
+# @time ps = [p_sol1(r, z) for z in zz, r in rr]
+# heatmap(rr, zz, ps, cmap=:plasma)
+
+
 
 function analytical_error_relmax(Nmax)
     p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=Nmax)
@@ -163,36 +212,3 @@ function gen_topprof(er)
                 for r in dom.rgrid, z in dom.zgrid]
     return [p_num[:,end], p_anl[:,end]]
 end
-
-perturbs = range(0, 2dom.dr, length=9) 
-perturbs = perturbs .- step(perturbs)
-@time res = [gen_topprof(ei) for ei in perturbs]
-plot(res[1][1])
-plot([ri[1][21] for ri in res])
-plot!([ri[2][21] for ri in res])
-plot(hcat(res...)')
-res
-
-
-
-
-pl1 = heat(p_num .- p_anl, dom)
-pl2 = heat(p_num, dom)
-pl3 = heat(p_anl, dom)
-
-plot(dom.rgrid, p_num[:,end], label="numerical")
-plot!(dom.rgrid, p_anl[:,end], label="analytical", c=:red)
-vline!([Ri])
-plot(p_num[:,end] .- p_anl[:,end])
-vline!([11, 12])
-plot!(xlim=(Ri*0.8, Ri*1.2))
-
-plot( p_num[:,end-1], label="numerical")
-plot!(p_anl[:,end-1], label="analytical", c=:red)
-plot(p_num[:,end-1] .- p_anl[:,end-1])
-# # Set up stuff to make debugging easier
-# rr = range(0.005, .01, length=100)
-# zz = range(0, L, length=110)
-# @time ps = [p_sol1(r, z) for z in zz, r in rr]
-# heatmap(rr, zz, ps, cmap=:plasma)
-
