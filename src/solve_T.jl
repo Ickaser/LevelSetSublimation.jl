@@ -151,16 +151,35 @@ function solve_T(u, Tf, dom::Domain, params)
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
+                rΓ = r - θr*dr
+                rm = rgrid[ir-1]
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_thresh # Regular magnitude θ
-                    pc += -2k*dr2 # Regular 
-                    pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
-                    ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    if ir > 2 # Avoid singular at r=0
+                        # Logarithmic extrapolation for ghost cell
+                        pc += k*(log(rΓ/rm)*0.5*r1*dr1 + log(rΓ*rm*r1*r1)*dr2)/log(r/rΓ)
+                        ec += k*(0.5r1*dr1 + dr2)
+                        rhs[imx] -= Tf_loc*k*(0.5dr1*r1*log(rm*r1) + log(r/rm)*dr2)/log(r/rΓ)
+                    else 
+                        # Linear extrapolation for ghost cell
+                        pc += -2k*dr2 # Regular 
+                        pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                        ec += k*( 0.5dr1*r1 + dr2) # Regular
+                        rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    end
                 else # Very small θ
-                    pc += -2k*dr2 # Regular
-                    ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
-                    rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    if ir > 2
+                        # Logarithmic extrapolation
+                        rp = rgrid[ir+1]
+                        pc += -2k*dr2 # Regular
+                        ec += k*(0.5dr1*r1*log(rm/rp) + log(rΓ*rΓ/rp/rm)*dr2)/log(rΓ/rp)
+                        rhs[imx] -= Tf_loc*k*(0.5dr1*r1*log(rp/rm) + log(rm/rp)*dr2)/log(rΓ/rp)
+                    else
+                        # Linear extrapolation
+                        pc += -2k*dr2 # Regular
+                        ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
+                        rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    end
                 end
 
             else # Bulk, not at front 
