@@ -56,7 +56,6 @@ end
 
 Compute transport coefficient `b` as a function of space, given `T`, `p`, and `params`.
 
-Uses the following fields from `params`, as documented in `sim_from_dict`: `\eps
 `params` should have the following fields: `l`, `κ`, `R`, `Mw`, `μ`. 
 `l`, and `κ` may be passed as scalars (and assumed as spatially uniform) or arrays (describing value throughout space, should match `Domain` dimensions).
 
@@ -225,12 +224,13 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     wc +=  bp*(-0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
                     rhs[imx] -= psub_l*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                 else
-                    pc += -2bp*dr2 
-                    wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
-                    rhs[imx] -= psub_l*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-                    # rhs[imx] = calc_psub(Tf[ir])
-                    # continue
+                    # pc += -2bp*dr2 
+                    # wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
+                    # rhs[imx] -= psub_l*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # Constant
+                    add_to_vcr!(vcr, dom, imx, (0, 0), 1)
+                    rhs[imx] = calc_psub(Tf[ir])
+                    continue
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
@@ -261,10 +261,10 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     # ec += (bp*( dr1*r1*θr + 2dr2) + dbr*dr1*θr )/(θr+1)# Regular + b gradient
                     # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                 else # Very small θ
-                    # # Treat as constant
-                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-                    # rhs[imx] = calc_psub(Tf[ir])
-                    # continue
+                    # Treat as constant
+                    add_to_vcr!(vcr, dom, imx, (0, 0), 1)
+                    rhs[imx] = calc_psub(Tf[ir])
+                    continue
                     # if ir > 2
                     #     # Logarithmic extrapolation
                     #     rp = rgrid[ir+1]
@@ -278,10 +278,10 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     #     ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
                     #     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                     # end
-                    # Linear extrapolation, looking a cell further out
-                    pc += -2bp*dr2 
-                    ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
-                    rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # # Linear extrapolation, looking a cell further out
+                    # pc += -2bp*dr2 
+                    # ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
+                    # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
 
                     
                     # if iz == nz
@@ -393,12 +393,12 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     sc += bp*dz2 - dbz*0.5*dz1
                     rhs[imx] -= psub_l*(bp*dz2 + dbz*0.5*dz1)/θz
                 else
-                    pc += -2bp*dz2
-                    sc += (2*bp*θz*dz2 - dbz*dz1)/(θz+1)
-                    rhs[imx] -= psub_l*(2bp*dz2 + dbz*dz1)/(θz+1)
-                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-                    # rhs[imx] = calc_psub(Tf[ir])
-                    # continue
+                    # pc += -2bp*dz2
+                    # sc += (2*bp*θz*dz2 - dbz*dz1)/(θz+1)
+                    # rhs[imx] -= psub_l*(2bp*dz2 + dbz*dz1)/(θz+1)
+                    add_to_vcr!(vcr, dom, imx, (0, 0), 1)
+                    rhs[imx] = calc_psub(Tf[ir])
+                    continue
                 end
             elseif sϕ <= 0
                 θz = pϕ / (pϕ - sϕ)
@@ -407,12 +407,12 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     nc += bp*dz2 + dbz*0.5dz1
                     rhs[imx] -= psub_l*(bp*dz2 - dbz*0.5dz1)/θz
                 else
-                    pc += -2bp*dz2
-                    nc += (2*bp*θz*dz2 + dbz*dz1)/(θz+1)
-                    rhs[imx] -= psub_l*(2bp*dz2 - dbz*dz1)/(θz+1)
-                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-                    # rhs[imx] = calc_psub(Tf[ir])
-                    # continue
+                    # pc += -2bp*dz2
+                    # nc += (2*bp*θz*dz2 + dbz*dz1)/(θz+1)
+                    # rhs[imx] -= psub_l*(2bp*dz2 - dbz*dz1)/(θz+1)
+                    add_to_vcr!(vcr, dom, imx, (0, 0), 1)
+                    rhs[imx] = calc_psub(Tf[ir])
+                    continue
                 end
 
             else # Bulk, no Stefan front

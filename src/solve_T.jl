@@ -144,9 +144,12 @@ function solve_T(u, Tf, dom::Domain, params)
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
                     rhs[imx] -= Tf_loc*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
-                    pc += -2k*dr2 # Regular
-                    wc += k*(-dr1*r1 + 2θr*dr2)/(θr+1)  
-                    rhs[imx] -= Tf_loc*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
+                    # pc += -2k*dr2 # Regular
+                    # wc += k*(-dr1*r1 + 2θr*dr2)/(θr+1)  
+                    # rhs[imx] -= Tf_loc*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    rhs[imx] = Tf[ir]
+                    continue
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
@@ -154,31 +157,40 @@ function solve_T(u, Tf, dom::Domain, params)
                 rm = rgrid[ir-1]
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_THRESH # Regular magnitude θ
-                    if ir > 2 # Avoid singular at r=0
-                        # Logarithmic extrapolation for ghost cell
-                        pc += k*(log(rΓ/rm)*0.5*r1*dr1 + log(rΓ*rm*r1*r1)*dr2)/log(r/rΓ)
-                        ec += k*(0.5r1*dr1 + dr2)
-                        rhs[imx] -= Tf_loc*k*(0.5dr1*r1*log(rm*r1) + log(r/rm)*dr2)/log(r/rΓ)
-                    else 
-                        # Linear extrapolation for ghost cell
-                        pc += -2k*dr2 # Regular 
-                        pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
-                        ec += k*( 0.5dr1*r1 + dr2) # Regular
-                        rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
-                    end
+                    # Linear extrapolation for ghost cell
+                    pc += -2k*dr2 # Regular 
+                    pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                    ec += k*( 0.5dr1*r1 + dr2) # Regular
+                    rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    # if ir > 2 # Avoid singular at r=0
+                    #     # Logarithmic extrapolation for ghost cell
+                    #     pc += k*(log(rΓ/rm)*0.5*r1*dr1 + log(rΓ*rm*r1*r1)*dr2)/log(r/rΓ)
+                    #     ec += k*(0.5r1*dr1 + dr2)
+                    #     rhs[imx] -= Tf_loc*k*(0.5dr1*r1*log(rm*r1) + log(r/rm)*dr2)/log(r/rΓ)
+                    # else 
+                    #     # Linear extrapolation for ghost cell
+                    #     pc += -2k*dr2 # Regular 
+                    #     pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                    #     ec += k*( 0.5dr1*r1 + dr2) # Regular
+                    #     rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    # end
                 else # Very small θ
-                    if ir > 2
-                        # Logarithmic extrapolation
-                        rp = rgrid[ir+1]
-                        pc += -2k*dr2 # Regular
-                        ec += k*(0.5dr1*r1*log(rm/rp) + log(rΓ*rΓ/rp/rm)*dr2)/log(rΓ/rp)
-                        rhs[imx] -= Tf_loc*k*(0.5dr1*r1*log(rp/rm) + log(rm/rp)*dr2)/log(rΓ/rp)
-                    else
-                        # Linear extrapolation
-                        pc += -2k*dr2 # Regular
-                        ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
-                        rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
-                    end
+                    # if ir > 2
+                    #     # Logarithmic extrapolation
+                    #     rp = rgrid[ir+1]
+                    #     pc += -2k*dr2 # Regular
+                    #     ec += k*(0.5dr1*r1*log(rm/rp) + log(rΓ*rΓ/rp/rm)*dr2)/log(rΓ/rp)
+                    #     rhs[imx] -= Tf_loc*k*(0.5dr1*r1*log(rp/rm) + log(rm/rp)*dr2)/log(rΓ/rp)
+                    # else
+                    #     # Linear extrapolation
+                    #     pc += -2k*dr2 # Regular
+                    #     ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
+                    #     rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # end
+                    # Treat as constant
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    rhs[imx] = Tf[ir]
+                    continue
                 end
 
             else # Bulk, not at front 
@@ -256,9 +268,12 @@ function solve_T(u, Tf, dom::Domain, params)
                     sc += k*dz2
                     rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
-                    pc += -2k*dz2
-                    sc += 2*k*θz*dz2/(θz+1)
-                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
+                    # pc += -2k*dz2
+                    # sc += 2*k*θz*dz2/(θz+1)
+                    # rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    rhs[imx] = Tf[ir]
+                    continue
                 end
             elseif sϕ <= 0
                 # stefan_debug = true
@@ -269,9 +284,12 @@ function solve_T(u, Tf, dom::Domain, params)
                     nc += k*dz2
                     rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
-                    pc += -2k*dz2
-                    nc += 2*k*θz*dz2/(θz+1)
-                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
+                    # pc += -2k*dz2
+                    # nc += 2*k*θz*dz2/(θz+1)
+                    # rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
+                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    rhs[imx] = Tf[ir]
+                    continue
                 end
 
             else # Bulk, no Stefan front
