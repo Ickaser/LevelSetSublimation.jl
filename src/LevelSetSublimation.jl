@@ -24,6 +24,9 @@ const CI = CartesianIndex
 
 # Export statements belong in each source file below.
 
+# A constant which shows up in multiple places, defined globally here:
+const θ_THRESH = 0.01
+
 include(srcdir("structs.jl"))
 include(srcdir("get_vial_dims.jl"))
 include(srcdir("plotting_tools.jl"))

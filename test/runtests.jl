@@ -25,17 +25,17 @@ include(testdir("tests_levelsetgeometry.jl"))
     # 1D r direction, no ice 
     # 1D z direction, no ice 
     # 2D no ice 
-    # 1D r direction, ghost θ > θ_thresh 
-    # 1D r direction, ghost θ < θ_thresh 
-    # 1D z direction, ghost θ > θ_thresh 
-    # 1D z direction, ghost θ < θ_thresh 
+    # 1D r direction, ghost θ > θ_THRESH 
+    # 1D r direction, ghost θ < θ_THRESH 
+    # 1D z direction, ghost θ > θ_THRESH 
+    # 1D z direction, ghost θ < θ_THRESH 
 end
 
 @testset "T derivatives for velocity: no tests yet" begin
-    # 1D r direction, ghost θ > θ_thresh 
-    # 1D r direction, ghost θ < θ_thresh 
-    # 1D z direction, ghost θ > θ_thresh 
-    # 1D z direction, ghost θ < θ_thresh 
+    # 1D r direction, ghost θ > θ_THRESH 
+    # 1D r direction, ghost θ < θ_THRESH 
+    # 1D z direction, ghost θ > θ_THRESH 
+    # 1D z direction, ghost θ < θ_THRESH 
     # 
 end
 

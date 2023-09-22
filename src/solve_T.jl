@@ -52,7 +52,6 @@ function solve_T(u, Tf, dom::Domain, params)
     rhs = similar(Tf, ntot)
     rhs .= 0
 
-    θ_thresh = 0.05
 
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration
@@ -86,7 +85,7 @@ function solve_T(u, Tf, dom::Domain, params)
             if eϕ < 0 # Front is within a cell of boundary
                 θr = pϕ/(pϕ-eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
-                if θr >= θ_thresh
+                if θr >= θ_THRESH
                     pc += -2k*dr2/θr
                     rhs[imx] -= 2k*Tf_loc*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within .05 cells of boundary
@@ -107,7 +106,7 @@ function solve_T(u, Tf, dom::Domain, params)
             if wϕ < 0 # Front is within a cell of boundary
                 θr = pϕ/(pϕ-wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                if θr >= θ_thresh
+                if θr >= θ_THRESH
                     pc += -2k*dr2/θr - Kw*(r1 + 2dr1)
                     rhs[imx] -= 2Tf_loc*k*dr2/θr + Kw*Tw*(r1 + 2dr1)
                 else 
@@ -139,7 +138,7 @@ function solve_T(u, Tf, dom::Domain, params)
             elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
-                if θr >= θ_thresh
+                if θr >= θ_THRESH
                     pc += -2k*dr2 # Regular 
                     pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     wc += k*(-0.5dr1*r1 + dr2) # Regular
@@ -154,7 +153,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 rΓ = r - θr*dr
                 rm = rgrid[ir-1]
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                if θr >= θ_thresh # Regular magnitude θ
+                if θr >= θ_THRESH # Regular magnitude θ
                     if ir > 2 # Avoid singular at r=0
                         # Logarithmic extrapolation for ghost cell
                         pc += k*(log(rΓ/rm)*0.5*r1*dr1 + log(rΓ*rm*r1*r1)*dr2)/log(r/rΓ)
@@ -201,7 +200,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
-                if θz > θ_thresh
+                if θz > θ_THRESH
                     pc += -2k*dz2/θz - 2Kv*dz1
                     rhs[imx] -= 2*Tf[ir]*k*dz2/θz + 2Kv*Tsh*dz1
                 else
@@ -224,7 +223,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-sϕ)
-                if θz > θ_thresh
+                if θz > θ_THRESH
                     pc += -2*k*dz2/θz
                     rhs[imx] -= 2*Tf[ir]*k*dz2/θz + BC4*2*dz1
                 else
@@ -252,7 +251,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 # stefan_debug = true
                 θz = pϕ / (pϕ - nϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, north")
-                if θz >= θ_thresh
+                if θz >= θ_THRESH
                     pc += -k*dz2*(θz+1)/θz
                     sc += k*dz2
                     rhs[imx] -= Tf[ir]*k*dz2/θz
@@ -265,7 +264,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 # stefan_debug = true
                 θz = pϕ / (pϕ - sϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, south")
-                if θz >= θ_thresh
+                if θz >= θ_THRESH
                     pc += -k*dz2*(θz+1)/θz
                     nc += k*dz2
                     rhs[imx] -= Tf[ir]*k*dz2/θz

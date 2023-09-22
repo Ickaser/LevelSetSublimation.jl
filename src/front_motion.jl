@@ -132,9 +132,6 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
         @debug "Computing heat flux for cell which may not be at front." ir iz ϕp
     end
 
-    # θ_thresh = max(1/nr, 1/nz)
-    θ_thresh = 0.05
-
     # Enforce BCs explicitly for boundary cells
     if ir == 1 # Symmetry
         dTr = 0
@@ -157,7 +154,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
         elseif wϕ <= 0 # West ghost cell
             θr = ϕp /(ϕp - wϕ)
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-            if θr > θ_thresh
+            if θr > θ_THRESH
                 # dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
                 dTr = (pT - Tf_loc)/θr * dr1 # LInear extrapolation
             else 
@@ -166,7 +163,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
         elseif eϕ <= 0 # East ghost cell
             θr = ϕp /(ϕp - eϕ)
             Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
-            if θr > θ_thresh
+            if θr > θ_THRESH
                 # dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*θr/(θr+1)) * dr1 # Quadratic extrapolation
                 dTr = (Tf_loc - pT)/θr * dr1 # LInear extrapolation
             else
@@ -198,7 +195,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             dTz = 0.5*dz1*(Tf_loc - pT)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
-            if θz > θ_thresh
+            if θz > θ_THRESH
                 # dTz = (-Tf_loc/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
                 dTz = (pT - Tf_loc)/θz * dz1 # Linear extrapolation
             else
@@ -206,7 +203,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             end
         elseif nϕ <= 0 # North ghost cell
             θz = ϕp /(ϕp - nϕ)
-            if θz > θ_thresh
+            if θz > θ_THRESH
                 # dTz = ( Tf_loc/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
                 dTz = (Tf_loc - pT)/θz * dz1 # Linear extrapolation
             else
@@ -240,9 +237,6 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
         @debug "Computing mass flux for cell which may not be at front." ir iz ϕp
     end
 
-    # θ_thresh = max(1/nr, 1/nz)
-    θ_thresh = 0.05
-
     # Enforce BCs explicitly for boundary cells
     if ir == 1 
         dpr = 0.0
@@ -268,7 +262,7 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             θr = ϕp /(ϕp - wϕ)
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
             psub_l = calc_psub(Tf_loc)
-            if θr > θ_thresh
+            if θr > θ_THRESH
                 # dpr = (-psub_l/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
                 dpr = (pp - psub_l)/θr*dr1 # Linear extrapolation
             else 
@@ -278,7 +272,7 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             θr = ϕp /(ϕp - eϕ)
             Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
             psub_l = calc_psub(Tf_loc)
-            if θr > θ_thresh
+            if θr > θ_THRESH
                 # dpr = ( psub_l/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
                 dpr = (psub_l - pp)/θr*dr1 # Linear extrapolation
             else
@@ -314,7 +308,7 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             dpz = 0.5*dz1*(psub_l - pp)*(1/θz2 - 1/θz1)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
-            if θz > θ_thresh
+            if θz > θ_THRESH
                 # dpz = (-psub_l/(1+θz)/θz + pp*(1-θz)/θz + pn*θz/(θz+1))*dz1 # Quadratic
                 dpz = (pp-psub_l)/θz*dz1 # Linear
             else
@@ -322,7 +316,7 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             end
         elseif nϕ <= 0 # North ghost cell
             θz = ϕp /(ϕp - nϕ)
-            if θz >  θ_thresh
+            if θz >  θ_THRESH
                 # dpz = ( psub_l/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
                 dpz = (psub_l - pp)/θz*dz1 # Linear extrapolation
             else
