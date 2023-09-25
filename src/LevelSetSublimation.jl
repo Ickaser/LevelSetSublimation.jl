@@ -7,10 +7,10 @@ using DrWatson, Reexport
 @reexport using Plots
 @reexport using Unitful
 using CSV
-using ProgressMeter
+# using ProgressMeter
 using LinearAlgebra: norm
 using UnicodePlots: spy
-using NLsolve
+# using NLsolve
 using NonlinearSolve
 using LinearSolve
 using NaNMath
