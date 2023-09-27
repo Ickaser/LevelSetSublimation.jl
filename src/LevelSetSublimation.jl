@@ -10,8 +10,8 @@ using CSV
 # using ProgressMeter
 using LinearAlgebra: norm
 using UnicodePlots: spy
-# using NLsolve
-using NonlinearSolve
+using NLsolve
+# using NonlinearSolve
 using LinearSolve
 using NaNMath
 using PrecompileTools

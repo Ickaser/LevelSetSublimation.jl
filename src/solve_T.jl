@@ -390,10 +390,6 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     Tfs = sol.zero
     # extrap_Tf_noice!(Tfs, has_ice, dom)
     # return sol, Tfs, resid!
-    # prob = SteadyStateProblem(resid!, copy(Tfv))
-    # solve(prob, DynamicSS(Euler(), abstol=1e-2), dt=dt)
-    # solve(NonlinearProblem(prob), NewtonRaphson())
-    # return resid!
     return Tfs
 end
 
