@@ -16,9 +16,9 @@ using FastGaussQuadrature
 # hline!([2.5π/R])
 
 
-function gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=100)
+function gen_psol(Ri, R, L, Rp0, b, Δp; Nr=100, Nz=100)
     charfun_r(l) = besselj0(l*Ri)*bessely1(l*R) - bessely0(l*Ri)*besselj1(l*R)
-    λj = [find_zero(charfun_r, (j-0.5)*π/(R-Ri)) for j in 1:Nmax]
+    λj = [find_zero(charfun_r, (j-0.5)*π/(R-Ri)) for j in 1:Nr]
     # λj = zeros(Nmax)
     # λj[1] = find_zero(charfun_r, π/R)
     # for i in 2:Nmax
@@ -33,15 +33,15 @@ function gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=100)
     # end
     charfun_z(m) = cos(m*L) - Rp0*b*m*sin(m*L)
     # μk = permutedims([find_zero(charfun_z, (k-0.5)*π/L) for k in 1:Nmax])
-    μk = zeros(1, Nmax)
+    μk = zeros(1, Nz)
     μk[1] = find_zero(charfun_z, 0.5*π/L)
-    for i in 2:Nmax
+    for i in 2:Nz
         prev_root = μk[i-1]
-        root1 = find_zero(charfun_z, prev_root + π/L)
-        if isapprox(root1, prev_root+π/L, atol=10)
+        root1 = find_zero(charfun_z, prev_root + π/L, maxiters=100)
+        if isapprox(root1, prev_root+π/L, rtol=.3)
             μk[i] = root1
         else
-            @warn "problems"
+            @warn "problems" prev_root root1 prev_root+π/L
         end
     end
 
@@ -51,15 +51,16 @@ function gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=100)
     function make_duj(j)
         duj(r) = λj[j]* bessely0(λj[j]*Ri)*besselj1(λj[j]*r) - λj[j]*besselj0(λj[j]*Ri)*bessely1(λj[j]*r)
     end
-    u = [make_uj(j) for j in 1:Nmax]
+    u = [make_uj(j) for j in 1:Nr]
     function make_vk(k)
         vk(z) = cos(μk[k]*z)
     end
-    v = [make_vk(k) for k in 1:Nmax]
+    v = [make_vk(k) for k in 1:Nz]
 
-    x, w = gausslegendre(Nmax)
+    x, w = gausslegendre(Nr)
     r_nodes = @. (x +1)/2*(R-Ri) + Ri
     r_wts = @. w/2*(R-Ri)
+    x, w = gausslegendre(Nz)
     z_nodes = @. (x +1)/2*L
     z_wts = @. w/2*L
     innerprod_r(f, g) = sum(@. r_wts * r_nodes * f(r_nodes) * g(r_nodes))
@@ -95,7 +96,6 @@ cparams = make_default_params()
 cparams[:l] = upreferred(l_bulk)
 cparams[:κ] = 0.0u"m^2"
 cparams[:Rp0] = Rp0*u"m/s"
-
 cparams[:Kv] *= 0
 cparams[:Kw] = 10u"W/m^2/K"
 
@@ -123,32 +123,54 @@ dom = Domain(config)
 params, ncontrols = params_nondim_setup(cparams, controls)
 um = LSS.make_u0_ndim(config)
 ϕm = ϕ_T_from_u_view(um, dom)[1]
-ϕm .+= .8*dom.rmax - 1e-6 - 1e-8
+ϕm .+= .8*dom.rmax - 1e-6 + 1e-8
 
 R = dom.rmax
 L = dom.zmax
 Ri = LSS.get_subf_r(ϕm, dom)
 
 p_num = solve_p(um, Tfm, Tdm, dom, params)
-p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=150)
+p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nr=100, Nz=1000)
+p_sol1(R, L)
 p_anl = [LSS.calc_psub(ustrip(u"K", T0)) + (r < Ri ? 0 : p_sol1(r, z))
             for r in dom.rgrid, z in dom.zgrid]
-heat(p_num, dom)
-heat(p_anl, dom)
-pl1 = heat((p_num .- p_anl) ./ p_anl, dom)
+pl1 = heat(p_num, dom, title="Num")
+pl2 = heat(p_anl, dom, title="Anl")
+pl3 = heat((p_num .- p_anl) ./ p_anl, dom, title="Rel")
+plot(pl1, pl2, pl3, size=(1200,1200))
 
 perturbs = range(0, 2dom.dr, length=9) 
 perturbs = perturbs .- step(perturbs)
-@time res = [gen_topprof(ei) for ei in perturbs]
-plot(dom.rgrid, res[1][1])
-plot!(dom.rgrid, res[2][1])
-plot!(dom.rgrid, res[3][1])
-plot!(dom.rgrid, res[4][1])
+@time resp = [gen_topprof(ei) for ei in perturbs]
+for i in 1:length(resp)
+    um = LSS.make_u0_ndim(config)
+    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm .+= .8dom.rmax + perturbs[i] - 0.99e-6#-2e-6
+
+    R = dom.rmax
+    L = dom.zmax
+    Ri = LSS.get_subf_r(ϕm, dom)
+
+    resp[i][1] = solve_p(um, Tfm, Tdm, dom, params)[:,end]
+end
+plot(dom.rgrid, resp[1][1] - resp[1][2])
+plot!(dom.rgrid, resp[2][1] - resp[2][2])
+plot!(dom.rgrid, resp[3][1] - resp[3][2])
+plot!(dom.rgrid, resp[4][1] - resp[4][2])
+plot!(dom.rgrid, resp[5][1] - resp[5][2])
+plot!(dom.rgrid, resp[6][1] - resp[6][2])
 vline!([dom.rgrid[22]], label="evaluation point")
-plot(perturbs./dom.dr, [ri[1][22] for ri in res])
-plot!(perturbs./dom.dr, [ri[2][22] for ri in res])
-plot(hcat(res...)')
-res
+plot(perturbs./dom.dr, [ri[1][22] for ri in resp])
+plot!(perturbs./dom.dr, [ri[2][22] for ri in resp])
+scatter(perturbs./dom.dr, [abs(ri[2][22].-ri[1][22])/ri[2][22] for ri in resp], yscale=:log10)
+
+# ------------ Mass flux
+
+# dpr, dpz = LSS.compute_pderiv(um, Tdm, p_num, ir, iz, dom, params)
+# Left flux
+left = b*2*π*sum([dom.dz*dom.rgrid[21]*LSS.compute_pderiv(um, Tfm, Tdm, p_num, 21, iz, dom, params)[1] for iz in 1:dom.nz])
+top = b*2π*sum([dom.rgrid[ir]*dom.dr*LSS.compute_pderiv(um, Tfm, Tdm, p_num, ir, dom.nz, dom, params)[2] for ir in 21:dom.nr])
+top = b*2π*sum([dom.rgrid[ir]*dom.dr*(p_num[ir,dom.nz]-p_num[ir,dom.nz-1])/dom.dz for ir in 21:dom.nr])
 
 # ---------------------- Temperature
 
@@ -175,7 +197,7 @@ plot!(dom.rgrid, res[4][1])
 vline!([dom.rgrid[22]], label="evaluation point")
 plot(perturbs./dom.dr, [ri[1][22] for ri in res])
 plot!(perturbs./dom.dr, [ri[2][22] for ri in res])
-plot(perturbs./dom.dr, [abs(ri[2][42].-ri[1][42])/ri[2][42] for ri in res], yscale=:log10)
+scatter(perturbs./dom.dr, [abs(ri[2][42].-ri[1][42])/ri[2][42] for ri in res], yscale=:log10)
 # plot(hcat(res...)')
 res
 
