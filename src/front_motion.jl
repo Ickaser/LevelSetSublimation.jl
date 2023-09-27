@@ -233,8 +233,11 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
     
-    if ϕp > 2dr || ϕp > 2dz || ϕp < -2dr || ϕp < -2dz
-        @debug "Computing mass flux for cell which may not be at front." ir iz ϕp
+    # if ϕp > 2dr || ϕp > 2dz || ϕp < -2dr || ϕp < -2dz
+    #     @debug "Computing mass flux for cell which may not be at front." ir iz ϕp
+    # end
+    if ϕp < 0
+        @warn "p derivative computed in ice" ir iz ϕp
     end
 
     # Enforce BCs explicitly for boundary cells
