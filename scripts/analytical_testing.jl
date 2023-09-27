@@ -130,7 +130,7 @@ L = dom.zmax
 Ri = LSS.get_subf_r(ϕm, dom)
 
 p_num = solve_p(um, Tfm, Tdm, dom, params)
-p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nr=100, Nz=1000)
+p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nr=150, Nz=1000)
 p_sol1(R, L)
 p_anl = [LSS.calc_psub(ustrip(u"K", T0)) + (r < Ri ? 0 : p_sol1(r, z))
             for r in dom.rgrid, z in dom.zgrid]
@@ -204,18 +204,21 @@ res
 
 
 
-function analytical_error_relmax(Nmax)
-    p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=Nmax)
-    p_sol2 = gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=Nmax+1)
+function analytical_error_relmax(Nr, Nz)
+    p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nr=Nr, Nz=Nz)
+    p_sol2 = gen_psol(Ri, R, L, Rp0, b, Δp; Nr=Nr+1, Nz=Nz)
+    p_sol3 = gen_psol(Ri, R, L, Rp0, b, Δp; Nr=Nr, Nz=Nz+1)
     p_anl1 = [LSS.calc_psub(ustrip(u"K", T0)) + (r < Ri ? 0 : p_sol1(r, z))
                 for r in dom.rgrid, z in dom.zgrid]
     p_anl2 = [LSS.calc_psub(ustrip(u"K", T0)) + (r < Ri ? 0 : p_sol2(r, z))
                 for r in dom.rgrid, z in dom.zgrid]
+    p_anl3 = [LSS.calc_psub(ustrip(u"K", T0)) + (r < Ri ? 0 : p_sol3(r, z))
+                for r in dom.rgrid, z in dom.zgrid]
 
-    return maximum((p_anl2 .- p_anl1) ./ p_anl1)
+    return maximum((p_anl2 .- p_anl1) ./ p_anl1), maximum((p_anl3 .- p_anl1) ./ p_anl1)
 end
 
-@time analytical_error_relmax(150)
+@time analytical_error_relmax(150, 1000)
 
 function gen_topprof(er)
     um = LSS.make_u0_ndim(config)
@@ -227,7 +230,7 @@ function gen_topprof(er)
     Ri = LSS.get_subf_r(ϕm, dom)
 
     p_num = solve_p(um, Tfm, Tdm, dom, params)
-    p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=150)
+    p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nr=150, Nz=1000)
     p_anl = [LSS.calc_psub(ustrip(u"K", T0)) + (r < Ri ? 0 : p_sol1(r, z))
                 for r in dom.rgrid, z in dom.zgrid]
     return [p_num[:,end], p_anl[:,end]]
