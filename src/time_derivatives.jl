@@ -30,6 +30,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     if minimum(ϕ) > 0 # No ice left
         # dϕ .= 0
         # dTw .= 0
+        @info "no ice" extrema(dϕ)
         return nothing
     end
 
