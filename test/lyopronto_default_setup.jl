@@ -23,6 +23,8 @@ KP = 8.93e-4*u"cal/s/K/cm^2/Torr"
 KD = 0.46*u"1/Torr"
 cparams[:Kv] = (KC + KP*p_ch(0u"s")/(1+KD*p_ch(0u"s"))) 
 cparams[:Kv] *= 3.8/3.14 # Correct for Av/Ap factor
+cparams[:Kv] *= .95 # Correct for ice thickness resistance
+
 
 # R_p values to mass transfer
 Rp0 = 1.4u"cm^2*hr*Torr/g"
