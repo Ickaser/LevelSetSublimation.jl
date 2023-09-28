@@ -37,16 +37,19 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
     # t = uconvert.(u"hr", sol.t .* u"s")
     ts_ndim = ustrip.(u"s", ts)
     Tf = sol(ts_ndim, idxs=dom.ntot+1).u .* u"K"
-    md = map(ts_ndim) do ti
+    Tf = similar(ts_ndim)
+    md = similar(ts_ndim).*u"kg/s"
+    for (i, ti) in enumerate(ts_ndim)
         params = calc_params_at_t(ti, simconfig)
         uTfTp = calc_uTfTp_res(ti, simresults, simconfig)
-        Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
+        # Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
+        Tf[i] = uTfTp[2][1]
         mdi = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(mdi) == -1
             @info "md=$mdi" ti Tfi calc_psub(Tfi)
         end
         mdi = max(zero(mdi), mdi)
-        mdi
+        md[i] = mdi
     end
     mfd = uconvert.(u"kg/hr", md) / (π*(dom.rmax*u"m")^2)
     totvol = π*dom.rmax^2 * dom.zmax
@@ -54,7 +57,7 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
         ϕ = ϕ_T_from_u(sol(ti), dom)[1]
         1 - compute_icevol(ϕ, dom) / totvol
     end
-    return ts, Tf, mfd, dryfrac
+    return ts, Tf.*u"K", mfd, dryfrac
 end
 
 function gen_sumplot(config, var=:T, casename="test")
