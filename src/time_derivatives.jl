@@ -227,7 +227,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             end
 
             # dTfdr = 1/kf/dom.rgrid[ir]/Δξ[ir] * surf_integral
-            dTfdr = surf_integral/surf_area /kf*dom.rgrid[ir+1]/dom.rgrid[ir] 
+            # dTfdr = surf_integral/surf_area /kf*dom.rgrid[ir+1]/dom.rgrid[ir] 
+            dTfdr = surf_integral/surf_area /kf#*dom.rgrid[ir+1]/dom.rgrid[ir] 
             # Use a ghost cell
             d2Tfdr2 = (-2Tf[ir] + 2Tf[ir-1] + 2*dom.dr*dTfdr)*dom.dr2
         else
