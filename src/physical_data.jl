@@ -1,5 +1,6 @@
 
 # A listing of physical properties for use in simulation, with references to sources
+export calc_psub
 
 # -----------------------------------
 # Sublimation pressure, to more significant figures than necessary but hey

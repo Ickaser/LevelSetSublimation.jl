@@ -163,8 +163,6 @@ function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
 
     dTdr, dTdz = compute_Tderiv(u, Tf, T, ir, iz, dom, params)
     dpdr, dpdz = compute_pderiv(u, Tf, T, p, ir, iz, dom, params)
-    # dϕdr = dpdr < 0 ? dϕdx_all[1][ir, iz] : dϕdx_all[2][ir, iz] # East or west based on mass flow
-    # dϕdz = dpdz < 0 ? dϕdx_all[3][ir, iz] : dϕdx_all[4][ir, iz] # North or south based on mass flow
     dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, dpdr<0, dpdz<0, dϕdx_all, dom)
 
     qflux = k*(dϕdr*dTdr + dϕdz*dTdz)
@@ -180,7 +178,7 @@ end
 
 function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
-    @unpack ρf, Cpf, kf, Q_ic = params
+    @unpack ρf, Cpf, kf, Q_ic, p_ch, ΔH, Rp0 = params
 
     Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
 
@@ -205,7 +203,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         #     # dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
         #     # d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
         elseif no_ice[ir-1] # On left side: away from center
-            # @warn "Not implemented carefully. Double check this math" ir has_ice[ir-1:ir+1] sum(has_ice) 
+            @warn "Not implemented carefully. Double check this math" ir has_ice[ir-1:ir+1] sum(has_ice) 
             integ_cells = [CI(ir-1, iz) for iz in 1:dom.nz if ϕ[ir,iz]<=0]
             surf_integral = 0
             for cell in integ_cells
@@ -219,14 +217,17 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             d2Tfdr2 = (-2Tf[ir] + 2Tf[ir-1] + 2*dom.dr*dTfdr)*dom.dr2
         elseif no_ice[ir+1] # On right side: pulled away from wall
             integ_cells = [CI(ir+1, iz) for iz in 1:dom.nz if ϕ[ir,iz]<=0]
-            surf_integral = 0
+            surf_integral = 0.0
+            surf_area = 0.0
             for cell in integ_cells
                 q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
                 δ = compute_local_δ(cell, ϕ, dom )
-                surf_integral += dom.rgrid[ir+1]*q*δ*dom.dr*dom.dz / dϕdr
+                surf_area += δ*dom.dr*dom.dz
+                surf_integral += q*δ*dom.dr*dom.dz / dϕdr
             end
 
-            dTfdr = 1/kf/dom.rgrid[ir]/Δξ[ir] * surf_integral
+            # dTfdr = 1/kf/dom.rgrid[ir]/Δξ[ir] * surf_integral
+            dTfdr = surf_integral/surf_area /kf*dom.rgrid[ir+1]/dom.rgrid[ir] 
             # Use a ghost cell
             d2Tfdr2 = (-2Tf[ir] + 2Tf[ir-1] + 2*dom.dr*dTfdr)*dom.dr2
         else
@@ -235,10 +236,13 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         end
 
         if top_contact[ir]
-            # Adiabatic boundary
-            top_bound_term = 0
+            # # adiabatic boundary 
+            # top_bound_term = 0
+            # direct sublimation boundary
+            top_bound_term = ΔH*(p_ch - calc_psub(Tf[ir]))/Rp0
+            if typeof(top_bound_term) <: AbstractFloat
+            end
         else
-            # Stefan boundary
             iz = findlast(ϕ[ir,:] .<=0) + 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
             top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
@@ -254,8 +258,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
         end
 
-        # @info "vals" dTfdr d2Tfdr2 Q_ic top_bound_term bot_bound_term 
-        dTfdt[ir] = (kf*((ir == 1 ? 0 : 1/dom.rgrid[ir])*dTfdr + d2Tfdr2) + Q_ic + 
+        r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
+        dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + Q_ic + 
             (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
 
     end

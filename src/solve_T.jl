@@ -342,15 +342,10 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     @unpack ρf, Cpf, kf, Q_ic = params
     @unpack kf, ρf, Cpf = params
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
-
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
-
     if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
         return Tf_g
     end
-        
-
-
 
     # T_cache = solve_T(u, Tfv, dom, params)
     # p_cache = solve_p(u, Tfv, T_cache, dom, params)
@@ -361,11 +356,11 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             @warn "NaN found"
         end
         extrap_Tf_noice!(Tf, has_ice, dom)
-        if any(clamp.(Tf, 200, 400) .!= Tf)
+        if any(clamp.(Tf[has_ice], 200, 400) .!= Tf[has_ice])
             if typeof(Tf[1]) <: AbstractFloat
-                @info "Crazy Tf" Tf has_ice
+                @info "Crazy Tf" Tf[has_ice] has_ice
             else
-                @info "Crazy Tf" [Tfi.value for Tfi in Tf] has_ice
+                @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice]
             end
         end
         # @info "resid"
@@ -375,16 +370,14 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         # dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
         # Tf_extrap = copy(Tf)
         T = solve_T(u, Tf, dom, params)
+        # Tm = fill(250.15, size(dom))
         p = solve_p(u, Tf, T, dom, params)
+        # p = solve_p(u, Tf, Tm, dom, params)
         dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
-
         # dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
         # @info "resid" extrema(dTfdt) extrema(Tf) extrema(Tf_extrap)
         nothing
     end
-    # α = kf/ρf/Cpf
-    # CFL = 0.4
-    # dt = CFL / (α/dom.dr^2)
 
     sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
     Tfs = sol.zero

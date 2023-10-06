@@ -266,8 +266,8 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
             psub_l = calc_psub(Tf_loc)
             if θr > θ_THRESH
-                # dpr = (-psub_l/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
-                dpr = (pp - psub_l)/θr*dr1 # Linear extrapolation
+                dpr = (-psub_l/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
+                # dpr = (pp - psub_l)/θr*dr1 # Linear extrapolation
             else 
                 dpr = (pe - psub_l)/(θr+1)*dr1 # Linear extrapolation, further out
             end
@@ -276,8 +276,8 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
             psub_l = calc_psub(Tf_loc)
             if θr > θ_THRESH
-                # dpr = ( psub_l/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
-                dpr = (psub_l - pp)/θr*dr1 # Linear extrapolation
+                dpr = ( psub_l/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
+                # dpr = (psub_l - pp)/θr*dr1 # Linear extrapolation
             else
                 dpr = (psub_l - pw)/(θr+1)*dr1 # Linear extrapolation, further out
             end
@@ -312,16 +312,16 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
             if θz > θ_THRESH
-                # dpz = (-psub_l/(1+θz)/θz + pp*(1-θz)/θz + pn*θz/(θz+1))*dz1 # Quadratic
-                dpz = (pp-psub_l)/θz*dz1 # Linear
+                dpz = (-psub_l/(1+θz)/θz + pp*(1-θz)/θz + pn*θz/(θz+1))*dz1 # Quadratic
+                # dpz = (pp-psub_l)/θz*dz1 # Linear
             else
                 dpz = (pn - psub_l)/(θz+1)*dz1 # Linear, outside
             end
         elseif nϕ <= 0 # North ghost cell
             θz = ϕp /(ϕp - nϕ)
             if θz >  θ_THRESH
-                # dpz = ( psub_l/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                dpz = (psub_l - pp)/θz*dz1 # Linear extrapolation
+                dpz = ( psub_l/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
+                # dpz = (psub_l - pp)/θz*dz1 # Linear extrapolation
             else
                 dpz = (psub_l - ps )/(θz+1)*dz1 #Linear, outside
             end
