@@ -162,7 +162,6 @@ rescaled_coeffs(Δp_new, Δp_old) = coeffs_p_anl .* (Δp_new / Δp_old)
 psol1(dom.rmax, dom.zmax) ≈ psol1(dom.rmax, dom.zmax; coef = rescaled_coeffs(Δp, Δp))
 dpdr_1(Ri, L/2) ≈ dpdr_1(Ri, L/2; coef = rescaled_coeffs(Δp, Δp))
 
-
 # Sanity checks: mass conservation
 
 N_pts = 100
@@ -194,6 +193,18 @@ function interface_mflux(Tsub)
     flux = tot_flow_anl / L / (Ri*2π)
 end
     
+perturbs = range(0, 2dom.dr, length=21) 
+perturbs = perturbs .- step(perturbs)
+@time anl_sols = [gen_psol(Ri .- ei, R, L, Rp0, b, Δp, Nr=300, Nz=1500) for ei in perturbs]
+
+function interface_mflux(Tsub, ie)
+    psub = LSS.calc_psub(Tsub)
+    Δp_new = psub - ustrip(u"Pa", p_ch(0))
+    r_fluxes = [b*anl_sols[ie][2](Ri, zi, coef = anl_sols[ie][4].*(Δp_new/Δp)) for zi in z_nodes]
+    # @info "mflux" extrema(r_fluxes)./b
+    tot_flow_anl = sum(r_fluxes .*z_wts)*Ri*2π
+    flux = tot_flow_anl / L / (Ri*2π)
+end
 
 # --- Analytical T 
 
@@ -202,12 +213,16 @@ function interface_Tflux(Tsub)
     C1 = Bi*(ustrip(u"K", Tw0)-Tsub)/(1+Bi*log(R/Ri))
     return params[:k]*C1/Ri
 end
-Tsub = 238.5
+function interface_Tflux(Tsub, ie)
+    C1 = Bi*(ustrip(u"K", Tw0)-Tsub)/(1+Bi*log(R/(Ri-perturbs[ie])))
+    return params[:k]*C1/(Ri-perturbs[ie])
+end
 function analytical_T(r, Tsub)
     C1 = Bi*(ustrip(u"K", Tw0)-Tsub)/(1+Bi*log(R/Ri))
     return C1*log(r/Ri) + Tsub
 end
 
+Tsub = 238.5
 interface_Tflux(238.5)
 interface_mflux(238.5)*params[:ΔH]
 
@@ -217,32 +232,43 @@ analytical_T.(dom.rgrid[Ωr], Tsub)
 
 # ----- Assemble into a nonlinear solve function for center T
 
-function nlobj(T_c)
-    Tf_sol = solve(ode1, Tsit5(), p=pars, u0=[T_c, 0])
+function nlobj(T_c; ie = 1)
+    Tf_sol = solve(ode1, Tsit5(), p=pars, tspan=(0.0,Ri-perturbs[ie]), u0=[T_c, 0])
     heat_f = - params[:kf] * Tf_sol[2,end] 
-    heat_d = interface_Tflux(Tf_sol[1,end])
-    mass_d = interface_mflux(Tf_sol[1,end])
+    heat_d = interface_Tflux(Tf_sol[1,end], ie)
+    mass_d = interface_mflux(Tf_sol[1,end], ie)
     heat_l = params[:ΔH] * mass_d
     # @info "analytical" Tf_sol[1,end] Tf_sol[2,end] mass_d/b heat_d/params[:k] heat_f heat_d heat_l
     heat_f + heat_d + heat_l
 end
 
 nlobj(230)
-@time Tc_sol = find_zero(nlobj, 230)
-
-Tf_anl = solve(ode1, u0=[Tc_sol, 0], Tsit5(), p=pars)
-
+@time Tc_sol = find_zero(nlobj, 238.5)
 Tfs = @time LSS.pseudosteady_Tf(um, dom, params, fill(250.0, dom.nr))
 LSS.solve_T(um, Tfs, dom, params)[:,1]
 
 Tfs[.~Ωr] .- Tf_anl.(dom.rgrid[.~Ωr], idxs=1)
-Tf_anl.(dom.rgrid[.~Ωr], idxs=1)+0.5dom.dr
+Tf_anl.(dom.rgrid[.~Ωr], idxs=1)
 Tfs[.~Ωr]
 
+@time Tc_sol = find_zero(x->nlobj(x, ie=4), 230)
 
+Tf_anl = solve(ode1, u0=[Tc_sol, 0], Tsit5(), p=pars)
+sols_Tf_anl = map(enumerate(perturbs)) do (ie, ei)
+    Tc = find_zero(x->nlobj(x, ie=ie), 238.5)
+    Tf = solve(ode1, Tsit5(), p=pars, tspan=(0.0,Ri-ei), u0=[Tc, 0])
+    Tf.(dom.rgrid[.~Ωr], idxs=1)
+end
 
+sols_Tf_num = map(perturbs) do ei
+    um = LSS.make_u0_ndim(config)
+    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
+    Tf = @time LSS.pseudosteady_Tf(um, dom, params, fill(238.5, dom.nr))
+    Tf[.~Ωr]
+end
 
-
-
-
-
+plot(sols_Tf_anl, palette=palette(:thermal, 21))
+plot(sols_Tf_anl, palette=palette(:thermal, 21))
+plot(perturbs./dom.dr, [sum(abs.(a .- n))/length(a) for (a,n) in zip(sols_Tf_anl, sols_Tf_num)], palette=palette(:thermal, 21))
+plot([(a .- n) for (a,n) in zip(sols_Tf_anl, sols_Tf_num)], palette=palette(:thermal, 21))
