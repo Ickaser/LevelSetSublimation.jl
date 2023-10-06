@@ -137,7 +137,7 @@ pl2 = heat(p_anl, dom, title="Anl")
 pl3 = heat((p_num .- p_anl) ./ p_anl, dom, title="Rel")
 plot(pl1, pl2, pl3, size=(1200,1200))
 
-perturbs = range(0, 2dom.dr, length=21) 
+perturbs = range(0, 4dom.dr, length=21) 
 perturbs = perturbs .- step(perturbs)
 @time anl_sols = [gen_psol(Ri .- ei, R, L, Rp0, b, Δp) for ei in perturbs]
 num_sols = map(perturbs) do ei
@@ -168,21 +168,44 @@ err_ddr = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
     ϕm = ϕ_T_from_u_view(um, dom)[1]
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     ir = findfirst(ϕm[:,end] .> 0)
-    ir = 62
     # anl = a[2].(Ri-ei, dom.zgrid)
     anl = a[2].(dom.rgrid[ir], dom.zgrid)
     num = [LSS.compute_pderiv(um, Tfm, Tdm, n, ir, iz, dom, params)[1] for iz in 1:dom.nz]
     abs.((anl .- num)./anl)
+    # (anl .- num)./anl
+end
+
+anl_ddr = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
+    um = LSS.make_u0_ndim(config)
+    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
+    ir = findfirst(ϕm[:,end] .> 0)
+    anl = a[2].(dom.rgrid[ir], dom.zgrid)
+    # anl = a[2].(Ri-ei, dom.zgrid)
+end
+anl_ddr_Γ = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
+    anl = a[2].(Ri-ei, dom.zgrid)
+end
+
+num_ddr = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
+    um = LSS.make_u0_ndim(config)
+    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
+    ir = findfirst(ϕm[:,end] .> 0)
+    num = [LSS.compute_pderiv(um, Tfm, Tdm, n, ir, iz, dom, params)[1] for iz in 1:dom.nz]
+    num
 end
 
 meanerr = [geomean(er) for er in err_ddr]
 scatter(perturbs./dom.dr, meanerr, yscale=:log10)
-plot(err_ddr, palette=palette(:thermal, 21), yscale=:log10)
+plot(err_ddr, palette=palette(:thermal, 21), yscale=:log10, label="")
+plot(dom.zgrid, -num_ddr, palette=palette(:thermal, 21), yscale=:log10)
 
-plot(dom.zgrid, err_ddr[21], yscale=:log10)
-
-geomean(err_ddr[21])
-hline!([geomean(err_ddr[21])])
+plot(perturbs./dom.dr, [n[end] for n in num_ddr], marker=:o, label="numerical")
+plot!(perturbs./dom.dr, [a[end] for a in anl_ddr],marker=:o, label="analytical at gridpoint")
+plot!(perturbs./dom.dr, [a[end] for a in anl_ddr_Γ], label="analytical at interface")
+plot!(ylabel="dp/dr at interface, z=L", xlabel="interface perturbation (grid units)")
+savefig(plotsdir("interfaceperturb_dpdr.svg"))
 
 plot!(dom.zgrid, err_ddr[21][2])
 

@@ -4,9 +4,6 @@
 
 - Build in some doctests
 - Begin building test suite for every function, especially the edge cases
-    - 1D temperatures
-    - 2D temperature, no ice
-    - 1D pressures, using flat/radial ice
     - Velocity extrapolation
     - Geometry functions
 
@@ -16,17 +13,22 @@
 - Unify error region across all methods
 - Use Della Rocca and Blanquart, 2014 for reinitialization at boundaries
 
+- Begin reinvestigating performance, see if there are any easy gains to be had
+- Examine current caching behavior
+- Build a data dependency graph among functions, identify a better way to pass data around
+
+- Strip Tf out of time integration, since it is not used
+
+- Compile linsolve_testing_radial.jl, linsolve_testing_vertical.jl and pseudosteady_T_testing.jl into coherent unit tests; figure out a good place to keep the nice plots I generated
+    - 1D temperatures
+    - 1D pressures
+    - Pseudosteady Tf
+- Other cases to consider testing
+    - 2D temperature, no ice
+
 # Next TODO
 
-
-
-- Change process conditions (Tsh, Pch, etc.) into a time-dependent function, rather than a callback (currently holds back the time stepping)
-- Put RampedVariables in as time-dependent part of ODE function
-
-- Improve speed of pseudosteady calculation
-
-# Things to clean up later
-- Passing structure inside time derivatives and simulation "parameters"
+- Write the "virtual thermocouple" function
 
 # Done (I think?)
 
