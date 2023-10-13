@@ -202,10 +202,22 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
     rhs = zeros(size(dom))
     𝒢 = zeros(size(dom))
     S = @. ϕ/sqrt(ϕ^2 + dx^2)
+
+
     # Time levels
     dτ = 0.25*dx # Pseudo-time step
     rij_list, Sij_list = calc_rij_Sij(ϕ, Γ)
     signs = sign.(ϕ)
+
+    # Identify blind walls, per Della Rocca and Blanquart
+    blind_south = (signs[:,1] .* (ϕ[:,1] .- ϕ[:,2])) .>= 0
+    blind_north = (signs[:,1] .* (ϕ[:,end] .- ϕ[:,end-1])) .>= 0
+    blind_west = (signs[:,1] .* (ϕ[1,:] .- ϕ[2,:])) .>= 0
+    blind_east = (signs[:,1] .* (ϕ[end,:] .- ϕ[end-1,:])) .>= 0
+    blind_spots = (sum(blind_south) + sum(blind_north) + sum(blind_west) + sum(blind_east) > 0)
+    if blind_spots
+        # @warn "Poor contact line treatment. Finish implementing"
+    end
 
     if err_reg == :B
         region = identify_B(ϕ, dom)
@@ -242,6 +254,10 @@ function reinitialize_ϕ_HCR!(ϕ, dom::Domain; maxsteps = 50, tol=1e-4, err_reg=
         if any(isnan.(rhs))
             @warn "NaN in reinit!" findall(isnan.(rhs))
             rhs[isnan.(rhs)] .= 0
+        end
+        if blind_spots
+            # for ir in findall(blind_north)
+                # rhs[ir, dom.nz] = +1 * (
         end
         @. ϕ -= rhs * dτ
         # if maximum(abs.(rhs))*dτ < 
