@@ -155,7 +155,7 @@ function gen_psol(Ri, R, L, Rp0, b, Δp; Nr=150, Nz=1000)
     return p_sol, dpdr_anl, dpdz_anl, coeffs
 end
 
-psol1, dpdr_1, dpdz_1, coeffs_p_anl = gen_psol(Ri, R, L, Rp0, b, Δp, Nr=300, Nz = 1500)
+psol1, dpdr_1, dpdz_1, coeffs_p_anl = gen_psol(Ri, R, L, Rp0, b, Δp)
 rescaled_coeffs(Δp_new, Δp_old) = coeffs_p_anl .* (Δp_new / Δp_old)
 
 # Verify this method doesn't screw things up
@@ -177,8 +177,8 @@ tot_flow_anl2 = sum(z_fluxes .*r_nodes .*r_wts ) *2π
 (tot_flow_anl - tot_flow_anl2) ./ tot_flow_anl
 
 Ωr = dom.rgrid .> Ri
-tot_flow_num = sum(dom.rgrid[Ωr].*-(p_num[Ωr, end] .- ustrip(p_ch(0)))/Rp0/b)*dom.dr*b * 2π
-tot_flow_num2 = sum((p_num[22, :] .- p_num[21, :])/dom.dr)*dom.dz*Ri*2π*b
+# tot_flow_num = sum(dom.rgrid[Ωr].*-(p_num[Ωr, end] .- ustrip(p_ch(0)))/Rp0/b)*dom.dr*b * 2π
+# tot_flow_num2 = sum((p_num[22, :] .- p_num[21, :])/dom.dr)*dom.dz*Ri*2π*b
 # tot_flow_num2 = sum(LSS.compute_pderiv(um, )/dom.dr)*dom.dz*Ri*2π*b
 (tot_flow_num - tot_flow_num2) ./ tot_flow_num
 
@@ -193,17 +193,18 @@ function interface_mflux(Tsub)
     flux = tot_flow_anl / L / (Ri*2π)
 end
     
-perturbs = range(0, 2dom.dr, length=21) 
+perturbs = range(0, 4dom.dr, length=21) 
 perturbs = perturbs .- step(perturbs)
 @time anl_sols = [gen_psol(Ri .- ei, R, L, Rp0, b, Δp, Nr=300, Nz=1500) for ei in perturbs]
 
 function interface_mflux(Tsub, ie)
     psub = LSS.calc_psub(Tsub)
     Δp_new = psub - ustrip(u"Pa", p_ch(0))
-    r_fluxes = [b*anl_sols[ie][2](Ri, zi, coef = anl_sols[ie][4].*(Δp_new/Δp)) for zi in z_nodes]
+    r_fluxes = [b*anl_sols[ie][2](Ri - perturbs[ie], zi, coef = anl_sols[ie][4].*(Δp_new/Δp)) for zi in z_nodes]
     # @info "mflux" extrema(r_fluxes)./b
-    tot_flow_anl = sum(r_fluxes .*z_wts)*Ri*2π
-    flux = tot_flow_anl / L / (Ri*2π)
+    # tot_flow_anl = sum(r_fluxes .*z_wts)*Ri*2π
+    # flux = tot_flow_anl / L / (Ri*2π)
+    flux = sum(r_fluxes .* z_wts) / L
 end
 
 # --- Analytical T 
@@ -223,10 +224,8 @@ function analytical_T(r, Tsub)
 end
 
 Tsub = 238.5
-interface_Tflux(238.5)
-interface_mflux(238.5)*params[:ΔH]
-
-nlobj(238.5)
+interface_Tflux.(238.5, 1:21)
+interface_mflux.(238.5, 1:21).*params[:ΔH]
 
 analytical_T.(dom.rgrid[Ωr], Tsub)
 
@@ -260,15 +259,19 @@ sols_Tf_anl = map(enumerate(perturbs)) do (ie, ei)
     Tf.(dom.rgrid[.~Ωr], idxs=1)
 end
 
-sols_Tf_num = map(perturbs) do ei
+@time sols_Tf_num = map(perturbs) do ei
     um = LSS.make_u0_ndim(config)
     ϕm = ϕ_T_from_u_view(um, dom)[1]
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
+    Ri = get_subf_r(ϕm, dom)
+    @info "startsol" Ri 
     Tf = @time LSS.pseudosteady_Tf(um, dom, params, fill(238.5, dom.nr))
     Tf[.~Ωr]
 end
 
-plot(sols_Tf_anl, palette=palette(:thermal, 21))
-plot(sols_Tf_anl, palette=palette(:thermal, 21))
+plot( sols_Tf_anl, palette=palette(:thermal, 21))
+plot( sols_Tf_num, palette=palette(:thermal, 21))
+scatter(perturbs./dom.dr, [s[1] for s in sols_Tf_num], c=:red, label="num")
+scatter!(perturbs./dom.dr, [s[1] for s in sols_Tf_anl], c=:blue,label="anl")
 plot(perturbs./dom.dr, [sum(abs.(a .- n))/length(a) for (a,n) in zip(sols_Tf_anl, sols_Tf_num)], palette=palette(:thermal, 21))
 plot([(a .- n) for (a,n) in zip(sols_Tf_anl, sols_Tf_num)], palette=palette(:thermal, 21))

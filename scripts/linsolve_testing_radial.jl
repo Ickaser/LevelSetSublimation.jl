@@ -201,22 +201,25 @@ scatter(perturbs./dom.dr, meanerr, yscale=:log10)
 plot(err_ddr, palette=palette(:thermal, 21), yscale=:log10, label="")
 plot(dom.zgrid, -num_ddr, palette=palette(:thermal, 21), yscale=:log10)
 
-plot(perturbs./dom.dr, [n[end] for n in num_ddr], marker=:o, label="numerical")
+begin
+plot(perturbs./dom.dr,  [n[end] for n in num_ddr], marker=:o, label="numerical")
 plot!(perturbs./dom.dr, [a[end] for a in anl_ddr],marker=:o, label="analytical at gridpoint")
 plot!(perturbs./dom.dr, [a[end] for a in anl_ddr_Γ], label="analytical at interface")
 plot!(ylabel="dp/dr at interface, z=L", xlabel="interface perturbation (grid units)")
-savefig(plotsdir("interfaceperturb_dpdr.svg"))
+end
+zloc = dom.nz - 5
+plot(perturbs./dom.dr, [(n[zloc]-a[zloc])/a[zloc] for (a, n) in zip(anl_ddr_Γ, num_ddr)], label="rel. error at interface")
+# savefig(plotsdir("interfaceperturb_dpdr.svg"))
 
-plot!(dom.zgrid, err_ddr[21][2])
 
 # ------------ Mass flux
 
 #Numerical
 # dpr, dpz = LSS.compute_pderiv(um, Tdm, p_num, ir, iz, dom, params)
 # Left flux
-left = b*2*π*sum([dom.dz*dom.rgrid[21]*LSS.compute_pderiv(um, Tfm, Tdm, p_num, 21, iz, dom, params)[1] for iz in 1:dom.nz])
-top = b*2π*sum([dom.rgrid[ir]*dom.dr*LSS.compute_pderiv(um, Tfm, Tdm, p_num, ir, dom.nz, dom, params)[2] for ir in 21:dom.nr])
-top = b*2π*sum([dom.rgrid[ir]*dom.dr*(p_num[ir,dom.nz]-p_num[ir,dom.nz-1])/dom.dz for ir in 21:dom.nr])
+left = b*2π*sum([dom.dz*dom.rgrid[61]*LSS.compute_pderiv(um, Tfm, Tdm, p_num, 61, iz, dom, params)[1] for iz in 1:dom.nz])
+top = b*2π*sum([dom.rgrid[ir]*dom.dr*LSS.compute_pderiv(um, Tfm, Tdm, p_num, ir, dom.nz, dom, params)[2] for ir in 61:dom.nr])
+# top = b*2π*sum([dom.rgrid[ir]*dom.dr*(p_num[ir,dom.nz]-p_num[ir,dom.nz-1])/dom.dz for ir in 21:dom.nr])
 
 #Analytical: mass still not conserved to more than two decimal places. Disconcerting
 N_pts = 100
