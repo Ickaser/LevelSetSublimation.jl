@@ -26,12 +26,15 @@
 - Other cases to consider testing
     - 2D temperature, no ice
 
+- Purge the many unnecessary lines of commented code
+
 # Next TODO
 
-- Write the "virtual thermocouple" function
+- At boundaries, evaluate derivatives at interface instead of boundary (both T and p)
 
 # Done (I think?)
 
+- Write the "virtual thermocouple" function
 - Formulate axisymmetric volume, surface area in terms of delta function integrals
 - Build discrete delta integral
 - Tests for discrete delta integral
