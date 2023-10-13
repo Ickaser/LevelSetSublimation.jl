@@ -139,29 +139,40 @@ function solve_T(u, Tf, dom::Domain, params)
                 θr = pϕ / (pϕ - eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 if θr >= θ_THRESH
-                    pc += -2k*dr2 # Regular 
-                    pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
-                    wc += k*(-0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf_loc*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
+                    # Quadratic
+                    pc += k*(-2*dr2 -(1-θr)*dr1*r1)/θr
+                    wc += k*(-dr1*r1*θr + 2dr2)/(θr+1)# Regular + b gradient
+                    rhs[imx] -= Tf_loc*k*(2dr2 + dr1*r1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # Linear
+                    # pc += -2k*dr2 # Regular 
+                    # pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                    # wc += k*(-0.5dr1*r1 + dr2) # Regular
+                    # rhs[imx] -= Tf_loc*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
-                    # pc += -2k*dr2 # Regular
-                    # wc += k*(-dr1*r1 + 2θr*dr2)/(θr+1)  
-                    # rhs[imx] -= Tf_loc*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
-                    rhs[imx] = Tf[ir]
-                    continue
+                    # Linear extrapolation, a cell out
+                    pc += -2k*dr2 # Regular
+                    wc += k*(-dr1*r1 + 2θr*dr2)/(θr+1)  
+                    rhs[imx] -= Tf_loc*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
+                    # Constant
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    # rhs[imx] = Tf[ir]
+                    # continue
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
-                rΓ = r - θr*dr
-                rm = rgrid[ir-1]
+                # rΓ = r - θr*dr
+                # rm = rgrid[ir-1]
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_THRESH # Regular magnitude θ
+                    # Quadratic ghost cell extrapolation
+                    pc += (k*(-2*dr2+(1-θr)*dr1*r1))/θr
+                    ec += (k*( dr1*r1*θr + 2dr2))/(θr+1)# Regular + b gradient
+                    rhs[imx] -= Tf_loc*(k*(2dr2 - dr1*r1))/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                     # Linear extrapolation for ghost cell
-                    pc += -2k*dr2 # Regular 
-                    pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
-                    ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    # pc += -2k*dr2 # Regular 
+                    # pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                    # ec += k*( 0.5dr1*r1 + dr2) # Regular
+                    # rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
                     # if ir > 2 # Avoid singular at r=0
                     #     # Logarithmic extrapolation for ghost cell
                     #     pc += k*(log(rΓ/rm)*0.5*r1*dr1 + log(rΓ*rm*r1*r1)*dr2)/log(r/rΓ)
@@ -187,10 +198,14 @@ function solve_T(u, Tf, dom::Domain, params)
                     #     ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
                     #     rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
                     # end
+                    # Linear extrapolation
+                    pc += -2k*dr2 # Regular
+                    ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
+                    rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
                     # Treat as constant
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
-                    rhs[imx] = Tf[ir]
-                    continue
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    # rhs[imx] = Tf[ir]
+                    # continue
                 end
 
             else # Bulk, not at front 
@@ -264,32 +279,46 @@ function solve_T(u, Tf, dom::Domain, params)
                 θz = pϕ / (pϕ - nϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, north")
                 if θz >= θ_THRESH
-                    pc += -k*dz2*(θz+1)/θz
-                    sc += k*dz2
-                    rhs[imx] -= Tf[ir]*k*dz2/θz
+                    # Quadratic
+                    pc += (k*(-2*dz2))/θz
+                    sc += (k*(2dz2))/(θz+1)# Regular + b gradient
+                    rhs[imx] -= Tf[ir]*(k*2dz2)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
+                    # Linear
+                    # pc += -k*dz2*(θz+1)/θz
+                    # sc += k*dz2
+                    # rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
-                    # pc += -2k*dz2
-                    # sc += 2*k*θz*dz2/(θz+1)
-                    # rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
-                    rhs[imx] = Tf[ir]
-                    continue
+                    # Linear
+                    pc += -2k*dz2
+                    sc += 2*k*θz*dz2/(θz+1)
+                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
+                    # Constant
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    # rhs[imx] = Tf[ir]
+                    # continue
                 end
             elseif sϕ <= 0
                 # stefan_debug = true
                 θz = pϕ / (pϕ - sϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, south")
                 if θz >= θ_THRESH
-                    pc += -k*dz2*(θz+1)/θz
-                    nc += k*dz2
-                    rhs[imx] -= Tf[ir]*k*dz2/θz
+                    # Quadratic
+                    pc += (k*(-2*dz2))/θz
+                    nc += (k*(2dz2))/(θz+1)# Regular + b gradient
+                    rhs[imx] -= Tf[ir]*(k*2dz2)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
+                    # # Linear
+                    # pc += -k*dz2*(θz+1)/θz
+                    # nc += k*dz2
+                    # rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
-                    # pc += -2k*dz2
-                    # nc += 2*k*θz*dz2/(θz+1)
-                    # rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
-                    add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
-                    rhs[imx] = Tf[ir]
-                    continue
+                    # Linear
+                    pc += -2k*dz2
+                    nc += 2*k*θz*dz2/(θz+1)
+                    rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
+                    # Constant
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    # rhs[imx] = Tf[ir]
+                    # continue
                 end
 
             else # Bulk, no Stefan front
@@ -353,7 +382,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     # function resid!(dTfdt, Tf, ssparams, t)
         # Tfv .= Tf
         if any(isnan.(Tf))
-            @warn "NaN found"
+            @warn "NaN found" Tf
         end
         extrap_Tf_noice!(Tf, has_ice, dom)
         if any(clamp.(Tf[has_ice], 200, 400) .!= Tf[has_ice])
@@ -451,7 +480,7 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         # Assuming uniform grid, can work in indices rather than space
         left_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
         for ir in 1:ir1-1
-            Tf[ir] = extrap(ir)
+            Tf[ir] = left_Textrap(ir)
         end
     elseif findfirst(has_ice) > 1 # No neighboring ice, so constant extrapolation
         Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]

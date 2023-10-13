@@ -156,7 +156,8 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
             if θr > θ_THRESH
                 # dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
-                dTr = (pT - Tf_loc)/θr * dr1 # LInear extrapolation
+                dTr = (-Tf_loc*(2θr+1) + pT*(1+θr)^2 - eT*θr^2) * dr1/θr/(θr+1) # Quadratic extrapolation, eval at interface
+                # dTr = (pT - Tf_loc)/θr * dr1 # LInear extrapolation
             else 
                 dTr = (eT - Tf_loc)/(θr+1)*dr1 # Linear extrapolation from east
             end
@@ -165,7 +166,8 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
             if θr > θ_THRESH
                 # dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*θr/(θr+1)) * dr1 # Quadratic extrapolation
-                dTr = (Tf_loc - pT)/θr * dr1 # LInear extrapolation
+                dTr = (Tf_loc*(2θr+1) - pT*(1+θr)^2 + wT*θr^2) * dr1/θr/(θr+1) # Quadratic extrapolation, eval at interface
+                # dTr = (Tf_loc - pT)/θr * dr1 # LInear extrapolation
             else
                 dTr = (Tf_loc - wT)/(θr+1)*dr1 # Linear extrapolation from west
             end
@@ -197,7 +199,8 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             θz = ϕp /(ϕp - sϕ)
             if θz > θ_THRESH
                 # dTz = (-Tf_loc/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                dTz = (pT - Tf_loc)/θz * dz1 # Linear extrapolation
+                dTz = (-Tf_loc*(2θz+1) + pT*(1+θz)^2 - nT*θz^2) * dz1/θz/(θz+1) # Quadratic extrapolation, eval at interface
+                # dTz = (pT - Tf_loc)/θz * dz1 # Linear extrapolation
             else
                 dTz = (nT - Tf_loc)/(θz+1)*dz1
             end
@@ -205,7 +208,8 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             θz = ϕp /(ϕp - nϕ)
             if θz > θ_THRESH
                 # dTz = ( Tf_loc/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                dTz = (Tf_loc - pT)/θz * dz1 # Linear extrapolation
+                dTz = ( Tf_loc*(2θz+1) - pT*(1+θz)^2 + sT*θz^2) * dz1/θz/(θz+1) # Quadratic extrapolation, eval at interface
+                # dTz = (Tf_loc - pT)/θz * dz1 # Linear extrapolation
             else
                 dTz = (Tf_loc - sT )/(θz+1)*dz1
             end
@@ -240,11 +244,14 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
         @warn "p derivative computed in ice" ir iz ϕp
     end
 
-    # Enforce BCs explicitly for boundary cells
     if ir == 1 
+        # Enforce BC explicitly for boundary cells
         dpr = 0.0
+        # TODO: eval at interface, not boundary
     elseif ir == nr
+        # Enforce BC explicitly for boundary cells
         dpr = 0.0
+        # TODO: eval at interface, not boundary
     else 
         # Bulk
         eϕ = ϕ[ir+1, iz]
@@ -252,7 +259,7 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
         pp = p[ir, iz]
         pe = p[ir+1, iz]
         pw = p[ir-1, iz]
-        dpr = (pe - pw) * 0.5dr1
+        # dpr = (pe - pw) * 0.5dr1
 
         if wϕ <= 0 && eϕ <= 0 # West and east ghost cell
             # Constant Tf
@@ -266,8 +273,9 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
             psub_l = calc_psub(Tf_loc)
             if θr > θ_THRESH
-                # dpr = (-psub_l/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
-                dpr = (pp - psub_l)/θr*dr1 # Linear extrapolation
+                # dpr = (-psub_l/(1+θr)/θr + pp*(1-θr)/θr + pe*(θr)/(θr+1)) * dr1 # Quadratic extrapolation, eval at grid point
+                dpr = (-psub_l*(2θr+1) + pp*(1+θr)^2 - pe*θr^2) * dr1/θr/(θr+1) # Quadratic extrapolation, eval at interface
+                # dpr = (pp - psub_l)/θr*dr1 # Linear extrapolation
             else 
                 dpr = (pe - psub_l)/(θr+1)*dr1 # Linear extrapolation, further out
             end
@@ -277,12 +285,14 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             psub_l = calc_psub(Tf_loc)
             if θr > θ_THRESH
                 # dpr = ( psub_l/(θr+1)/θr - pp*(1-θr)/θr - pw*θr/(θr+1)) * dr1 # Quadratic extrapolation
-                dpr = (psub_l - pp)/θr*dr1 # Linear extrapolation
+                dpr = ( psub_l*(2θr+1) - pp*(1+θr)^2 + pw*θr^2) * dr1/θr/(θr+1) # Quadratic extrapolation, eval at interface
+                # dpr = (psub_l - pp)/θr*dr1 # Linear extrapolation
             else
                 dpr = (psub_l - pw)/(θr+1)*dr1 # Linear extrapolation, further out
             end
         else # No ghost cells
             dpr = (pe - pw) * 0.5*dr1 # Centered difference
+            # typeof(pp) <: AbstractFloat && @info "no ghost side" pe pw dpr
         end
 
     end
@@ -294,17 +304,30 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
         dpz = 0
     elseif iz == nz 
         # Robin boundary condition: employ explicitly
-        bp = eval_b_loc(T, p, ir, iz, params)
         # bp*dpz = Δp/Rp0
+        bp = eval_b_loc(T, p, ir, iz, params)
         dpz = (p_ch - p[ir,iz])/bp/Rp0
-        # @info "here" ir iz (p_ch - p[ir,iz])/Rp0
+        # NOTE: Numerical derivative leads to poor early-time behavior, so stick with BC
+        # Use either numerical derivative or BC
+        # if ϕp*ϕ[ir,nz-1] <= 0 
+        #     θz = ϕp /(ϕp - ϕ[ir,nz-1])
+        #     # dpz = (p[ir,iz] - psub_l)/θz*dz1
+        #     dpz = min(0.0, (p[ir,iz] - psub_l)/θz*dz1)
+
+        #     typeof(p[ir,iz]) <: AbstractFloat && @info "eval" ir iz dpz p[ir,iz] psub_l
+        # else
+        #     # Robin boundary condition: employ explicitly
+        #     # bp*dpz = Δp/Rp0
+        #     bp = eval_b_loc(T, p, ir, iz, params)
+        #     dpz = (p_ch - p[ir,iz])/bp/Rp0
+        # end
     else # Bulk
         nϕ = ϕ[ir, iz+1]
         sϕ = ϕ[ir, iz-1]
         pp = p[ir, iz]
         pn = p[ir, iz+1]
         ps = p[ir, iz-1]
-        dpz = (pn - ps) * 0.5dz1
+        # dpz = (pn - ps) * 0.5dz1
         if sϕ <= 0 && nϕ <= 0 # North and south ghost cell: weird kink
             θz1 = ϕp/(ϕp - sϕ)
             θz2 = ϕp/(ϕp - nϕ)
@@ -313,21 +336,24 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             θz = ϕp /(ϕp - sϕ)
             if θz > θ_THRESH
                 # dpz = (-psub_l/(1+θz)/θz + pp*(1-θz)/θz + pn*θz/(θz+1))*dz1 # Quadratic
-                dpz = (pp-psub_l)/θz*dz1 # Linear
+                dpz = (-psub_l*(2θz+1) + pp*(1+θz)^2 - pn*θz^2) * dz1/θz/(θz+1) # Quadratic extrapolation, eval at interface
+                # dpz = (pp-psub_l)/θz*dz1 # Linear
             else
-                dpz = (pn - psub_l)/(θz+1)*dz1 # Linear, outside
+                dpz = (pn - psub_l)/(θz+1)*dz1 # Linear, outsidn
             end
         elseif nϕ <= 0 # North ghost cell
             θz = ϕp /(ϕp - nϕ)
             if θz >  θ_THRESH
                 # dpz = ( psub_l/(θz+1)/θz - pp*(1-θz)/θz - ps*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                dpz = (psub_l - pp)/θz*dz1 # Linear extrapolation
+                dpz = ( psub_l*(2θz+1) - pp*(1+θz)^2 + ps*θz^2) * dz1/θz/(θz+1) # Quadratic extrapolation, eval at interface
+                # dpz = (psub_l - pp)/θz*dz1 # Linear extrapolation
             else
                 dpz = (psub_l - ps )/(θz+1)*dz1 #Linear, outside
             end
         else # No ghost cells
             dpz = (pn - ps) * 0.5*dz1 # Centered difference
         end
+        # typeof(pp) <: AbstractFloat && @info "vert" dpz pn pp ps
 
     end
     return dpr, dpz
@@ -350,8 +376,10 @@ function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
     b = eval_b(T, p, params)
      
     vf = zeros(eltype(ϕ), dom.nr, dom.nz, 2)
-    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+    # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+    dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
+    # md_all = zeros(eltype(ϕ), size(dom))
 
     for c in Γ⁺
         ir, iz = Tuple(c)
@@ -367,7 +395,11 @@ function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
         vf[c,1] = -vtot * dϕdr
         vf[c,2] = -vtot * dϕdz
 
+        # @info "vel" c dpr dpz dϕdr dϕdz md_l vtot vf[c,1] vf[c,2]
+        # md_all[c] = md_l
+
     end
+    # display(heat(md_all, dom))
     
     return vf, dϕdx_all
 end
