@@ -12,10 +12,12 @@ end
 function get_t_Tf_subflux(simresults::Dict, simconfig::Dict)
     @unpack sol, dom = simresults
     t = sol.t .* u"s"
+    Tf_g = fill(245.0, dom.nr)
     Tf = sol[dom.ntot+1,:] .* u"K"
     md = map(sol.t) do ti
         params = calc_params_at_t(ti, simconfig)
-        uTfTp = calc_uTfTp_res(ti, simresults, simconfig)
+        uTfTp = calc_uTfTp_res(ti, simresults, simconfig, Tf0=Tf_g)
+        Tf_g = uTfTp[2]
         Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
         md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(md) == -1
@@ -37,14 +39,16 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
     @unpack sol, dom = simresults
     # t = uconvert.(u"hr", sol.t .* u"s")
     ts_ndim = ustrip.(u"s", ts)
-    Tf = sol(ts_ndim, idxs=dom.ntot+1).u .* u"K"
+    # Tf = sol(ts_ndim, idxs=dom.ntot+1).u .* u"K"
+    Tf_g = fill(245.0, dom.nr)
     Tf = similar(ts_ndim)
     md = similar(ts_ndim).*u"kg/s"
     for (i, ti) in enumerate(ts_ndim)
         params = calc_params_at_t(ti, simconfig)
-        uTfTp = calc_uTfTp_res(ti, simresults, simconfig)
+        uTfTp = calc_uTfTp_res(ti, simresults, simconfig, Tf0=Tf_g)
+        Tf_g = uTfTp[2]
         # Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
-        Tf[i] = uTfTp[2][1]
+        Tf[i] = uTfTp[3][1,1]
         mdi = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(mdi) == -1
             @info "md=$mdi" ti Tfi calc_psub(Tfi)
@@ -84,20 +88,20 @@ function calc_params_at_t(t::Float64, simconfig::Dict)
     return params
 end
 
-function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
+function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
     @unpack sol, dom = simresults
-    u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; p0=p0)    
+    u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)    
     ϕ = ϕ_T_from_u(u, dom)[1]
     return u, ϕ, T, p
 end
 
 
-function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothing)
+function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
     @unpack sol, dom = simresults
     params = calc_params_at_t(t, simconfig)
     
     u = sol(t)
-    Tf = pseudosteady_Tf(u, dom, params)
+    Tf = pseudosteady_Tf(u, dom, params, Tf0)
     # p_sub = calc_psub(Tf)
     T = solve_T(u, Tf, dom, params)
     if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatonly!
@@ -126,10 +130,12 @@ function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Di
         @error "Axial (vertical) position of thermocouple should be given as number between 0 and 1 inclusive." zpos
     end
     @unpack sol, dom = simresults
+    Tf = fill(245.0, dom.nr)
     Tdat = map(t) do ti 
         params = calc_params_at_t(ti, simconfig)
         u = sol(ti)
-        Tf = pseudosteady_Tf(u, dom, params)
+        Tf = pseudosteady_Tf(u, dom, params, Tf)
+        @info "check" ti Tf[1]
         T = solve_T(u, Tf, dom, params)
         ri = round(rpos*(dom.nr-1)) + 1
         zi = round(rpos*(dom.nr-1)) + 1
