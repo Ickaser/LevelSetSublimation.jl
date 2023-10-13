@@ -156,8 +156,8 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
             if θr > θ_THRESH
                 # dTr = (-Tf/(1+θr)/θr + pT*(1-θr)/θr + eT*(θr)/(θr+1)) * dr1 # Quadratic extrapolation
-                dTr = (-Tf_loc*(2θr+1) + pT*(1+θr)^2 - eT*θr^2) * dr1/θr/(θr+1) # Quadratic extrapolation, eval at interface
-                # dTr = (pT - Tf_loc)/θr * dr1 # LInear extrapolation
+                # dTr = (-Tf_loc*(2θr+1) + pT*(1+θr)^2 - eT*θr^2) * dr1/θr/(θr+1) # Quadratic extrapolation, eval at interface
+                dTr = (pT - Tf_loc)/θr * dr1 # LInear extrapolation
             else 
                 dTr = (eT - Tf_loc)/(θr+1)*dr1 # Linear extrapolation from east
             end
@@ -166,8 +166,8 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
             if θr > θ_THRESH
                 # dTr = ( Tf/(θr+1)/θr - pT*(1-θr)/θr - wT*θr/(θr+1)) * dr1 # Quadratic extrapolation
-                dTr = (Tf_loc*(2θr+1) - pT*(1+θr)^2 + wT*θr^2) * dr1/θr/(θr+1) # Quadratic extrapolation, eval at interface
-                # dTr = (Tf_loc - pT)/θr * dr1 # LInear extrapolation
+                # dTr = (Tf_loc*(2θr+1) - pT*(1+θr)^2 + wT*θr^2) * dr1/θr/(θr+1) # Quadratic extrapolation, eval at interface
+                dTr = (Tf_loc - pT)/θr * dr1 # LInear extrapolation
             else
                 dTr = (Tf_loc - wT)/(θr+1)*dr1 # Linear extrapolation from west
             end
@@ -199,8 +199,8 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             θz = ϕp /(ϕp - sϕ)
             if θz > θ_THRESH
                 # dTz = (-Tf_loc/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                dTz = (-Tf_loc*(2θz+1) + pT*(1+θz)^2 - nT*θz^2) * dz1/θz/(θz+1) # Quadratic extrapolation, eval at interface
-                # dTz = (pT - Tf_loc)/θz * dz1 # Linear extrapolation
+                # dTz = (-Tf_loc*(2θz+1) + pT*(1+θz)^2 - nT*θz^2) * dz1/θz/(θz+1) # Quadratic extrapolation, eval at interface
+                dTz = (pT - Tf_loc)/θz * dz1 # Linear extrapolation
             else
                 dTz = (nT - Tf_loc)/(θz+1)*dz1
             end
@@ -208,8 +208,8 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             θz = ϕp /(ϕp - nϕ)
             if θz > θ_THRESH
                 # dTz = ( Tf_loc/(θz+1)/θz - pT*(1-θz)/θz - sT*θz/(θz+1)) * dz1 # Quadratic extrapolation
-                dTz = ( Tf_loc*(2θz+1) - pT*(1+θz)^2 + sT*θz^2) * dz1/θz/(θz+1) # Quadratic extrapolation, eval at interface
-                # dTz = (Tf_loc - pT)/θz * dz1 # Linear extrapolation
+                # dTz = ( Tf_loc*(2θz+1) - pT*(1+θz)^2 + sT*θz^2) * dz1/θz/(θz+1) # Quadratic extrapolation, eval at interface
+                dTz = (Tf_loc - pT)/θz * dz1 # Linear extrapolation
             else
                 dTz = (Tf_loc - sT )/(θz+1)*dz1
             end
