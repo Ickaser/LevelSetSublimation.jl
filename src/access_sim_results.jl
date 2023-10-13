@@ -1,5 +1,6 @@
 export calc_uϕTp_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
 export get_subf_z, get_subf_r, get_ϕ
+export virtual_thermocouple
 
 function get_t_Tf(simresults::Dict)
     @unpack sol, dom = simresults
@@ -110,6 +111,32 @@ function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; p0=nothin
     return u, Tf, T, p
 end
 
+function virtual_thermocouple(simresults::Dict, simconfig::Dict) 
+    simt = simresults["sol"].t
+    evalt = range(0.0, simt[end], length=100)
+    virtual_thermocouple(0, 0, evalt, simresults, simconfig)
+end
+function virtual_thermocouple(t::TT, simresults::Dict, simconfig::Dict) where TT <: AbstractArray
+    virtual_thermocouple(0, 0, t, simresults, simconfig)
+end
+function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Dict) where TT <: AbstractArray
+    if rpos < 0 || rpos > 1
+        @error "Radial position of thermocouple should be given as number between 0 and 1 inclusive." rpos
+    elseif zpos < 0 || zpos > 1
+        @error "Axial (vertical) position of thermocouple should be given as number between 0 and 1 inclusive." zpos
+    end
+    @unpack sol, dom = simresults
+    Tdat = map(t) do ti 
+        params = calc_params_at_t(ti, simconfig)
+        u = sol(ti)
+        Tf = pseudosteady_Tf(u, dom, params)
+        T = solve_T(u, Tf, dom, params)
+        ri = round(rpos*(dom.nr-1)) + 1
+        zi = round(rpos*(dom.nr-1)) + 1
+        Tloc = T[ri, zi]
+    end
+    return Tdat
+end
 
 """
     get_subf_z(ϕ, dom)
