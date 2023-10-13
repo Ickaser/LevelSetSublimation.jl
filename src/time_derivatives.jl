@@ -28,6 +28,11 @@ function dudt_heatmass!(du, u, integ_pars, t)
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
 
     if minimum(ϕ) > 0 # No ice left
+        l_ave = 1/sum(1/params[:l])/length(params[:l])
+        minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
+        b_ave = l_ave * sqrt(params[:Mw]/params[:R]/minT)
+        flux = (calc_psub(minT) - params[:p_ch])/dom.zmax*b_ave
+        dϕ .= flux/params[:ρf]
         # dϕ .= 0
         # dTw .= 0
         @info "no ice" extrema(dϕ)
@@ -72,7 +77,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
     @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
     if minimum(dϕ) < 0
-        @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) 
+        @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
         # pl1 = heat(vr, dom)
         # pl2 = heat(vz, dom)
         # display(plot(pl1, pl2))
@@ -196,39 +201,49 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         elseif ir == dom.nr
             dTfdr = params[:Kw]/kf*(Tw - Tf[ir])
             d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
-        # elseif no_ice[ir-1] && no_ice[ir+1] # Ice on both sides
-        #     @warn "Ice surrounded by gap: ignore radial gradients, treat only vertical." has_ice[ir-1:ir+1] 
-        #     dTfdr = 0
-        #     d2Tfdr2 = 0
-        #     # dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
-        #     # d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
+        elseif no_ice[ir-1] && no_ice[ir+1] # Ice on both sides
+            # @warn "Ice surrounded by gap: ignore radial gradients, treat only vertical." has_ice[ir-1:ir+1] 
+            dTfdr = 0
+            d2Tfdr2 = 0
+            # dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
+            # d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
         elseif no_ice[ir-1] # On left side: away from center
-            @warn "Not implemented carefully. Double check this math" ir has_ice[ir-1:ir+1] sum(has_ice) 
+            # @warn "Not implemented carefully. Double check this math" ir has_ice[ir-1:ir+1] sum(has_ice) 
             integ_cells = [CI(ir-1, iz) for iz in 1:dom.nz if ϕ[ir,iz]<=0]
-            surf_integral = 0
+            surf_integral = 0.0
+            # surf_area = 0.0
             for cell in integ_cells
                 q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
-                δ = compute_local_δ(cell, ϕ, dom )
-                surf_integral += dom.rgrid[ir+1]*q*δ*dom.dr*dom.dz / dϕdr
+                δm = compute_local_δ(cell, ϕ, dom )
+                δp = compute_local_δ(cell + CI(1,0), ϕ, dom )
+                loc_area = (δp*dom.rgrid[ir+1] + δm*dom.rgrid[ir])*2π*dom.dz*dom.dr
+                surf_integral += q*loc_area / dϕdr
             end
 
-            dTfdr = 1/kf/dom.rgrid[ir]/Δξ[ir] * surf_integral
+            # dTfdr = 1/kf/dom.rgrid[ir]/Δξ[ir] * surf_integral
+            # dTfdr = surf_integral/surf_area /kf#*dom.rgrid[ir+1]/dom.rgrid[ir] 
+            dTfdr = surf_integral/(dom.rgrid[ir]*2π*Δξ[ir])/kf # Divide integral by gridpoint surface area
             # Use a ghost cell
             d2Tfdr2 = (-2Tf[ir] + 2Tf[ir-1] + 2*dom.dr*dTfdr)*dom.dr2
         elseif no_ice[ir+1] # On right side: pulled away from wall
             integ_cells = [CI(ir+1, iz) for iz in 1:dom.nz if ϕ[ir,iz]<=0]
             surf_integral = 0.0
-            surf_area = 0.0
+            # surf_area = 0.0
             for cell in integ_cells
                 q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
-                δ = compute_local_δ(cell, ϕ, dom )
-                surf_area += δ*dom.dr*dom.dz
-                surf_integral += q*δ*dom.dr*dom.dz / dϕdr
+                δp = compute_local_δ(cell, ϕ, dom )
+                δm = compute_local_δ(cell - CI(1,0), ϕ, dom )
+                loc_area = (δp*dom.rgrid[ir+1] + δm*dom.rgrid[ir])*2π*dom.dz*dom.dr
+                # loc_area = dom.rgrid[ir]*2π*dom.dz
+                # loc_area = δ*dom.dz*dom.dr 
+                # @info "check" cell halfcell loc_area
+                # surf_area += loc_area
+                surf_integral += q*loc_area/dϕdr
             end
 
-            # dTfdr = 1/kf/dom.rgrid[ir]/Δξ[ir] * surf_integral
-            # dTfdr = surf_integral/surf_area /kf*dom.rgrid[ir+1]/dom.rgrid[ir] 
-            dTfdr = surf_integral/surf_area /kf#*dom.rgrid[ir+1]/dom.rgrid[ir] 
+            # dTfdr = surf_integral/surf_area /kf#*dom.rgrid[ir+1]/dom.rgrid[ir] 
+            # @info "checking" dom.rgrid[ir]*2π*Δξ[ir] surf_area
+            dTfdr = surf_integral/(dom.rgrid[ir]*2π*Δξ[ir])/kf # Divide integral by gridpoint surface area
             # Use a ghost cell
             d2Tfdr2 = (-2Tf[ir] + 2Tf[ir-1] + 2*dom.dr*dTfdr)*dom.dr2
         else
