@@ -246,6 +246,11 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         # end
         # sol = solve(prob, SSPRK33(), dt=dt, callback=cbs; ) # Fixed timestepping: 1 minute
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+    elseif dudt_func == dudt_heatmass_dae!
+        massmat = Diagonal(vcat(ones(length(ϕ0)), zeros(dom.nr), [1]))
+        func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
+        prob = ODEProblem(func, u0, tspan, prob_pars)
+        sol = solve(prob, ROS3P(); callback=cbs)
     else
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     end
@@ -254,6 +259,8 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
     return @strdict sol dom
 end
+
+
 
 # """
 # next_reinit_time_heatonly(integ)

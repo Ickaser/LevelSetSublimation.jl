@@ -8,7 +8,7 @@ using DrWatson, Reexport
 @reexport using Unitful
 using CSV
 # using ProgressMeter
-using LinearAlgebra: norm
+using LinearAlgebra: norm, Diagonal
 using UnicodePlots: spy
 using NLsolve
 # using NonlinearSolve
