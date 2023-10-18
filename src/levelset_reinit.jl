@@ -584,10 +584,18 @@ Implemented by computing WENO derivatives for each cell separately, which is a l
 Beyond the boundaries of domain, ϕ is extrapolated according to `get_or_extrapolate_ϕ`.
 """
 function dϕdx_all_WENO(ϕ, dom)
-    dϕdr_w = zeros(size(dom))
-    dϕdr_e = zeros(size(dom))
-    dϕdz_s = zeros(size(dom))
-    dϕdz_n = zeros(size(dom))
+    # dϕdr_w = zeros(size(dom))
+    # dϕdr_e = zeros(size(dom))
+    # dϕdz_s = zeros(size(dom))
+    # dϕdz_n = zeros(size(dom))
+    dϕdr_w = similar(ϕ)
+    dϕdr_e = similar(ϕ)
+    dϕdz_s = similar(ϕ)
+    dϕdz_n = similar(ϕ)
+    # dϕdr_w .= 0
+    # dϕdr_e .= 0
+    # dϕdz_s .= 0
+    # dϕdz_n .= 0
 
     for i in axes(dϕdr_e, 2)
         dϕdr_w[:,i], dϕdr_e[:,i] = wenodiffs_row(ϕ[:,i], dom.dr)

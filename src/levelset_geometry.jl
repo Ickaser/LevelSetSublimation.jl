@@ -38,7 +38,7 @@ Compute area of where ice meets radial outer surface of vial.
 function compute_icegl_area(ϕ, dom::Domain)
     outϕ = ϕ[end,:]
     # outsurf = dom.rmax*dom.dz*2π * sum(outϕ .> 0)
-    outsurf::Float64 = 0.0
+    outsurf::eltype(ϕ) = 0.0
     outcoeff = dom.rmax*dom.dz*2π
     for seg in zip(outϕ[begin:end-1], outϕ[begin+1:end])
         if seg[1] <= 0 && seg[2] <= 0 # full segment in ice
@@ -69,7 +69,7 @@ function compute_icevol(ϕ, dom::Domain)
         return CI(rloc, zloc)
     end
 
-    totvol::Float64 = 0.0
+    totvol::eltype(ϕ) = 0.0
     # Volume from outer cylinder edge: R/2 * outer surface area
     totvol += dom.rmax/2 * compute_icegl_area(ϕ, dom)
 
@@ -168,7 +168,7 @@ function compute_icesurf(ϕ, dom::Domain)
 end
 
 function compute_icegl_area_weights(ϕ, dom)
-    zweights = zeros(Float64, dom.nz) 
+    zweights = zeros(eltype(ϕ), dom.nz) 
     for iz in 1:dom.nz-1
         ϕl, ϕr = ϕ[end, iz:iz+1]
         if ϕl <= 0 && ϕr <= 0
@@ -184,7 +184,7 @@ function compute_icegl_area_weights(ϕ, dom)
 end
 
 function compute_icesh_area_weights(ϕ, dom)
-    rweights = zeros(Float64, dom.nr) 
+    rweights = zeros(eltype(ϕ), dom.nr) 
     for ir in 1:dom.nr-1
         ϕl, ϕr = ϕ[ir:ir+1, 1]
         if ϕl <= 0 && ϕr <= 0
@@ -222,7 +222,7 @@ function compute_iceht_bottopcont(ϕ, dom)
     bottom_contact = (ϕ[:,begin] .<= 0)
     top_contact = (ϕ[:,end] .<= 0)
 
-    heights = fill(0.0, dom.nr)
+    heights = zeros(eltype(ϕ), dom.nr)
     ice_contig = fill(true, dom.nr)
     for ir in axes(ϕ, 1)
         # # Begin with 1 grid space per frozen cell

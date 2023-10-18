@@ -74,13 +74,15 @@ function dudt_heatmass!(du, u, integ_pars, t)
         # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
         dϕ[ind] = -rcomp - zcomp
     end
-    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
-    if minimum(dϕ) < 0
-        @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
-        # pl1 = heat(vr, dom)
-        # pl2 = heat(vz, dom)
-        # display(plot(pl1, pl2))
+    if eltype(u) <: Float64
+        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
+        if minimum(dϕ) < 0
+            @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
+            # pl1 = heat(vr, dom)
+            # pl2 = heat(vz, dom)
+            # display(plot(pl1, pl2))
+        end
     end
     # if maximum(dϕ) > 1
     #     @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
@@ -195,32 +197,6 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             continue
         end
 
-        # Treat top and bottom
-        if top_contact[ir]
-            # # adiabatic boundary 
-            # top_bound_term = 0
-            # direct sublimation boundary
-            top_bound_term = ΔH*(p_ch - calc_psub(Tf[ir]))/Rp0
-            if typeof(top_bound_term) <: AbstractFloat
-            end
-        else
-            iz = findlast(ϕ[ir,:] .<=0) + 1
-            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-            # top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
-            top_bound_term = q*dϕdz
-        end
-
-        if bot_contact[ir]
-            # Shelf boundary
-            bot_bound_term = params[:Kv]*(T[ir,begin] - params[:Tsh])
-        else
-            # Stefan boundary
-            iz = findfirst(ϕ[ir,:] .<=0) - 1
-            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-            # bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
-            bot_bound_term = q*dϕdz
-        end
-
         # Treat radial derivatives
 
         if ir == 1
@@ -273,13 +249,12 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 surf_area += loc_area
                 # surf_integral += q*loc_area/dϕdr #- Q_ic*Hp*dom.rgrid[ir]*2π*dom.dr
                 surf_integral += q*loc_area/dϕdr #+ Q_ic*(Hp*dom.rgrid[ir]*dom.dr*2π*dom.dz)
-                # TODO: should there be a dϕdr here?
             end
 
             # dTfdr = surf_integral/surf_area /kf#*dom.rgrid[ir+1]/dom.rgrid[ir] 
             # @info "checking" dom.rgrid[ir]*2π*Δξ[ir] surf_area
             # flux = surf_integral #+ top_bound_term*top_contact[ir] - bot_bound_term*bot_contact[ir] 
-            # dTfdr = flux/(dom.rgrid[ir]*2π*Δξ[ir])/kf # Divide integral by gridpoint surface area
+            # dTfdr = surf_integral/(dom.rgrid[ir]*2π*Δξ[ir])/kf # Divide integral by gridpoint surface area
             dTfdr = surf_integral/surf_area/kf # Divide integral by gridpoint surface area
             # Use a ghost cell
             d2Tfdr2 = (-2Tf[ir] + 2Tf[ir-1] + 2*dom.dr*dTfdr)*dom.dr2
@@ -287,6 +262,35 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
             d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
         end
+
+        # Treat top and bottom
+        if top_contact[ir]
+            # # adiabatic boundary 
+            # top_bound_term = 0
+            # direct sublimation boundary
+            top_bound_term = ΔH*(p_ch - calc_psub(Tf[ir]))/Rp0
+            if typeof(top_bound_term) <: AbstractFloat
+            end
+        else
+            iz = findlast(ϕ[ir,:] .<=0) + 1
+            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
+            # top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
+            top_bound_term = q*dϕdz
+        end
+
+        if bot_contact[ir]
+            # Shelf boundary
+            bot_bound_term = params[:Kv]*(Tf[ir] - params[:Tsh])
+            isnan(bot_bound_term) && @info "NaN bottom" Tf[ir] T[ir,begin] params[:Tsh]
+        else
+            # Stefan boundary
+            iz = findfirst(ϕ[ir,:] .<=0) - 1
+            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
+            # bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
+            bot_bound_term = q*dϕdz
+            isnan(bot_bound_term) && @info "NaN bottom" q dϕdz
+        end
+
 
 
         r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
@@ -415,7 +419,7 @@ end
 function dudt_heatmass_dae!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params = integ_pars[2]
-    p_last = integ_pars[3]
+    # p_last = integ_pars[3]
     # Tf_last = integ_pars[4]
     controls = integ_pars[5]
 
@@ -451,8 +455,9 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     # Tf .= Tfs
     # dTf = (Tf - Tfg)/60
 
-    integ_pars[3] .= p # Cache current state of p as a guess for next timestep
-    integ_pars[4] .= Tf
+
+    # integ_pars[3] .= p # Cache current state of p as a guess for next timestep
+    # integ_pars[4] .= Tf
     vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:, :, 1]
@@ -461,6 +466,8 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     # Compute time derivatives for 
     # dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
     # dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
+    dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
+
     Qgl = compute_Qgl(u, T, dom, params)
     dTw .= (Q_gl_RF - Qgl) / m_cp_gl
 
@@ -476,16 +483,25 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
 
-    dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
-    dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
-    if minimum(dϕ) < 0
-        @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
-        # pl1 = heat(vr, dom)
-        # pl2 = heat(vz, dom)
-        # display(plot(pl1, pl2))
+    if eltype(u) <: Float64
+        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
+        if minimum(dϕ) < 0
+            @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
+            # pl1 = heat(vr, dom)
+            # pl2 = heat(vz, dom)
+            # display(plot(pl1, pl2))
+        end
     end
+    # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
+    # if minimum(dϕ) < 0
+    #     @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
+    #     # pl1 = heat(vr, dom)
+    #     # pl2 = heat(vz, dom)
+    #     # display(plot(pl1, pl2))
+    # end
     # if maximum(dϕ) > 1
     #     @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
     #     display(heat(T, dom))

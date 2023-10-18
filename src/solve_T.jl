@@ -375,6 +375,10 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
         return Tf_g
     end
+    if any(isnan.(Tf_g))
+        @warn "NaN guess" Tf_g
+        Tf_g[isnan.(Tf_g)] .= 245.0
+    end
 
     # T_cache = solve_T(u, Tfv, dom, params)
     # p_cache = solve_p(u, Tfv, T_cache, dom, params)

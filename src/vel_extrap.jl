@@ -40,8 +40,10 @@ function fastmarch_v!(vf, acc, locs::Vector{CartesianIndex{2}}, ϕ, dom::Domain)
     sort!(locs , by=(x->abs(ϕ[x])))
 
     for c in locs # This needs to be done in order.
-        num = fill(0.0, 2)
-        den = [0.0]
+        # num = fill(0.0, 2)
+        # den = [0.0]
+        num = zeros(eltype(ϕ), 2)
+        den = zeros(eltype(ϕ), 1)
 
         # R direction
         if usecell(acc, c+eci) # Use east
