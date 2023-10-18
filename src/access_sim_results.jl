@@ -105,13 +105,14 @@ function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothi
     # p_sub = calc_psub(Tf)
     T = solve_T(u, Tf, dom, params)
     if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatonly!
-        return u, Tf, T, zeros(size(ϕ))
+        return u, Tf, T, zeros(size(dom))
     end
-    if isnothing(p0)
-        p = solve_p(u, Tf, T, dom, params)
-    else
-        p = solve_p(u, Tf, T, dom, params, p0)
-    end
+    # if isnothing(p0)
+    #     p = solve_p(u, Tf, T, dom, params)
+    # else
+    #     p = solve_p(u, Tf, T, dom, params, p0)
+    # end
+    p = solve_p(u, Tf, T, dom, params)
     return u, Tf, T, p
 end
 
