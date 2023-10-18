@@ -45,12 +45,13 @@ end
 
 ϕ_pre = make_ϕ0(:circ, dom)
 ϕ_post = reinitialize_ϕ_HCR(ϕ_pre, dom, maxsteps=500, tol = 0.01)
+# ϕ_post = reinitialize_ϕ_HCR_blindspots(ϕ_pre, dom, maxsteps=500, tol = 0.01)
 const sdf_err_L∞ = LSS.sdf_err_L∞
 
-vol_pre = LSS.compute_icevol(ϕ_pre, dom)
-vol_post = LSS.compute_icevol(ϕ_post, dom)
-surf_pre = LSS.compute_icesurf(ϕ_pre, dom)
-surf_post = LSS.compute_icesurf(ϕ_post, dom)
+vol_pre = LSS.compute_icevol_H(ϕ_pre, dom)
+vol_post = LSS.compute_icevol_H(ϕ_post, dom)
+surf_pre = LSS.compute_icesurf_δ(ϕ_pre, dom)
+surf_post = LSS.compute_icesurf_δ(ϕ_post, dom)
 
 @testset "Reinitialization function: tested only on ellipse" begin
     @test sdf_err_L∞(ϕ_pre, dom) > 0.01
