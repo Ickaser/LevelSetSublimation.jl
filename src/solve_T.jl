@@ -380,42 +380,67 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     #     Tf_g[isnan.(Tf_g)] .= 245.0
     # end
 
-    # T_cache = solve_T(u, Tfv, dom, params)
-    # p_cache = solve_p(u, Tfv, T_cache, dom, params)
-    function resid!(dTfdt, Tf)
-    # function resid!(dTfdt, Tf, ssparams, t)
-        # Tfv .= Tf
-        if any(isnan.(Tf))
-            @warn "NaN found" Tf
-        end
-        extrap_Tf_noice!(Tf, has_ice, dom)
-        if any(clamp.(Tf[has_ice], 200, 400) .!= Tf[has_ice])
-            if typeof(Tf[1]) <: AbstractFloat
-                @info "Crazy Tf" Tf[has_ice] has_ice
-            else
-                @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice]
+
+    if all(has_ice) # IF all ice present, use all DOF
+        function resid!(dTfdt, Tf)
+            if any(isnan.(Tf))
+                @warn "NaN found" Tf
             end
+            extrap_Tf_noice!(Tf, has_ice, dom)
+            if any(clamp.(Tf[has_ice], 200, 400) .!= Tf[has_ice])
+                if typeof(Tf[1]) <: AbstractFloat
+                    @info "Crazy Tf" Tf[has_ice] has_ice
+                else
+                    @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice]
+                end
+            end
+            T = solve_T(u, Tf, dom, params)
+            p = solve_p(u, Tf, T, dom, params)
+            dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
         end
-        # @info "resid"
-        # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
-        # T_cache .= solve_T(u, Tf, dom, params)
-        # p_cache .= solve_p(u, Tf, T_cache, dom, params, p_cache)
-        # dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
-        # Tf_extrap = copy(Tf)
-        T = solve_T(u, Tf, dom, params)
-        # Tm = fill(250.15, size(dom))
-        p = solve_p(u, Tf, T, dom, params)
-        # p = solve_p(u, Tf, Tm, dom, params)
-        dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
-        # dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
-        # @info "resid" extrema(dTfdt) extrema(Tf) extrema(Tf_extrap)
-        nothing
+        sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
+        Tfs = sol.zero
+    else # If ice doesn't cover full radial extent, trim out those DOF
+        Tf_trim = Tf_g[has_ice]
+        function resid!(dTfdt_trim, Tf_trim)
+            dTfdt = zeros(eltype(dTfdt_trim), dom.nr)
+            Tf = zeros(eltype(Tf_trim), dom.nr)
+            Tf[has_ice] .= Tf_trim
+        # function resid!(dTfdt, Tf, ssparams, t)
+            # Tfv .= Tf
+            if any(isnan.(Tf))
+                @warn "NaN found" Tf
+            end
+            extrap_Tf_noice!(Tf, has_ice, dom)
+            if any(clamp.(Tf[has_ice], 200, 400) .!= Tf[has_ice])
+                if typeof(Tf[1]) <: AbstractFloat
+                    @info "Crazy Tf" Tf[has_ice] has_ice
+                else
+                    @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice]
+                end
+            end
+            # @info "resid"
+            # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
+            # T_cache .= solve_T(u, Tf, dom, params)
+            # p_cache .= solve_p(u, Tf, T_cache, dom, params, p_cache)
+            # dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
+            # Tf_extrap = copy(Tf)
+            T = solve_T(u, Tf, dom, params)
+            # Tm = fill(250.15, size(dom))
+            p = solve_p(u, Tf, T, dom, params)
+            # p = solve_p(u, Tf, Tm, dom, params)
+            dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
+            # dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
+            # @info "resid" extrema(dTfdt) extrema(Tf) extrema(Tf_extrap)
+            dTfdt_trim .= dTfdt[has_ice]
+            nothing
+        end
+        sol = nlsolve(resid!, Tf_trim, autodiff=:forward, ftol=1e-10)
+        Tfs = zeros(dom.nr)
+        Tfs[has_ice] = sol.zero
+        extrap_Tf_noice!(Tfs, has_ice, dom)
     end
 
-    sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
-    Tfs = sol.zero
-    # extrap_Tf_noice!(Tfs, has_ice, dom)
-    # return sol, Tfs, resid!
     return Tfs
 end
 
