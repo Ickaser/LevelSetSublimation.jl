@@ -207,6 +207,30 @@ function compute_icesh_area_weights(ϕ, dom)
     end
     return rweights
 end
+function compute_icetop_area_weights(ϕ, dom)
+    rweights = zeros(eltype(ϕ), dom.nr) 
+    for ir in 1:dom.nr-1
+        ϕl, ϕr = ϕ[ir:ir+1, dom.nz]
+        if ϕl <= 0 && ϕr <= 0
+            rmid = (dom.rgrid[ir] + dom.rgrid[ir+1])/2
+            rweights[ir] += rmid^2/2
+            rweights[ir+1] -= rmid^2/2
+        elseif ϕl <= 0
+            θr = -(ϕl/(ϕl - ϕr))
+            rmid =dom.rgrid[ir] + dom.dr*θr
+            rweights[ir] += rmid^2/2
+        elseif ϕr <= 0
+            θr = -(ϕr/(ϕr - ϕl))
+            rmid = dom.rgrid[ir+1] - dom.dr*θr
+            rweights[ir+1] -= rmid^2/2
+        # else # Nothing needed to do in this case
+        end
+    end
+    if ϕ[dom.nr] <= 0
+        rweights[dom.nr] += dom.rmax^2/2
+    end
+    return rweights
+end
 
 
 """
