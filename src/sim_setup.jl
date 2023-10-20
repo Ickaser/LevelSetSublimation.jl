@@ -48,7 +48,7 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
                 for r in dom.rgrid, z in dom.zgrid] .*sqrt(dom.rmax*dom.zmax)
     elseif ϕtype == :cone
         @warn "The more arcane starting shapes are not well-tested."
-        ϕ0 = [0.5r + z - 0.9dom.zmax + ϵ 
+        ϕ0 = [0.5*(dom.zmax/dom.rmax)*r + z - 0.6dom.zmax + ϵ 
                 for r in dom.rgrid, z in dom.zgrid]
     else
         @error "ArgumentError: Invalid ϕ0 kind to make_ϕ0" ϕtype

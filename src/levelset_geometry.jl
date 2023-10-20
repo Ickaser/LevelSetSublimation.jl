@@ -251,9 +251,9 @@ function compute_iceht_bottopcont(ϕ, dom)
                 
         end
     end
-    if !any(bottom_contact)
-        display(heat(ϕ, dom))
-    end
+    # if !any(bottom_contact)
+    #     display(heat(ϕ, dom))
+    # end
     return heights, bottom_contact, top_contact
 end
 
