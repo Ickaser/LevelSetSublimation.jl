@@ -180,7 +180,7 @@ tot_flow_anl2 = sum(z_fluxes .*r_nodes .*r_wts ) *2π
 # tot_flow_num = sum(dom.rgrid[Ωr].*-(p_num[Ωr, end] .- ustrip(p_ch(0)))/Rp0/b)*dom.dr*b * 2π
 # tot_flow_num2 = sum((p_num[22, :] .- p_num[21, :])/dom.dr)*dom.dz*Ri*2π*b
 # tot_flow_num2 = sum(LSS.compute_pderiv(um, )/dom.dr)*dom.dz*Ri*2π*b
-(tot_flow_num - tot_flow_num2) ./ tot_flow_num
+# (tot_flow_num - tot_flow_num2) ./ tot_flow_num
 
 # Function for evaluating mass flux
 
@@ -243,7 +243,7 @@ end
 
 nlobj(230)
 @time Tc_sol = find_zero(nlobj, 238.5)
-Tfs = @time LSS.pseudosteady_Tf(um, dom, params, fill(250.0, dom.nr))
+Tfs = @time LSS.pseudosteady_Tf(um, dom, params, fill(Tc_sol, dom.nr))
 LSS.solve_T(um, Tfs, dom, params)[:,1]
 
 Tfs[.~Ωr] .- Tf_anl.(dom.rgrid[.~Ωr], idxs=1)
@@ -253,6 +253,7 @@ Tfs[.~Ωr]
 @time Tc_sol = find_zero(x->nlobj(x, ie=4), 230)
 
 Tf_anl = solve(ode1, u0=[Tc_sol, 0], Tsit5(), p=pars)
+Tf_anl(dom.rgrid[findlast(.~Ωr)], idxs=2)
 sols_Tf_anl = map(enumerate(perturbs)) do (ie, ei)
     Tc = find_zero(x->nlobj(x, ie=ie), 238.5)
     Tf = solve(ode1, Tsit5(), p=pars, tspan=(0.0,Ri-ei), u0=[Tc, 0])
@@ -273,5 +274,7 @@ plot( sols_Tf_anl, palette=palette(:thermal, 21))
 plot( sols_Tf_num, palette=palette(:thermal, 21))
 scatter(perturbs./dom.dr, [s[1] for s in sols_Tf_num], c=:red, label="num")
 scatter!(perturbs./dom.dr, [s[1] for s in sols_Tf_anl], c=:blue,label="anl")
+plot!(xlabel="interface position", ylabel="center Tf")
+plot!(title="finite volume, quadratic dT/dr evaluation ")
 plot(perturbs./dom.dr, [sum(abs.(a .- n))/length(a) for (a,n) in zip(sols_Tf_anl, sols_Tf_num)], palette=palette(:thermal, 21))
 plot([(a .- n) for (a,n) in zip(sols_Tf_anl, sols_Tf_num)], palette=palette(:thermal, 21))
