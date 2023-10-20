@@ -250,7 +250,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         massmat = Diagonal(vcat(ones(length(ϕ0)), zeros(dom.nr), [1]))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
-        sol = solve(prob, ROS3P(); callback=cbs)
+        sol = solve(prob, FBDF(); callback=cbs)
     else
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     end
