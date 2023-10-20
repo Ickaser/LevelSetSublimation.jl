@@ -382,7 +382,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
 
 
     if all(has_ice) # IF all ice present, use all DOF
-        function resid!(dTfdt, Tf)
+        resid! = function (dTfdt, Tf)
             if any(isnan.(Tf))
                 @warn "NaN found" Tf
             end
@@ -402,7 +402,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         Tfs = sol.zero
     else # If ice doesn't cover full radial extent, trim out those DOF
         Tf_trim = Tf_g[has_ice]
-        function resid!(dTfdt_trim, Tf_trim)
+        resid! = function (dTfdt_trim, Tf_trim)
             dTfdt = zeros(eltype(dTfdt_trim), dom.nr)
             Tf = zeros(eltype(Tf_trim), dom.nr)
             Tf[has_ice] .= Tf_trim
