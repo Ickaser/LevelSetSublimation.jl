@@ -140,14 +140,14 @@ function solve_T(u, Tf, dom::Domain, params)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 if θr >= θ_THRESH
                     # Quadratic
-                    # pc += k*(-2*dr2 -(1-θr)*dr1*r1)/θr
-                    # wc += k*(-dr1*r1*θr + 2dr2)/(θr+1)# Regular + b gradient
-                    # rhs[imx] -= Tf_loc*k*(2dr2 + dr1*r1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
+                    pc += k*(-2*dr2 -(1-θr)*dr1*r1)/θr
+                    wc += k*(-dr1*r1*θr + 2dr2)/(θr+1)# Regular + b gradient
+                    rhs[imx] -= Tf_loc*k*(2dr2 + dr1*r1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                     # Linear
-                    pc += -2k*dr2 # Regular 
-                    pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
-                    wc += k*(-0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf_loc*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
+                    # pc += -2k*dr2 # Regular 
+                    # pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                    # wc += k*(-0.5dr1*r1 + dr2) # Regular
+                    # rhs[imx] -= Tf_loc*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
                     # Linear extrapolation, a cell out
                     pc += -2k*dr2 # Regular
@@ -165,14 +165,14 @@ function solve_T(u, Tf, dom::Domain, params)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_THRESH # Regular magnitude θ
                     # Quadratic ghost cell extrapolation
-                    # pc += (k*(-2*dr2+(1-θr)*dr1*r1))/θr
-                    # ec += (k*( dr1*r1*θr + 2dr2))/(θr+1)# Regular + b gradient
-                    # rhs[imx] -= Tf_loc*(k*(2dr2 - dr1*r1))/θr/(θr+1) # Dirichlet BC in ghost cell extrap
+                    pc += (k*(-2*dr2+(1-θr)*dr1*r1))/θr
+                    ec += (k*( dr1*r1*θr + 2dr2))/(θr+1)# Regular + b gradient
+                    rhs[imx] -= Tf_loc*(k*(2dr2 - dr1*r1))/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                     # Linear extrapolation for ghost cell
-                    pc += -2k*dr2 # Regular 
-                    pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
-                    ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    # pc += -2k*dr2 # Regular 
+                    # pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                    # ec += k*( 0.5dr1*r1 + dr2) # Regular
+                    # rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
                     # if ir > 2 # Avoid singular at r=0
                     #     # Logarithmic extrapolation for ghost cell
                     #     pc += k*(log(rΓ/rm)*0.5*r1*dr1 + log(rΓ*rm*r1*r1)*dr2)/log(r/rΓ)
@@ -280,13 +280,13 @@ function solve_T(u, Tf, dom::Domain, params)
                 # println("θz=$θz, ir=$ir, iz = $iz, north")
                 if θz >= θ_THRESH
                     # Quadratic
-                    # pc += (k*(-2*dz2))/θz
-                    # sc += (k*(2dz2))/(θz+1)# Regular + b gradient
-                    # rhs[imx] -= Tf[ir]*(k*2dz2)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
+                    pc += (k*(-2*dz2))/θz
+                    sc += (k*(2dz2))/(θz+1)# Regular + b gradient
+                    rhs[imx] -= Tf[ir]*(k*2dz2)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
                     # Linear
-                    pc += -k*dz2*(θz+1)/θz
-                    sc += k*dz2
-                    rhs[imx] -= Tf[ir]*k*dz2/θz
+                    # pc += -k*dz2*(θz+1)/θz
+                    # sc += k*dz2
+                    # rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
                     # Linear
                     pc += -2k*dz2
@@ -303,13 +303,13 @@ function solve_T(u, Tf, dom::Domain, params)
                 # println("θz=$θz, ir=$ir, iz = $iz, south")
                 if θz >= θ_THRESH
                     # Quadratic
-                    # pc += (k*(-2*dz2))/θz
-                    # nc += (k*(2dz2))/(θz+1)# Regular + b gradient
-                    # rhs[imx] -= Tf[ir]*(k*2dz2)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
+                    pc += (k*(-2*dz2))/θz
+                    nc += (k*(2dz2))/(θz+1)# Regular + b gradient
+                    rhs[imx] -= Tf[ir]*(k*2dz2)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
                     # Linear
-                    pc += -k*dz2*(θz+1)/θz
-                    nc += k*dz2
-                    rhs[imx] -= Tf[ir]*k*dz2/θz
+                    # pc += -k*dz2*(θz+1)/θz
+                    # nc += k*dz2
+                    # rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
                     # Linear
                     pc += -2k*dz2
@@ -375,10 +375,10 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
         return Tf_g
     end
-    if any(isnan.(Tf_g))
-        @warn "NaN guess" Tf_g
-        Tf_g[isnan.(Tf_g)] .= 245.0
-    end
+    # if any(isnan.(Tf_g))
+    #     @warn "NaN guess" Tf_g
+    #     Tf_g[isnan.(Tf_g)] .= 245.0
+    # end
 
     # T_cache = solve_T(u, Tfv, dom, params)
     # p_cache = solve_p(u, Tfv, T_cache, dom, params)
