@@ -263,8 +263,25 @@ plot!(perturbs./dom.dr, [ri[2][22] for ri in res])
 scatter(perturbs./dom.dr, [abs(ri[2][42].-ri[1][42])/ri[2][42] for ri in res], yscale=:log10)
 # plot(hcat(res...)')
 
+# Temperature flux
 
+dTdr_sol(Ri) = Bi*ustrip(u"K", ΔT)/(1 + Bi*log(R/Ri))/Ri
+# dTdr_num = LSS.compute_Tderiv(um, Tfm, solve_T)
 
+anl_dTdr = map(perturbs) do ei
+    dTdr_sol(Ri - ei)
+end
+num_dTdr = map(perturbs) do ei
+    um = LSS.make_u0_ndim(config)
+    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
+    T = solve_T(um, Tfm, dom, params)
+    ir = findfirst(ϕm[:,end] .> 0)
+    LSS.compute_Tderiv(um, Tfm, T, ir, dom.nz÷2, dom, params)[1]
+end
+
+plot(perturbs./dom.dr, anl_dTdr, label="anl")
+scatter!(perturbs./dom.dr, num_dTdr, label="num")
 
 function analytical_error_relmax(Nr, Nz)
     p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nr=Nr, Nz=Nz)[1]
