@@ -17,6 +17,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     p_last = integ_pars[3]
     Tf_last = integ_pars[4]
     controls = integ_pars[5]
+    verbose = integ_pars[6]
 
     input_measurements!(params, t, controls)
 
@@ -35,7 +36,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
         dϕ .= flux/params[:ρf]
         # dϕ .= 0
         # dTw .= 0
-        @info "no ice" extrema(dϕ)
+        verbose && @info "no ice" extrema(dϕ)
         return nothing
     end
 
@@ -74,7 +75,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
         # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
         dϕ[ind] = -rcomp - zcomp
     end
-    if eltype(u) <: Float64
+    if verbose && eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
         if minimum(dϕ) < 0

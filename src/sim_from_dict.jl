@@ -18,7 +18,7 @@ function reinit_wrap(integ; verbose=false)
         post_err = sdf_err_L∞(ϕ, dom, region=:B)
         dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         # @info "Reinit at t=$(integ.t)"
-        @info "Reinit" integ.t pre_err post_err dryfrac
+        @info "Reinit" integ.t pre_err post_err dryfrac spy(ϕ .< 0)
     end
 end
 
@@ -202,7 +202,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
 
     # ---- Set up ODEProblem
-    prob_pars = (dom, params, p_last, Tf_last, ncontrols)
+    prob_pars = (dom, params, p_last, Tf_last, ncontrols, verbose)
     tspan = (0, tf)
     prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
 
