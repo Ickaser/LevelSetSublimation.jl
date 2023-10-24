@@ -489,6 +489,7 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     # p_last = integ_pars[3]
     # Tf_last = integ_pars[4]
     controls = integ_pars[5]
+    verbose = integ_pars[6]
 
     input_measurements!(params, t, controls)
 
@@ -511,7 +512,7 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
         dϕ .= flux/params[:ρf]
         # dϕ .= 0
         # dTw .= 0
-        @info "no ice" extrema(dϕ)
+        verbose && @info "no ice" extrema(dϕ)
         return nothing
     end
 
@@ -550,15 +551,9 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     end
 
 
-    if eltype(u) <: Float64
+    if verbose &&  eltype(u) <: Float64
         dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
-        if minimum(dϕ) < 0
-            @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
-            # pl1 = heat(vr, dom)
-            # pl2 = heat(vz, dom)
-            # display(plot(pl1, pl2))
-        end
     end
     # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
     # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]

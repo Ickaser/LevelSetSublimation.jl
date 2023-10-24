@@ -62,7 +62,10 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
         ϕ = ϕ_T_from_u(sol(ti), dom)[1]
         1 - compute_icevol(ϕ, dom) / totvol
     end
-    return ts, Tf.*u"K", mfd, dryfrac
+
+    completed = dryfrac .== 1
+    cyc = .~completed
+    return ts[cyc], Tf[cyc].*u"K", mfd[cyc], dryfrac[cyc]
 end
 
 function gen_sumplot(config, var=:T, casename="test")
@@ -101,7 +104,12 @@ function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothi
     params = calc_params_at_t(t, simconfig)
     
     u = sol(t)
-    Tf = pseudosteady_Tf(u, dom, params, Tf0)
+    if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
+        Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+    else
+        Tf = pseudosteady_Tf(u, dom, params, Tf0)
+    end
+
     # p_sub = calc_psub(Tf)
     T = solve_T(u, Tf, dom, params)
     if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatonly!
@@ -146,7 +154,11 @@ function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Di
     Tdat = map(t) do ti 
         params = calc_params_at_t(ti, simconfig)
         u = sol(ti)
-        Tf = pseudosteady_Tf(u, dom, params, Tf)
+        if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
+            Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+        else
+            Tf = pseudosteady_Tf(u, dom, params, Tf)
+        end
         @info "check" ti Tf[1]
         T = solve_T(u, Tf, dom, params)
         Tloc = T[inds]
