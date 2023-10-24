@@ -499,7 +499,8 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         return
     end
 
-    if findfirst(has_ice) > 1 && has_ice[findfirst(has_ice)+1] && has_ice[findfirst(has_ice)+2]
+    first = findfirst(has_ice)
+    if first > 1 && first+1<dom.nr && has_ice[first+1] && has_ice[first+2]
         # Enough points to do a quadratic extrapolation, so do that.
         # Is fine because we only really need one grid point of extrapolation
         ir1 = findfirst(has_ice)
@@ -514,7 +515,7 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         for ir in 1:ir1-1
             Tf[ir] = left_Textrap_quad(ir)
         end
-    elseif findfirst(has_ice) > 1 && has_ice[findfirst(has_ice)+1]
+    elseif first > 1 && first < dom.nr && has_ice[first+1]
         ir1 = findfirst(has_ice)
         ir2 = ir1 + 1
         Tf1 = Tf[ir1]
@@ -525,10 +526,11 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         for ir in 1:ir1-1
             Tf[ir] = left_Textrap(ir)
         end
-    elseif findfirst(has_ice) > 1 # No neighboring ice, so constant extrapolation
+    elseif first > 1 # No neighboring ice, so constant extrapolation
         Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
     end
-    if findlast(has_ice) < dom.nr && has_ice[findlast(has_ice)-1] && has_ice[findlast(has_ice)-2]
+    last = findlast(has_ice)
+    if last < dom.nr && last-1>1 && has_ice[last-1] && has_ice[last-2]
         # Enough points to do a quadratic extrapolation, so do that.
         # Is fine because we only really need one grid point of extrapolation
         ir1 = findlast(has_ice)
@@ -544,7 +546,7 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
             Tf[ir] = right_Textrap_quad(ir)
         end
         # typeof(Tf1) <: AbstractFloat && @info "R extrap" Tf[ir3:ir1+2]
-    elseif findlast(has_ice) < dom.nr && has_ice[findlast(has_ice)-1]
+    elseif last < dom.nr && last > 1 && has_ice[last-1]
         # Build a linear extrapolation
         ir1 = findlast(has_ice)
         ir2 = ir1 - 1
@@ -555,7 +557,7 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         for ir in ir1+1:dom.nr
             Tf[ir] = right_Textrap(ir)
         end
-    elseif findlast(has_ice) < dom.nr # No neighboring ice, so constant extrapolation
+    elseif last < dom.nr # No neighboring ice, so constant extrapolation
         Tf[findlast(has_ice)+1:end] .= Tf[findlast(has_ice)]
     end
 
