@@ -44,7 +44,10 @@ config = Dict{Symbol, Any}()
 
 @time res = sim_from_dict(config, verbose=true)
 
-resconf = @strdict res config
+
+@time Tf_sol = virtual_thermocouple([0, 0.1, 1], [0, 0, 0], res, config)
+
+resconf = @strdict res config Tf_sol
 
 safesave(datadir("sims", "hpcrun.jld2"), resconf)
 
