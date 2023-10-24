@@ -101,6 +101,14 @@ function params_nondim_setup(cparams, controls)
     return params, nondim_controls
 end
 
+function nondim_controlvar(varname::Symbol, control_dim::Q) where Q <: Quantity
+    if dimension(control_dim) != dimension(PBD[varname])
+        @error "Bad units on controlled variable." varname control_dim PBD[varname]
+    end
+    base_un = PBD[varname]
+    control_ndim = RampedVariable(ustrip(base_un, control_dim))
+    return control_ndim
+end
 function nondim_controlvar(varname::Symbol, control_dim::RampedVariable)
     if dimension(control_dim(0u"s")) != dimension(PBD[varname])
         @error "Bad units on ramped variable." varname control_dim PBD[varname]

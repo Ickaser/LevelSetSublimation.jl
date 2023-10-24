@@ -418,13 +418,12 @@ using `compute_frontvel_mass`.
 function dudt_heatonly!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params = integ_pars[2]
-    p_last = integ_pars[3]
     dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
     ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
 
     T = solve_T(u, Tf, dom, params)
 
-    vf, dϕdx_all = compute_frontvel_heat(u, T, dom, params)
+    vf, dϕdx_all = compute_frontvel_heat(u, Tf, T, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:, :, 1]
     vz = @view vf[:, :, 2]
@@ -435,22 +434,6 @@ function dudt_heatonly!(du, u, integ_pars, t)
     # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
-        # Boundary cases: use internal derivative
-        # if ir == dom.nr # Right boundary
-        #     dϕdr = dϕdr_w[ind]
-        # elseif ir == 1 # Left boundary
-        #     dϕdr = dϕdr_e[ind]
-        # else
-        #     dϕdr = (vr[ind] > 0 ? dϕdr_w[ind] : dϕdr_e[ind])
-        # end
-        # # Boundary cases: use internal derivative
-        # if iz == dom.nz # Top boundary
-        #     dϕdz = dϕdz_s[ind]
-        # elseif iz == 1 # Bottom boundary
-        #     dϕdz = dϕdz_n[ind]
-        # else
-        #     dϕdz = (vz[ind] > 0 ? dϕdz_s[ind] : dϕdz_n[ind])
-        # end
         dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind]>0, vz[ind]>0, dϕdx_all, dom)
 
         rcomp = dϕdr * vr[ind]

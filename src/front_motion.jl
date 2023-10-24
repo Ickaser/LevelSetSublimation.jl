@@ -136,7 +136,18 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     if ir == 1 # Symmetry
         dTr = 0
     elseif ir == nr # Robin: glass
-        dTr = Kw/k*(Tw - pT)
+        # dTr = Kw/k*(Tw - pT)
+        if ϕp*ϕ[ir-1,iz] <= 0 
+            # If interface is near boundary, quadratic interpolant using T(b), dT/dr(b), T(Γ)
+            θr = ϕp /(ϕp - ϕ[ir-1,iz])
+            Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
+            b = Kw/k*(Tw - pT)
+            dTr = 2(pT - Tf_loc)/θr*dr1 - b
+            # @info "Condition used" dTr b
+        else
+            # Robin boundary condition: employ explicitly
+            dTr = Kw/k*(Tw - pT)
+        end
     else 
         # Bulk
         eϕ = ϕ[ir+1, iz]
@@ -304,24 +315,27 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
         # Enforce BCs explicitly for Neumann boundary cells
         dpz = 0
     elseif iz == nz 
-        # Robin boundary condition: employ explicitly
-        # bp*dpz = Δp/Rp0
-        bp = eval_b_loc(T, p, ir, iz, params)
-        dpz = (p_ch - p[ir,iz])/bp/Rp0
+        # # Robin boundary condition: employ explicitly
+        # # bp*dpz = Δp/Rp0
+        # bp = eval_b_loc(T, p, ir, iz, params)
+        # dpz = (p_ch - p[ir,iz])/bp/Rp0
+
         # NOTE: Numerical derivative leads to poor early-time behavior, so stick with BC
         # Use either numerical derivative or BC
-        # if ϕp*ϕ[ir,nz-1] <= 0 
-        #     θz = ϕp /(ϕp - ϕ[ir,nz-1])
-        #     # dpz = (p[ir,iz] - psub_l)/θz*dz1
-        #     dpz = min(0.0, (p[ir,iz] - psub_l)/θz*dz1)
-
-        #     typeof(p[ir,iz]) <: AbstractFloat && @info "eval" ir iz dpz p[ir,iz] psub_l
-        # else
-        #     # Robin boundary condition: employ explicitly
-        #     # bp*dpz = Δp/Rp0
-        #     bp = eval_b_loc(T, p, ir, iz, params)
-        #     dpz = (p_ch - p[ir,iz])/bp/Rp0
-        # end
+        if ϕp*ϕ[ir,nz-1] <= 0 
+            bp = eval_b_loc(T, p, ir, iz, params)
+            θz = ϕp /(ϕp - ϕ[ir,nz-1])
+            # dpz = (p[ir,iz] - psub_l)/θz*dz1
+            # dpz = min(0.0, (p[ir,iz] - psub_l)/θz*dz1)
+            bound_der =(p_ch - p[ir,iz])/bp/Rp0
+            dpz = 2(p[ir,iz] - psub_l)/θz*dz1 - bound_der
+            # typeof(p[ir,iz]) <: AbstractFloat && @info "eval" ir iz dpz p[ir,iz] psub_l
+        else
+            # Robin boundary condition: employ explicitly
+            # bp*dpz = Δp/Rp0
+            bp = eval_b_loc(T, p, ir, iz, params)
+            dpz = (p_ch - p[ir,iz])/bp/Rp0
+        end
     else # Bulk
         nϕ = ϕ[ir, iz+1]
         sϕ = ϕ[ir, iz-1]
@@ -429,24 +443,10 @@ function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
         ir, iz = Tuple(c)
         dTr, dTz = compute_Tderiv(u, Tf, T, ir, iz, dom, params)
 
-        # Boundary cases: use internal derivative
-        if ir == dom.nr # Right boundary
-            dϕdr = dϕdr_w[c]
-        elseif ir == 1 # Left boundary
-            dϕdr = dϕdr_e[c]
-        else
-            dϕdr = (dTr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        end
-        if iz == dom.nz # Top boundary
-            dϕdz = dϕdz_s[c]
-        elseif iz == 1 # Bottom boundary
-            dϕdz = dϕdz_n[c]
-        else
-            dϕdz = (dTz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        end
+        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, dTr<0, dTz<0, dϕdx_all, dom)
 
         # Normal is out of the ice
-        # md =  , >0 for sublimation occurring
+        # md >0 for sublimation occurring
         # v = md/ρ * -∇ϕ
         q_grad = k* (dTr*dϕdr + dTz * dϕdz) 
         md_l = (q_grad + Q_ice_per_surf)/ΔH

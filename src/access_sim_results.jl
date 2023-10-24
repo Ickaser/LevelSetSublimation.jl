@@ -124,25 +124,34 @@ end
 function virtual_thermocouple(t::TT, simresults::Dict, simconfig::Dict) where TT <: AbstractArray
     virtual_thermocouple(0, 0, t, simresults, simconfig)
 end
+function virtual_thermocouple(rpos, zpos, simresults::Dict, simconfig::Dict)
+    simt = simresults["sol"].t
+    evalt = range(0.0, simt[end], length=100)
+    virtual_thermocouple(rpos, zpos, evalt, simresults, simconfig)
+end
 function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Dict) where TT <: AbstractArray
-    if rpos < 0 || rpos > 1
+    if any(rpos .< 0) || any(rpos .> 1)
         @error "Radial position of thermocouple should be given as number between 0 and 1 inclusive." rpos
-    elseif zpos < 0 || zpos > 1
+    elseif any(zpos .< 0) || any(zpos .> 1)
         @error "Axial (vertical) position of thermocouple should be given as number between 0 and 1 inclusive." zpos
+    end
+    if length(rpos) != length(zpos)
+        @error "Number of radial positions should match number of vertical positions." rpos zpos
     end
     @unpack sol, dom = simresults
     Tf = fill(245.0, dom.nr)
+    ri = @. round(Int, rpos*(dom.nr-1)) + 1
+    zi = @. round(Int, rpos*(dom.nr-1)) + 1
+    inds = [CI(ir, iz) for (ir, iz) in zip(ri, zi)]
     Tdat = map(t) do ti 
         params = calc_params_at_t(ti, simconfig)
         u = sol(ti)
         Tf = pseudosteady_Tf(u, dom, params, Tf)
         @info "check" ti Tf[1]
         T = solve_T(u, Tf, dom, params)
-        ri = round(rpos*(dom.nr-1)) + 1
-        zi = round(rpos*(dom.nr-1)) + 1
-        Tloc = T[ri, zi]
+        Tloc = T[inds]
     end
-    return Tdat
+    return stack(Tdat)'
 end
 
 """
@@ -151,22 +160,24 @@ end
 Compute the average 𝑧 position of the sublimation front.
 """
 function get_subf_z(ϕ, dom)
-    cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
-    ls = lines(cl)
-    if length(ls) == 0 # No sublimation front: average z is 0
-        zbar = 0
-    elseif length(ls) > 1
-        @warn "Interface has more than one contiguous component"
-        zbar = 0
-        for line in ls
-            rs, zs = coordinates(line)
-            zbar += sum(zs) / length(zs)
-        end
-    else
-        rs, zs = coordinates(ls[1])
-        zbar = sum(zs) / length(zs)
-    end
-    zbar
+    # cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
+    # ls = lines(cl)
+    # if length(ls) == 0 # No sublimation front: average z is 0
+    #     zbar = 0
+    # elseif length(ls) > 1
+    #     @warn "Interface has more than one contiguous component"
+    #     zbar = 0
+    #     for line in ls
+    #         rs, zs = coordinates(line)
+    #         zbar += sum(zs) / length(zs)
+    #     end
+    # else
+    #     rs, zs = coordinates(ls[1])
+    #     zbar = sum(zs) / length(zs)
+    # end
+    # zbar
+    δ = compute_discrete_δ(ϕ, dom)
+    ave_z = sum(δ .* permutedims(dom.zgrid) .*dom.rgrid) / sum(δ .* dom.rgrid)
 end
 """
     get_subf_r(ϕ, dom)
@@ -174,22 +185,24 @@ end
 Compute the average 𝓇 position of the sublimation front.
 """
 function get_subf_r(ϕ, dom)
-    cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
-    ls = lines(cl)
-    if length(ls) == 0 # No sublimation front: average z is 0
-        rbar = 0
-    elseif length(ls) > 1
-        @warn "Interface has more than one contiguous component"
-        rbar = 0
-        for line in ls
-            rs, zs = coordinates(line)
-            rbar += sum(rs) / length(rs)
-        end
-    else
-        line = ls[1]
-        rs, zs = coordinates(line)
-        rbar = sum(rs) / length(rs)
-    end
-    rbar
+    # cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
+    # ls = lines(cl)
+    # if length(ls) == 0 # No sublimation front: average z is 0
+    #     rbar = 0
+    # elseif length(ls) > 1
+    #     @warn "Interface has more than one contiguous component"
+    #     rbar = 0
+    #     for line in ls
+    #         rs, zs = coordinates(line)
+    #         rbar += sum(rs) / length(rs)
+    #     end
+    # else
+    #     line = ls[1]
+    #     rs, zs = coordinates(line)
+    #     rbar = sum(rs) / length(rs)
+    # end
+    # rbar
+    δ = compute_discrete_δ(ϕ, dom)
+    ave_z = sum(δ .* dom.rgrid .*dom.rgrid) / sum(δ .* dom.rgrid)
 end
 
