@@ -499,14 +499,28 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         return
     end
 
-
-    if findfirst(has_ice) > 1 && has_ice[findfirst(has_ice)+1]
-        # Build a linear extrapolation
+    if findfirst(has_ice) > 1 && has_ice[findfirst(has_ice)+1] && has_ice[findfirst(has_ice)+2]
+        # Enough points to do a quadratic extrapolation, so do that.
+        # Is fine because we only really need one grid point of extrapolation
+        ir1 = findfirst(has_ice)
+        ir2 = ir1 + 1
+        ir3 = ir1 + 2
+        Tf1 = Tf[ir1]
+        Tf2 = Tf[ir2]
+        Tf3 = Tf[ir3]
+        left_Textrap_quad(ir) = Tf1*(ir-ir2)*(ir-ir3)/(ir1-ir2)/(ir1-ir3) + 
+                           Tf2*(ir-ir1)*(ir-ir3)/(ir2-ir1)/(ir2-ir3) +
+                           Tf3*(ir-ir1)*(ir-ir2)/(ir3-ir1)/(ir3-ir2)
+        for ir in 1:ir1-1
+            Tf[ir] = left_Textrap_quad(ir)
+        end
+    elseif findfirst(has_ice) > 1 && has_ice[findfirst(has_ice)+1]
         ir1 = findfirst(has_ice)
         ir2 = ir1 + 1
         Tf1 = Tf[ir1]
         Tf2 = Tf[ir2]
         # Assuming uniform grid, can work in indices rather than space
+        # Build a linear extrapolation
         left_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
         for ir in 1:ir1-1
             Tf[ir] = left_Textrap(ir)
@@ -514,7 +528,23 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
     elseif findfirst(has_ice) > 1 # No neighboring ice, so constant extrapolation
         Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
     end
-    if findlast(has_ice) < dom.nr && has_ice[findlast(has_ice)-1]
+    if findlast(has_ice) < dom.nr && has_ice[findlast(has_ice)-1] && has_ice[findlast(has_ice)-2]
+        # Enough points to do a quadratic extrapolation, so do that.
+        # Is fine because we only really need one grid point of extrapolation
+        ir1 = findlast(has_ice)
+        ir2 = ir1 - 1
+        ir3 = ir1 - 2
+        Tf1 = Tf[ir1]
+        Tf2 = Tf[ir2]
+        Tf3 = Tf[ir3]
+        right_Textrap_quad(ir) = Tf1*(ir-ir2)*(ir-ir3)/(ir1-ir2)/(ir1-ir3) + 
+                            Tf2*(ir-ir1)*(ir-ir3)/(ir2-ir1)/(ir2-ir3) +
+                            Tf3*(ir-ir1)*(ir-ir2)/(ir3-ir1)/(ir3-ir2)
+        for ir in ir1+1:dom.nr
+            Tf[ir] = right_Textrap_quad(ir)
+        end
+        # typeof(Tf1) <: AbstractFloat && @info "R extrap" Tf[ir3:ir1+2]
+    elseif findlast(has_ice) < dom.nr && has_ice[findlast(has_ice)-1]
         # Build a linear extrapolation
         ir1 = findlast(has_ice)
         ir2 = ir1 - 1

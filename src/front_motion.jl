@@ -174,6 +174,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
         else # No ghost cells
             dTr = (eT - wT) * 0.5*dr1 # Centered difference
         end
+        # iz == 60 && typeof(Tf_loc) <: AbstractFloat && @info "Tderiv" dTr Tf[ir] Tf_loc  Tf[ir-1] θr
     end
             
     # For all z derivatives, use Tf[ir]

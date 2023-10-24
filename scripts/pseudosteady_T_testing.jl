@@ -223,9 +223,14 @@ function analytical_T(r, Tsub)
     return C1*log(r/Ri) + Tsub
 end
 
-Tsub = 238.5
-interface_Tflux.(238.5, 1:21)
-interface_mflux.(238.5, 1:21).*params[:ΔH]
+interface_Tflux.(Tsub, 1:21)
+interface_mflux.(Tsub, 1:21).*params[:ΔH]
+Tsub = 238.510
+Tsub = 235.30
+dom.zmax*2π*Ri*(interface_Tflux.(Tsub) .+ interface_mflux.(Tsub).*params[:ΔH]) 
+dom.zmax*2π*Ri*(interface_Tflux.(Tsub, 1) .+ interface_mflux.(Tsub, 1).*params[:ΔH]) 
+dom.zmax*2π*Ri*(interface_Tflux.(Tsub, 1)) 
+dom.zmax*2π*Ri*(interface_mflux.(Tsub, 1).*params[:ΔH]) 
 
 analytical_T.(dom.rgrid[Ωr], Tsub)
 
@@ -273,7 +278,7 @@ end
 plot( sols_Tf_anl, palette=palette(:thermal, 21))
 plot( sols_Tf_num, palette=palette(:thermal, 21))
 scatter(perturbs./dom.dr, [s[1] for s in sols_Tf_num], c=:red, label="num")
-scatter!(perturbs./dom.dr, [s[1] for s in sols_Tf_anl], c=:blue,label="anl")
+plot!(perturbs./dom.dr, [s[1] for s in sols_Tf_anl], c=:blue,label="anl")
 plot!(xlabel="interface position", ylabel="center Tf")
 plot!(title="finite volume, quadratic dT/dr evaluation ")
 plot(perturbs./dom.dr, [sum(abs.(a .- n))/length(a) for (a,n) in zip(sols_Tf_anl, sols_Tf_num)], palette=palette(:thermal, 21))
