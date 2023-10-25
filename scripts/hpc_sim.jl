@@ -29,8 +29,8 @@ Tsh = RampedVariable([233.15u"K", 283.15u"K"], [1u"K/minute"], [10u"hr"])
 # With fixed vial mass including whole vial...
 cparams[:m_cp_gl] = 7.9u"g" * 840u"J/kg/K"
 Q_ic = RampedVariable(0.16u"W/cm^3")
-Q_gl_RF = RampedVariable(0.08u"W") # = volumetric * relevant vial volume
-cparams[:Kw] = 100.0u"W/m^2/K"
+Q_gl_RF = RampedVariable(0.04u"W") # = volumetric * relevant vial volume
+cparams[:Kw] = 10.0u"W/m^2/K"
 
 p_ch = RampedVariable(100u"mTorr")
 
@@ -45,11 +45,11 @@ config = Dict{Symbol, Any}()
 @time res = sim_from_dict(config, verbose=true)
 
 
-@time Tf_sol = virtual_thermocouple([0, 0, 0.1, 1], [0.1, 0, 0, 0], res, config)
+@time Tf_sol = virtual_thermocouple([0, 0, 0, 0.5, 1], [0.5, 0.1, 0, 0, 0], res, config)
 
 resconf = @strdict res config Tf_sol
 
-safesave(datadir("sims", "hpcrun.jld2"), resconf)
+safesave(datadir("sims", "hpcrun_$(hash(config)).jld2"), resconf)
 
 # resultsanim(res, config, "hpc_test", seconds_length=10)
 # resultsanim(res, config, "hpc_test", seconds_length=10, heatvar=:p)
