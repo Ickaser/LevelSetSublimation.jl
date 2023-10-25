@@ -388,10 +388,15 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             end
             extrap_Tf_noice!(Tf, has_ice, dom)
             if any(clamp.(Tf[has_ice], 200, 400) .!= Tf[has_ice])
-                if typeof(Tf[1]) <: AbstractFloat
-                    @info "Crazy Tf" Tf[has_ice] has_ice
+                if sum(has_ice) > 0.75*dom.nr
+                    els = findall(.~has_ice)
                 else
-                    @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice]
+                    els = has_ice
+                end
+                if typeof(Tf[1]) <: AbstractFloat
+                    @info "Crazy Tf" Tf[has_ice] els
+                else
+                    @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
                 end
             end
             T = solve_T(u, Tf, dom, params)
@@ -413,10 +418,15 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             end
             extrap_Tf_noice!(Tf, has_ice, dom)
             if any(clamp.(Tf[has_ice], 200, 400) .!= Tf[has_ice])
-                if typeof(Tf[1]) <: AbstractFloat
-                    @info "Crazy Tf" Tf[has_ice] has_ice
+                if sum(has_ice) > 0.75*dom.nr
+                    els = findall(.~has_ice)
                 else
-                    @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice]
+                    els = has_ice
+                end
+                if typeof(Tf[1]) <: AbstractFloat
+                    @info "Crazy Tf" Tf[has_ice] els
+                else
+                    @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
                 end
             end
             # @info "resid"
