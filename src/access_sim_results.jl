@@ -149,7 +149,7 @@ function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Di
     @unpack sol, dom = simresults
     Tf = fill(245.0, dom.nr)
     ri = @. round(Int, rpos*(dom.nr-1)) + 1
-    zi = @. round(Int, rpos*(dom.nr-1)) + 1
+    zi = @. round(Int, zpos*(dom.nz-1)) + 1
     inds = [CI(ir, iz) for (ir, iz) in zip(ri, zi)]
     Tdat = map(t) do ti 
         params = calc_params_at_t(ti, simconfig)
