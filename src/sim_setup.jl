@@ -146,6 +146,7 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     :Cpf => u"J/kg/K",
     :ΔH => u"J/kg",
     :m_cp_gl => u"J/K",
+    :vial_thick => u"m",
 
     :ϵ => NoUnits,
     :l => u"m",

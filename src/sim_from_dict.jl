@@ -171,18 +171,19 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # Default values for non-essential parameters
     Tw0 = get(fullconfig, :Tw0, Tf0) # Default to same ice & glass temperature if glass initial not given
-    dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to same ice & glass temperature if glass initial not given
+    dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to heat and mass transfer-based evolution
 
     # --------- Set up simulation domain, including grid size (defaults to 51x51)
 
     dom = Domain(fullconfig)
+    # If no vial thickness defined, get it from vial size
+    if !haskey(cparams, :vial_thick) 
+        cparams[:vial_thick] =  get_vial_thickness(vialsize)
+    end
 
     # ----- Nondimensionalize everything
 
     params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
-    # if verbose
-    #     @info "Variables used in callback:" meas_keys
-    # end
 
     u0 = make_u0_ndim(init_prof, Tf0, Tw0, dom)
 
@@ -237,16 +238,10 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     end
     # --- Solve
     if dudt_func == dudt_heatmass!
-        # CFL = 0.5
-        # α = params[:kf]/params[:ρf]/params[:Cpf]
-        # dt = CFL / (α/dom.dr^2)
-        # dt = 60
-        # if verbose
-        #     @info "Timestepping:" dt
-        # end
-        # sol = solve(prob, SSPRK33(), dt=dt, callback=cbs; ) # Fixed timestepping: 1 minute
+        # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     elseif dudt_func == dudt_heatmass_dae!
+        # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
         massmat = Diagonal(vcat(ones(length(ϕ0)), zeros(dom.nr), [1]))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
@@ -254,9 +249,6 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     else
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     end
-    # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
-    # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
-    # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
     return @strdict sol dom
 end
 

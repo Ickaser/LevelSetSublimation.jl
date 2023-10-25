@@ -26,7 +26,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     dTf .= 0 # Just in case some weird stuff got left there
 
     ϕ, Tw = ϕ_T_from_u_view(u, dom)[[true, false, true]]
-    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
+    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF, vial_thick = params
 
     if minimum(ϕ) > 0 # No ice left
         l_ave = 1/sum(1/params[:l])/length(params[:l])
@@ -62,6 +62,9 @@ function dudt_heatmass!(du, u, integ_pars, t)
     # dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
     # dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
     Qgl = compute_Qgl(u, T, dom, params)
+    # A_vsh = π*((dom.rmax+vial_thick)^2 - dom.rmax^2)
+    # Q_vsh = params[:Kv]*(params[:Tsh]-Tw[1]) * A_vsh
+    # dTw .= (Q_gl_RF + Q_vsh - Qgl) / m_cp_gl
     dTw .= (Q_gl_RF - Qgl) / m_cp_gl
 
     # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
