@@ -387,7 +387,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
                 @warn "NaN found" Tf
             end
             extrap_Tf_noice!(Tf, has_ice, dom)
-            if any(clamp.(Tf[has_ice], 200, 400) .!= Tf[has_ice])
+            if any(clamp.(Tf[has_ice], 200, 300) .!= Tf[has_ice])
                 if sum(has_ice) > 0.75*dom.nr
                     els = findall(.~has_ice)
                 else
@@ -398,6 +398,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
                 else
                     @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
                 end
+                clamp!(Tf[has_ice], 200, 300)
             end
             T = solve_T(u, Tf, dom, params)
             p = solve_p(u, Tf, T, dom, params)
@@ -428,6 +429,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
                 else
                     @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
                 end
+                clamp!(Tf[has_ice], 200, 300)
             end
             # @info "resid"
             # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
