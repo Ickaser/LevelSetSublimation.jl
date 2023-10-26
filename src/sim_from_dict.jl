@@ -13,7 +13,7 @@ function reinit_wrap(integ; verbose=false)
     dom = integ.p[1]
     ϕ = ϕ_T_from_u_view(integ.u, dom)[1]
     verbose && (pre_err = sdf_err_L∞(ϕ, dom, region=:B))
-    reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=20, tol=0.02, err_reg=:B) 
+    reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=50, tol=0.02, err_reg=:B) 
     if verbose
         post_err = sdf_err_L∞(ϕ, dom, region=:B)
         dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
@@ -91,20 +91,20 @@ function needs_reinit(u, t, integ)
 end
 
 
-function input_measurements!(integ, meas_keys::Base.KeySet, controls::Dict)
-    if isnothing(meas_keys)
-        return
-    end
-    t_samp = controls[:t_samp]
-    ti = argmin(abs.(t_samp .- integ.t))
-    if !(integ.t ≈ t_samp[ti])
-        @error "Issue with time sampling" integ.t t_samp[ti]
-    end
-    params = integ.p[2]
-    for key in meas_keys
-        params[key] = controls[key][ti]
-    end
-end
+# function input_measurements!(integ, meas_keys::Base.KeySet, controls::Dict)
+#     if isnothing(meas_keys)
+#         return
+#     end
+#     t_samp = controls[:t_samp]
+#     ti = argmin(abs.(t_samp .- integ.t))
+#     if !(integ.t ≈ t_samp[ti])
+#         @error "Issue with time sampling" integ.t t_samp[ti]
+#     end
+#     params = integ.p[2]
+#     for key in meas_keys
+#         params[key] = controls[key][ti]
+#     end
+# end
 
 function input_measurements!(params, t::Number, controls)
     for key in keys(controls)

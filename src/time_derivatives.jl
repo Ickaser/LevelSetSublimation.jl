@@ -179,11 +179,13 @@ function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
     qflux = k*(dϕdr*dTdr + dϕdz*dTdz)
     mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
 
+    # isnan(qflux + ΔH*mflux) && @info "subheat" ir,iz qflux mflux dTdr dTdz dpdr dpdz
+
     return qflux + ΔH*mflux, dϕdr, dϕdz
 end
 
 
-function Q_surf_integration(integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, params)
+function Q_surf_integration(left_bool, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, params)
     Q_surf_pp = 0.0
     vol = 0.0
     surf_area = 0.0
@@ -255,7 +257,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 # Q_surf_pp, surf_area, vol = Q_surf_integration(integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, params)
                 # alt_dTfdr = 
                 d2Tfdr2 = 0 
-                @warn "Possible mistreatment: set d2Tf/dr2 to 0 at boundary, in an unlikely case"
+                @warn "Possible mistreatment: set d2Tf/dr2 to 0 at left boundary, in an unlikely case"
             end
         elseif ir == dom.nr
             dTfdr = params[:Kw]/kf*(Tw - Tf[ir])
@@ -268,7 +270,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 # integ_cells = [CI(iir, iz) for iz in botz:topz, iir in ir-1:ir]
                 # Q_surf_pp, surf_area, vol = Q_surf_integration(integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, params)
                 d2Tfdr2 = 0 
-                @warn "Possible mistreatment: set d2Tf/dr2 to 0 at boundary, in an unlikely case"
+                @warn "Possible mistreatment: set d2Tf/dr2 to 0 at right boundary, in an unlikely case"
             end
         elseif no_ice[ir-1] && no_ice[ir+1] # Ice on both sides
             # @warn "Ice surrounded by gap: ignore radial gradients, treat only vertical." has_ice[ir-1:ir+1] 
@@ -280,40 +282,40 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             topz = min(findlast(ϕ[ir,:] .< 0) + 1, dom.nz)
             botz = max(findfirst(ϕ[ir,:] .< 0)- 1, 1)
             integ_cells = [CI(iir, iz) for iz in botz:topz, iir in ir-1:ir]
-            Q_surf_pp, surf_area, vol = Q_surf_integration(integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, params)
-            # Q_surf_pp = 0.0
-            # vol = 0.0
-            # surf_area = 0.0
-            # for cell in integ_cells
-            #     locvol = dom.rgrid[Tuple(cell)[1]] * dom.dr * dom.dz * 2π
-            #     if ϕ[cell] > 0
-            #         qloc, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
-            #         # surf_area += compute_local_δ(cell, ϕ, dom)*locvol
-            #     else # Cell is in ice, so need to extrapolate to get qloc
-            #         # Identify possible neighbors across interface, take sum
-            #         possible_nbs = [cell] .+ [CI(-1, 0), CI(0, 1), CI(0, -1)]
-            #         nbs = [nb for nb in possible_nbs if (checkbounds(Bool, ϕ, nb) && ϕ[nb]>0)]
-            #         if length(nbs) == 0
-            #             @warn "um... no neighbors somehow?"
-            #         elseif length(nbs) == 1 # No vertical neighbor- just horizontal
-            #             qloc = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nbs[1])..., dϕdx_all, dom, params)[1]
-            #         elseif length(nbs) == 2 # One vertical neighbor, one horizontal
-            #             qloc = mapreduce(+, nbs) do nb 
-            #                 ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
-            #                 Tuple(nb)[2] == 0 ?  ql*dϕdr : ql*dϕdz
-            #             end
-            #         elseif length(nbs) == 3 # Two vertical neighbor
-            #             qloc = mapreduce(+, nbs) do nb 
-            #                 ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
-            #                 Tuple(nb)[2] == 0 ? ql*dϕdr : ql*dϕdz/2
-            #             end
-            #         end
-            #     end
-            #     Q_surf_pp += qloc*compute_local_δ(cell, ϕ, dom)*locvol
+            # Q_surf_pp, surf_area, vol = Q_surf_integration(integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, params)
+            Q_surf_pp = 0.0
+            vol = 0.0
+            surf_area = 0.0
+            for cell in integ_cells
+                locvol = dom.rgrid[Tuple(cell)[1]] * dom.dr * dom.dz * 2π
+                if ϕ[cell] > 0
+                    qloc, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
+                    # surf_area += compute_local_δ(cell, ϕ, dom)*locvol
+                else # Cell is in ice, so need to extrapolate to get qloc
+                    # Identify possible neighbors across interface, take sum
+                    possible_nbs = [cell] .+ [CI(-1, 0), CI(0, 1), CI(0, -1)]
+                    nbs = [nb for nb in possible_nbs if (checkbounds(Bool, ϕ, nb) && ϕ[nb]>0)]
+                    if length(nbs) == 0
+                        @warn "um... no neighbors somehow?"
+                    elseif length(nbs) == 1 # No vertical neighbor- just horizontal
+                        qloc = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nbs[1])..., dϕdx_all, dom, params)[1]
+                    elseif length(nbs) == 2 # One vertical neighbor, one horizontal
+                        qloc = mapreduce(+, nbs) do nb 
+                            ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
+                            Tuple(nb)[2] == 0 ?  ql*dϕdr : ql*dϕdz
+                        end
+                    elseif length(nbs) == 3 # Two vertical neighbor
+                        qloc = mapreduce(+, nbs) do nb 
+                            ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
+                            Tuple(nb)[2] == 0 ? ql*dϕdr : ql*dϕdz/2
+                        end
+                    end
+                end
+                Q_surf_pp += qloc*compute_local_δ(cell, ϕ, dom)*locvol
 
-            #     surf_area += compute_local_δ(cell, ϕ, dom)*locvol
-            #     vol += compute_local_H(cell, ϕ, dom)*locvol
-            # end
+                surf_area += compute_local_δ(cell, ϕ, dom)*locvol
+                vol += compute_local_H(cell, ϕ, dom)*locvol
+            end
             sumfluxes = Q_surf_pp
             if top_contact[ir]
                 θr = ϕ[ir,dom.nz] / (ϕ[ir,dom.nz] - ϕ[ir-1,dom.nz])
@@ -334,8 +336,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 sumfluxes += botarea * K_eff*(params[:Tsh] - Tf_loc) # Shelf heat 
             end
 
-            A_l = (dom.rgrid[ir] - 0.5dom.dr) * (Δξ[ir-1] + Δξ[ir])/2 *2π
-            dTfdr = (Tf[ir] - Tf[ir-1])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
+            A_l = (dom.rgrid[ir] + 0.5dom.dr) * (Δξ[ir+1] + Δξ[ir])/2 *2π
+            dTfdr = (Tf[ir+1] - Tf[ir])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
             sumfluxes += -A_l*kf*dTfdr + Q_ic*vol
             # Write the energy balance differently for this case
             dTfdt[ir] = sumfluxes/vol/ρf/Cpf
@@ -344,7 +346,42 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             topz = min(findlast(ϕ[ir,:] .< 0) + 1, dom.nz)
             botz = max(findfirst(ϕ[ir,:] .< 0)- 1, 1)
             integ_cells = [CI(iir, iz) for iz in botz:topz, iir in ir:ir+1]
-            Q_surf_pp, surf_area, vol = Q_surf_integration(integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, params)
+            # Q_surf_pp, surf_area, vol = Q_surf_integration(integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, params)
+            Q_surf_pp = 0.0
+            vol = 0.0
+            surf_area = 0.0
+            for cell in integ_cells
+                locvol = dom.rgrid[Tuple(cell)[1]] * dom.dr * dom.dz * 2π
+                if ϕ[cell] > 0
+                    qloc, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
+                    # surf_area += compute_local_δ(cell, ϕ, dom)*locvol
+                else # Cell is in ice, so need to extrapolate to get qloc
+                    # Identify possible neighbors across interface, take sum
+                    possible_nbs = [cell] .+ [CI(1, 0), CI(0, 1), CI(0, -1)]
+                    nbs = [nb for nb in possible_nbs if (checkbounds(Bool, ϕ, nb) && ϕ[nb]>0)]
+                    if length(nbs) == 0
+                        @warn "um... no neighbors somehow?"
+                    elseif length(nbs) == 1 # No vertical neighbor- just horizontal
+                        qloc = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nbs[1])..., dϕdx_all, dom, params)[1]
+                    elseif length(nbs) == 2 # One vertical neighbor, one horizontal
+                        qloc = mapreduce(+, nbs) do nb 
+                            ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
+                            Tuple(nb)[2] == 0 ?  ql*dϕdr : ql*dϕdz
+                        end
+                    elseif length(nbs) == 3 # Two vertical neighbor
+                        qloc = mapreduce(+, nbs) do nb 
+                            ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
+                            Tuple(nb)[2] == 0 ? ql*dϕdr : ql*dϕdz/2
+                        end
+                    else
+                        @warn "4 neighbors somehow in local surface integration"
+                    end
+                end
+                Q_surf_pp += qloc*compute_local_δ(cell, ϕ, dom)*locvol
+
+                surf_area += compute_local_δ(cell, ϕ, dom)*locvol
+                vol += compute_local_H(cell, ϕ, dom)*locvol
+            end
             sumfluxes = Q_surf_pp
             if top_contact[ir]
                 θr = ϕ[ir,dom.nz] / (ϕ[ir,dom.nz] - ϕ[ir+1,dom.nz])
@@ -389,6 +426,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             iz = findlast(ϕ[ir,:] .<=0) + 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
             top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
+            isnan(top_bound_term) && @info "top bound" q dϕdr dϕdz dTfdr
             # top_bound_term = q*dϕdz
         end
 
@@ -404,7 +442,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
             bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
             # bot_bound_term = q*dϕdz
-            isnan(bot_bound_term) && @info "NaN bottom" q dϕdz
+            isnan(bot_bound_term) && @info "NaN bottom" q dϕdz dϕdr dTfdr
         end
 
 
@@ -413,7 +451,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + Q_ic + 
             (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
 
-        isnan(dTfdt[ir]) && @info "NaN in dTfdt" dTfdr d2Tfdr2 top_bound_term bot_bound_term Δξ[ir]
+        # isnan(dTfdt[ir]) && @info "NaN in dTfdt" dTfdr d2Tfdr2 top_bound_term bot_bound_term Δξ[ir]
     end
 
     dTfdt[no_ice] .= 0 # Set to 0 elsewhere

@@ -381,73 +381,51 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     # end
 
 
-    if all(has_ice) # IF all ice present, use all DOF
-        resid! = function (dTfdt, Tf)
-            if any(isnan.(Tf))
-                @warn "NaN found" Tf
-            end
-            extrap_Tf_noice!(Tf, has_ice, dom)
-            if any(clamp.(Tf[has_ice], 200, 300) .!= Tf[has_ice])
-                if sum(has_ice) > 0.75*dom.nr
-                    els = findall(.~has_ice)
-                else
-                    els = has_ice
-                end
-                if typeof(Tf[1]) <: AbstractFloat
-                    @info "Crazy Tf" Tf[has_ice] els
-                else
-                    @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
-                end
-                clamp!(Tf[has_ice], 200, 300)
-            end
-            T = solve_T(u, Tf, dom, params)
-            p = solve_p(u, Tf, T, dom, params)
-            dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
+    function resid!(dTfdt, Tf)
+        if any(isnan.(Tf))
+            @warn "NaN found" Tf
         end
+        extrap_Tf_noice!(Tf, has_ice, dom)
+        if any(clamp.(Tf[has_ice], 200, 300) .!= Tf[has_ice])
+            if sum(has_ice) > 0.75*dom.nr
+                els = findall(.~has_ice)
+            else
+                els = has_ice
+            end
+            if typeof(Tf[1]) <: AbstractFloat
+                @info "Crazy Tf" Tf[has_ice] els
+            else
+                @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
+            end
+            clamp!(Tf, 200, 300)
+            if typeof(Tf[1]) <: AbstractFloat
+                @info "after Crazy Tf" Tf[has_ice] els
+            else
+                @info "after Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
+            end
+        end
+        T = solve_T(u, Tf, dom, params)
+        p = solve_p(u, Tf, T, dom, params)
+        dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
+    end
+
+    if all(has_ice) # IF all ice present, use all DOF
         sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
         Tfs = sol.zero
     else # If ice doesn't cover full radial extent, trim out those DOF
         Tf_trim = Tf_g[has_ice]
-        resid! = function (dTfdt_trim, Tf_trim)
+        function resid_lessdof!(dTfdt_trim, Tf_trim)
+        # resid! = function (dTfdt_trim, Tf_trim)
             dTfdt = zeros(eltype(dTfdt_trim), dom.nr)
             Tf = zeros(eltype(Tf_trim), dom.nr)
             Tf[has_ice] .= Tf_trim
-        # function resid!(dTfdt, Tf, ssparams, t)
-            # Tfv .= Tf
-            if any(isnan.(Tf))
-                @warn "NaN found" Tf
-            end
+            Tf[.~has_ice] .= Tf_trim[1]
             extrap_Tf_noice!(Tf, has_ice, dom)
-            if any(clamp.(Tf[has_ice], 200, 400) .!= Tf[has_ice])
-                if sum(has_ice) > 0.75*dom.nr
-                    els = findall(.~has_ice)
-                else
-                    els = has_ice
-                end
-                if typeof(Tf[1]) <: AbstractFloat
-                    @info "Crazy Tf" Tf[has_ice] els
-                else
-                    @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
-                end
-                clamp!(Tf[has_ice], 200, 300)
-            end
-            # @info "resid"
-            # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
-            # T_cache .= solve_T(u, Tf, dom, params)
-            # p_cache .= solve_p(u, Tf, T_cache, dom, params, p_cache)
-            # dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
-            # Tf_extrap = copy(Tf)
-            T = solve_T(u, Tf, dom, params)
-            # Tm = fill(250.15, size(dom))
-            p = solve_p(u, Tf, T, dom, params)
-            # p = solve_p(u, Tf, Tm, dom, params)
-            dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
-            # dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
-            # @info "resid" extrema(dTfdt) extrema(Tf) extrema(Tf_extrap)
+            resid!(dTfdt, Tf)
             dTfdt_trim .= dTfdt[has_ice]
             nothing
         end
-        sol = nlsolve(resid!, Tf_trim, autodiff=:forward, ftol=1e-10)
+        sol = nlsolve(resid_lessdof!, Tf_trim, autodiff=:forward, ftol=1e-10)
         Tfs = zeros(dom.nr)
         Tfs[has_ice] = sol.zero
         extrap_Tf_noice!(Tfs, has_ice, dom)
@@ -574,14 +552,27 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
     end
 
     edges = has_ice[1:end-1] .⊻ has_ice[2:end]
-    if sum(edges) > 2
-        gaps = findall(edges)[2:end-1] 
-        for g in gaps
-            if g-1 ∉ gaps && g+1 ∉ gaps
-                Tf[g] = (Tf[g-1] + Tf[g+1]) / 2
-            else
-                @warn "unhandled: large gaps in ice"
-            end
-        end
+    if all(.~edges) || sum(edges) == 1 # No or one edge
+        return
+    elseif sum(edges) == 2 && has_ice[1] # One gap in the middle of the ice
+        # Handle this poorly for comparison sake
+        @warn "Not carefully handled: extrapolation in middle of Tf" findall(edges) has_ice[1] has_ice[end]
+        first = findfirst(edges)
+        last = findlast(edges)
+        # Interpolate on all the intermediate points
+        Tf[first+1:last] .= range(Tf[first], Tf[last+1], length=last-first+2)[2:end-1]
+
+        # gaps = findall(edges)#[2:end-1] 
+        # @info "check2" gaps
+        # for g in gaps
+        #     if g-1 ∉ gaps && g+1 ∉ gaps
+        #         Tf[g] = (Tf[g-1] + Tf[g+1]) / 2
+        #     else
+        #         @warn "unhandled: large gaps in ice"
+        #     end
+        # end
+    else
+        @warn "Completely unhandled case of extrapolation" has_ice findall(edges)
     end
+    nothing
 end
