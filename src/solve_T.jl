@@ -380,6 +380,10 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     #     Tf_g[isnan.(Tf_g)] .= 245.0
     # end
 
+    edges = has_ice[1:end-1] .⊻ has_ice[2:end]
+    if sum(edges)>2 || (sum(edges)==2 && has_ice[1])
+        @warn "Extrapolation within Tf domain (gaps in ice) not carefully treated." findall(edges) has_ice
+    end
 
     function resid!(dTfdt, Tf)
         if any(isnan.(Tf))
@@ -556,7 +560,6 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         return
     elseif sum(edges) == 2 && has_ice[1] # One gap in the middle of the ice
         # Handle this poorly for comparison sake
-        @warn "Not carefully handled: extrapolation in middle of Tf" findall(edges) has_ice[1] has_ice[end]
         first = findfirst(edges)
         last = findlast(edges)
         # Interpolate on all the intermediate points
@@ -572,7 +575,7 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         #     end
         # end
     else
-        @warn "Completely unhandled case of extrapolation" has_ice findall(edges)
+        first = findfirst(edges)
     end
     nothing
 end
