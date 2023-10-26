@@ -523,6 +523,8 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
     elseif first > 1 # No neighboring ice, so constant extrapolation
         Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
     end
+
+
     last = findlast(has_ice)
     if last < dom.nr && last-1>1 && has_ice[last-1] && has_ice[last-2]
         # Enough points to do a quadratic extrapolation, so do that.
@@ -555,9 +557,13 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         Tf[findlast(has_ice)+1:end] .= Tf[findlast(has_ice)]
     end
 
+
     edges = has_ice[1:end-1] .⊻ has_ice[2:end]
+
     if all(.~edges) || sum(edges) == 1 # No or one edge
         return
+    elseif sum(edges) == 2 && ~has_ice[1]
+        # No treatment necessary--already handled
     elseif sum(edges) == 2 && has_ice[1] # One gap in the middle of the ice
         # Handle this poorly for comparison sake
         first = findfirst(edges)
@@ -575,7 +581,21 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         #     end
         # end
     else
-        first = findfirst(edges)
+        left = findfirst(edges)
+        if ~has_ice[1] # First empty is at edge, so no treatment necessary
+            edges[left] = false
+            left = findfirst(edges)
+        end
+        while any(edges)
+            edges[left] = false
+            if all(.~edges) # Goes all the way to the boundary
+                break
+            end
+            right = findfirst(edges)
+            Tf[left+1:right] .= range(Tf[left], Tf[right+1], length=right-left+2)[2:end-1]
+            edges[right] = false
+            left = findfirst(edges)
+        end
     end
     nothing
 end
