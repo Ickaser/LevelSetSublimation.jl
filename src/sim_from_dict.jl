@@ -1,4 +1,4 @@
-export sim_from_dict, sim_heatonly
+export sim_from_dict, sim_heatonly, sim_and_postprocess
 
 """
     reinit_wrap(integ; verbose=false)
@@ -250,6 +250,14 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     end
     return @strdict sol dom
+end
+
+function sim_and_postprocess(config)
+    res = sim_from_dict(config)
+    rpos = [0,   0  , 0, 0.5, 1]
+    zpos = [0.5, 0.25, 0, 0  , 0]
+    Tf_sol = virtual_thermocouple(rpos, zpos, res, config)
+    return @strdict res Tf_sol config
 end
 
 
