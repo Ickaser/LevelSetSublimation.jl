@@ -29,7 +29,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     @unpack ρf, Cpf, m_cp_gl, Q_gl_RF, vial_thick = params
 
     if minimum(ϕ) > 0 # No ice left
-        l_ave = 1/sum(1/params[:l])/length(params[:l])
+        l_ave = 1/sum(1.0 ./params[:l])/length(params[:l])
         minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
         b_ave = l_ave * sqrt(params[:Mw]/params[:R]/minT)
         flux = (calc_psub(minT) - params[:p_ch])/dom.zmax*b_ave
