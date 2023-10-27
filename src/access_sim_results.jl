@@ -126,7 +126,8 @@ end
 
 function virtual_thermocouple(simresults::Dict, simconfig::Dict) 
     simt = simresults["sol"].t
-    evalt = range(0.0, simt[end], length=100)
+    # Avoid the very last time--tends to be poorly-behaved
+    evalt = range(0.0, simt[end]*0.99, length=100)
     virtual_thermocouple(0, 0, evalt, simresults, simconfig)
 end
 function virtual_thermocouple(t::TT, simresults::Dict, simconfig::Dict) where TT <: AbstractArray
@@ -134,7 +135,7 @@ function virtual_thermocouple(t::TT, simresults::Dict, simconfig::Dict) where TT
 end
 function virtual_thermocouple(rpos, zpos, simresults::Dict, simconfig::Dict)
     simt = simresults["sol"].t
-    evalt = range(0.0, simt[end], length=100)
+    evalt = range(0.0, simt[end]*0.99, length=100)
     virtual_thermocouple(rpos, zpos, evalt, simresults, simconfig)
 end
 function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Dict) where TT <: AbstractArray
