@@ -385,7 +385,8 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     #     @warn "Extrapolation within Tf domain (gaps in ice) not carefully treated." findall(edges) has_ice
     # end
 
-    function resid!(dTfdt, Tf)
+    # function resid!(dTfdt, Tf)
+    function resid!(dTfdt, Tf, p)
         if any(isnan.(Tf))
             @warn "NaN found" Tf
         end
@@ -414,24 +415,30 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     end
 
     if all(has_ice) # IF all ice present, use all DOF
-        sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
-        Tfs = sol.zero
+        # sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
+        prob = NonlinearProblem(resid!, Tf_g)
+        sol = solve(prob)
+        Tfs = sol.u
+        # Tfs = sol.zero
     else # If ice doesn't cover full radial extent, trim out those DOF
         Tf_trim = Tf_g[has_ice]
-        function resid_lessdof!(dTfdt_trim, Tf_trim)
+        function resid_lessdof!(dTfdt_trim, Tf_trim, p)
         # resid! = function (dTfdt_trim, Tf_trim)
             dTfdt = zeros(eltype(dTfdt_trim), dom.nr)
             Tf = zeros(eltype(Tf_trim), dom.nr)
             Tf[has_ice] .= Tf_trim
             Tf[.~has_ice] .= Tf_trim[1]
             extrap_Tf_noice!(Tf, has_ice, dom)
-            resid!(dTfdt, Tf)
+            resid!(dTfdt, Tf, p)
             dTfdt_trim .= dTfdt[has_ice]
             nothing
         end
-        sol = nlsolve(resid_lessdof!, Tf_trim, autodiff=:forward, ftol=1e-10)
+        # sol = nlsolve(resid_lessdof!, Tf_trim, autodiff=:forward, ftol=1e-10)
+        # Tfs[has_ice] = sol.zero
+        prob = NonlinearProblem(resid_lessdof!, Tf_trim)
+        sol = solve(prob)
         Tfs = zeros(dom.nr)
-        Tfs[has_ice] = sol.zero
+        Tfs[has_ice] = sol.u
         extrap_Tf_noice!(Tfs, has_ice, dom)
     end
 
