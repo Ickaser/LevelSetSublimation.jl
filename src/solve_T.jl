@@ -380,10 +380,10 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     #     Tf_g[isnan.(Tf_g)] .= 245.0
     # end
 
-    edges = has_ice[1:end-1] .⊻ has_ice[2:end]
-    if sum(edges)>2 || (sum(edges)==2 && has_ice[1])
-        @warn "Extrapolation within Tf domain (gaps in ice) not carefully treated." findall(edges) has_ice
-    end
+    # edges = has_ice[1:end-1] .⊻ has_ice[2:end]
+    # if sum(edges)>2 || (sum(edges)==2 && has_ice[1])
+    #     @warn "Extrapolation within Tf domain (gaps in ice) not carefully treated." findall(edges) has_ice
+    # end
 
     function resid!(dTfdt, Tf)
         if any(isnan.(Tf))
@@ -401,7 +401,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             else
                 @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
             end
-            clamp!(Tf, 200, 300)
+            clamp!(Tf, 200, 350)
             if typeof(Tf[1]) <: AbstractFloat
                 @info "after Crazy Tf" Tf[has_ice] els
             else
@@ -485,6 +485,57 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
 
 end
 
+extrap_quad(ir, ir1, ir2, ir3, Tf1, Tf2, Tf3) = Tf1*(ir-ir2)*(ir-ir3)/(ir1-ir2)/(ir1-ir3) + 
+                Tf2*(ir-ir1)*(ir-ir3)/(ir2-ir1)/(ir2-ir3) +
+                Tf3*(ir-ir1)*(ir-ir2)/(ir3-ir1)/(ir3-ir2)
+extrap_lin(ir, ir1, ir2, Tf1, Tf2) = Tf1*(ir-ir2)/(ir1-ir2) + Tf2*(ir-ir1)/(ir2-ir1)
+function right_extrap!(Tf, extrap_region, has_ice)
+    left = extrap_region[begin]-1
+    if checkbounds(Bool, has_ice, left-2) && has_ice[left-1] && has_ice[left-2]
+        ref_pts = left .- (0:2)
+        for ir in extrap_region
+            Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
+        end
+    elseif checkbounds(Bool, has_ice, left-1) && has_ice[left-1]
+        ref_pts = left .- (0:1)
+        for ir in extrap_region
+            Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
+        end
+    else
+        Tf[extrap_region] .= Tf[left]
+    end
+end
+function left_extrap!(Tf, extrap_region, has_ice)
+    right = extrap_region[end]+1
+    if checkbounds(Bool, has_ice, right+2) && has_ice[right+1] && has_ice[right+2]
+        ref_pts = right .+ (0:2)
+        for ir in extrap_region
+            Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
+        end
+    elseif checkbounds(Bool, has_ice, right+1) && has_ice[right+1]
+        ref_pts = right .+ (0:1)
+        for ir in extrap_region
+            Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
+        end
+    else
+        Tf[extrap_region] .= Tf[right]
+    end
+end
+function mid_extrap!(Tf, extrap_region, has_ice)
+    if length(extrap_region) == 1
+        loc = extrap_region[1]
+        Tf[loc] = 0.5*(Tf[loc+1] + Tf[loc - 1])
+    else
+        n = length(extrap_region)
+        leftsec = extrap_region[begin:n÷2]
+        rightsec = extrap_region[n÷2+1:end]
+        right_extrap!(Tf, leftsec, has_ice)
+        left_extrap!(Tf, rightsec, has_ice)
+    end
+    if any(Tf[extrap_region] .< 0)
+    end
+end
+
 function extrap_Tf_noice!(Tf, has_ice, dom)
     if all(.~ has_ice)
         return
@@ -493,83 +544,103 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         return
     end
 
-    first = findfirst(has_ice)
-    if first > 1 && first+1<dom.nr && has_ice[first+1] && has_ice[first+2]
-        # Enough points to do a quadratic extrapolation, so do that.
-        # Is fine because we only really need one grid point of extrapolation
-        ir1 = findfirst(has_ice)
-        ir2 = ir1 + 1
-        ir3 = ir1 + 2
-        Tf1 = Tf[ir1]
-        Tf2 = Tf[ir2]
-        Tf3 = Tf[ir3]
-        left_Textrap_quad(ir) = Tf1*(ir-ir2)*(ir-ir3)/(ir1-ir2)/(ir1-ir3) + 
-                           Tf2*(ir-ir1)*(ir-ir3)/(ir2-ir1)/(ir2-ir3) +
-                           Tf3*(ir-ir1)*(ir-ir2)/(ir3-ir1)/(ir3-ir2)
-        for ir in 1:ir1-1
-            Tf[ir] = left_Textrap_quad(ir)
-        end
-    elseif first > 1 && first < dom.nr && has_ice[first+1]
-        ir1 = findfirst(has_ice)
-        ir2 = ir1 + 1
-        Tf1 = Tf[ir1]
-        Tf2 = Tf[ir2]
-        # Assuming uniform grid, can work in indices rather than space
-        # Build a linear extrapolation
-        left_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
-        for ir in 1:ir1-1
-            Tf[ir] = left_Textrap(ir)
-        end
-    elseif first > 1 # No neighboring ice, so constant extrapolation
-        Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
-    end
-
-
-    last = findlast(has_ice)
-    if last < dom.nr && last-1>1 && has_ice[last-1] && has_ice[last-2]
-        # Enough points to do a quadratic extrapolation, so do that.
-        # Is fine because we only really need one grid point of extrapolation
-        ir1 = findlast(has_ice)
-        ir2 = ir1 - 1
-        ir3 = ir1 - 2
-        Tf1 = Tf[ir1]
-        Tf2 = Tf[ir2]
-        Tf3 = Tf[ir3]
-        right_Textrap_quad(ir) = Tf1*(ir-ir2)*(ir-ir3)/(ir1-ir2)/(ir1-ir3) + 
-                            Tf2*(ir-ir1)*(ir-ir3)/(ir2-ir1)/(ir2-ir3) +
-                            Tf3*(ir-ir1)*(ir-ir2)/(ir3-ir1)/(ir3-ir2)
-        for ir in ir1+1:dom.nr
-            Tf[ir] = right_Textrap_quad(ir)
-        end
-        # typeof(Tf1) <: AbstractFloat && @info "R extrap" Tf[ir3:ir1+2]
-    elseif last < dom.nr && last > 1 && has_ice[last-1]
-        # Build a linear extrapolation
-        ir1 = findlast(has_ice)
-        ir2 = ir1 - 1
-        Tf1 = Tf[ir1]
-        Tf2 = Tf[ir2]
-        # Assuming uniform grid, can work in indices rather than space
-        right_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
-        for ir in ir1+1:dom.nr
-            Tf[ir] = right_Textrap(ir)
-        end
-    elseif last < dom.nr # No neighboring ice, so constant extrapolation
-        Tf[findlast(has_ice)+1:end] .= Tf[findlast(has_ice)]
-    end
-
-
     edges = has_ice[1:end-1] .⊻ has_ice[2:end]
 
-    if all(.~edges) || sum(edges) == 1 # No or one edge
-        return
-    elseif sum(edges) == 2 && ~has_ice[1]
-        # No treatment necessary--already handled
-    elseif sum(edges) == 2 && has_ice[1] # One gap in the middle of the ice
-        # Handle this poorly for comparison sake
-        first = findfirst(edges)
-        last = findlast(edges)
-        # Interpolate on all the intermediate points
-        Tf[first+1:last] .= range(Tf[first], Tf[last+1], length=last-first+2)[2:end-1]
+    if all(.~edges) # No gaps
+        return # This case shouldn't actually be reached
+    end
+
+    # Treat first gap
+    left = findfirst(edges)
+    if ~has_ice[1] # First empty is at left edge, so no treatment necessary
+        right = findfirst(has_ice)
+        left_extrap!(Tf, 1:left, has_ice)
+        # Extrapolation done
+        edges[left] = false
+        left = findfirst(edges)
+    end
+    while any(edges)
+        edges[left] = false
+        if all(.~edges) # Goes all the way to the boundary: right interpolate
+            right_extrap!(Tf, left+1:dom.nr, has_ice)
+            break
+        end
+        right = findfirst(edges)
+        mid_extrap!(Tf, left+1:right, has_ice)
+        edges[right] = false
+        left = findfirst(edges) # If there are no edges left, this is fine
+    end
+
+    # elseif sum(edges) == 1 # No or one edge
+    # elseif sum(edges) == 2 && ~has_ice[1]
+    #     first = findfirst(has_ice)
+    #     if first > 1 && first+1<dom.nr && has_ice[first+1] && has_ice[first+2]
+    #         # Enough points to do a quadratic extrapolation, so do that.
+    #         # Is fine because we only really need one grid point of extrapolation
+    #         # ir1 = findfirst(has_ice)
+    #         # ir2 = ir1 + 1
+    #         # ir3 = ir1 + 2
+    #         # Tf1 = Tf[ir1]
+    #         # Tf2 = Tf[ir2]
+    #         # Tf3 = Tf[ir3]
+    #         ref_pts = findfirst(has_ice) .+ 0:2
+
+    #         for ir in 1:ir1-1
+    #             Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
+    #         end
+    #     elseif first > 1 && first < dom.nr && has_ice[first+1]
+    #         # ir1 = findfirst(has_ice)
+    #         # ir2 = ir1 + 1
+    #         # Tf1 = Tf[ir1]
+    #         # Tf2 = Tf[ir2]
+    #         ref_pts = findfirst(has_ice) .+ 0:1
+    #         # Assuming uniform grid, can work in indices rather than space
+    #         # Build a linear extrapolation
+    #         for ir in 1:ir1-1
+    #             Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
+    #             # Tf[ir] = left_Textrap(ir)
+    #         end
+    #     elseif first > 1 # No neighboring ice, so constant extrapolation
+    #         Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
+    #     end
+
+
+    #     last = findlast(has_ice)
+    #     if last < dom.nr && last-1>1 && has_ice[last-1] && has_ice[last-2]
+    #         # Enough points to do a quadratic extrapolation, so do that.
+    #         # Is fine because we only really need one grid point of extrapolation
+    #         ir1 = findlast(has_ice)
+    #         ir2 = ir1 - 1
+    #         ir3 = ir1 - 2
+    #         Tf1 = Tf[ir1]
+    #         Tf2 = Tf[ir2]
+    #         Tf3 = Tf[ir3]
+    #         ref_pts = findlast(has_ice) .- 0:2
+    #         for ir in ir1+1:dom.nr
+    #             Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
+    #         end
+    #         # typeof(Tf1) <: AbstractFloat && @info "R extrap" Tf[ir3:ir1+2]
+    #     elseif last < dom.nr && last > 1 && has_ice[last-1]
+    #         # Build a linear extrapolation
+    #         # ir1 = findlast(has_ice)
+    #         # ir2 = ir1 - 1
+    #         # Tf1 = Tf[ir1]
+    #         # Tf2 = Tf[ir2]
+    #         ref_pts = findlast(has_ice) .- 0:1
+    #         # Assuming uniform grid, can work in indices rather than space
+    #         for ir in ir1+1:dom.nr
+    #             # Tf[ir] = right_Textrap(ir)
+    #             Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
+    #         end
+    #     elseif last < dom.nr # No neighboring ice, so constant extrapolation
+    #         Tf[findlast(has_ice)+1:end] .= Tf[findlast(has_ice)]
+    #     end
+    # elseif sum(edges) == 2 && has_ice[1] # One gap in the middle of the ice
+    #     # Handle this poorly for comparison sake
+    #     first = findfirst(edges)
+    #     last = findlast(edges)
+    #     # Interpolate on all the intermediate points
+    #     Tf[first+1:last] .= range(Tf[first], Tf[last+1], length=last-first+2)[2:end-1]
 
         # gaps = findall(edges)#[2:end-1] 
         # @info "check2" gaps
@@ -580,22 +651,10 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         #         @warn "unhandled: large gaps in ice"
         #     end
         # end
-    else
-        left = findfirst(edges)
-        if ~has_ice[1] # First empty is at edge, so no treatment necessary
-            edges[left] = false
-            left = findfirst(edges)
-        end
-        while any(edges)
-            edges[left] = false
-            if all(.~edges) # Goes all the way to the boundary
-                break
-            end
-            right = findfirst(edges)
-            Tf[left+1:right] .= range(Tf[left], Tf[right+1], length=right-left+2)[2:end-1]
-            edges[right] = false
-            left = findfirst(edges)
-        end
-    end
+
+
+
+
+
     nothing
 end
