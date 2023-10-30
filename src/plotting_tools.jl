@@ -163,6 +163,9 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
         cont_c = :black
         Tf = fill(0.0, dom.nr)
     elseif heatvar == :T 
+        if isnothing(Tf0)
+            Tf0 = fill(245.0, dom.nr)
+        end
         u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
         # T = solve_T(u, dom, params)
         ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]

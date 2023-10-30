@@ -246,6 +246,8 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
         sol = solve(prob, FBDF(); callback=cbs)
+    elseif dudt_func == dudt_heatmass_implicit!
+        sol = solve(prob, Rosenbrock23(), callback=cbs; ) # Adaptive timestepping: default
     else
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     end

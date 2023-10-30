@@ -106,6 +106,8 @@ function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothi
     u = sol(t)
     if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
         Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+    elseif haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_implicit!
+        Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
     else
         Tf = pseudosteady_Tf(u, dom, params, Tf0)
     end
@@ -156,6 +158,8 @@ function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Di
         params = calc_params_at_t(ti, simconfig)
         u = sol(ti)
         if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
+            Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+        elseif haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_implicit!
             Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
         else
             Tf = pseudosteady_Tf(u, dom, params, Tf)

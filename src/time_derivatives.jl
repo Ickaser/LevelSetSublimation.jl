@@ -1,4 +1,5 @@
 export dudt_heatmass, dudt_heatonly
+export dudt_heatmass!, dudt_heatmass_dae!, dudt_heatmass_implicit!
 
 """
     dudt_heatmass!(du, u, p, t)
@@ -190,7 +191,14 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
     vol = 0.0
     surf_area = 0.0
     for cell in integ_cells
-        locvol = dom.rgrid[Tuple(cell)[1]] * dom.dr * dom.dz * 2π
+        ir = Tuple(cell)[1]
+        # locvol = dom.rgrid[ir] * dom.dr * dom.dz * 2π
+        # if locvol == 0 && ir == 1
+        #     locvol = (0.5dom.dr)^2 *2π * dom.dz
+        # end
+        ri = max(0, dom.rgrid[ir] -0.5dom.dr)
+        ro = min(dom.rmax, dom.rgrid[ir] +0.5dom.dr)
+        locvol = (ro^2-ri^2) * dom.dz * π
         if ϕ[cell] > 0
             qloc, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
             # surf_area += compute_local_δ(cell, ϕ, dom)*locvol
@@ -508,23 +516,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
     dTfdt[no_ice] .= 0 # Set to 0 elsewhere
 
-    # lbound = [i for i in 2:dom.nr if (has_ice[i] && no_ice[i-1])]
-    # rbound = [i for i in 1:dom.nr-1 if (has_ice[i] && no_ice[i+1])]
-    # if length(lbound) == 0
-    #     #nothing
-    # elseif length(lbound) == 1
-    #     # Treat ghost cell
-    #     # dTfdt[lbound[1]-1] = ...
-    # else
-    #     @warn "Multiple chunks of ice may not be handled correctly." lbound rbound
-    # end
-    # if length(rbound) == 0
-    #     #nothing
-    # elseif length(rbound) == 1
-    #     # Treat ghost cell
-    #     # dTfdt[rbound[1]+1] = ...
-    # else
-    #     @warn "Multiple chunks of ice may not be handled correctly." lbound rbound
+    # if any(isnan.(dTfdt))
+    #     @info "NaN in dTfdt"
     # end
 
 end
@@ -677,17 +670,76 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
         dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
     end
-    # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
-    # if minimum(dϕ) < 0
-    #     @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
-    #     # pl1 = heat(vr, dom)
-    #     # pl2 = heat(vz, dom)
-    #     # display(plot(pl1, pl2))
-    # end
-    # if maximum(dϕ) > 1
-    #     @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
-    #     display(heat(T, dom))
-    # end
+    return nothing
+end
+
+function dudt_heatmass_implicit!(du, u, integ_pars, t)
+    dom = integ_pars[1]
+    params = integ_pars[2]
+    # p_last = integ_pars[3]
+    # Tf_last = integ_pars[4]
+    controls = integ_pars[5]
+    verbose = integ_pars[6]
+
+    input_measurements!(params, t, controls)
+
+    dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
+
+    ϕ, Tf, Tw = ϕ_T_from_u_view(u, dom)
+    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
+
+    if any(Tf .< 0)
+        @info "Negative temperatures passed"
+        du .= NaN
+        return
+    end
+
+    if minimum(ϕ) > 0 # No ice left
+        l_ave = 1/sum(1/params[:l])/length(params[:l])
+        minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
+        b_ave = l_ave * sqrt(params[:Mw]/params[:R]/minT)
+        flux = (calc_psub(minT) - params[:p_ch])/dom.zmax*b_ave
+        dϕ .= flux/params[:ρf]
+        # dϕ .= 0
+        # dTw .= 0
+        verbose && @info "no ice" extrema(dϕ)
+        return nothing
+    end
+
+
+    # Tf = pseudosteady_Tf(u, dom, params, Tf_last)
+    T = solve_T(u, Tf, dom, params)
+    p = solve_p(u, Tf, T, dom, params)
+
+
+
+    # integ_pars[3] .= p # Cache current state of p as a guess for next timestep
+    # integ_pars[4] .= Tf
+    vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
+    extrap_v_fastmarch!(vf, u, dom)
+    vr = @view vf[:, :, 1]
+    vz = @view vf[:, :, 2]
+
+    # Compute time derivatives for Tf
+    dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
+
+    Qgl = compute_Qgl(u, T, dom, params)
+    dTw .= (Q_gl_RF - Qgl) / m_cp_gl
+
+    for ind in CartesianIndices(ϕ)
+        ir, iz = Tuple(ind)
+
+        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind] > 0, vz[ind] >0, dϕdx_all, dom)
+
+        rcomp = dϕdr * vr[ind]
+        zcomp = dϕdz * vz[ind]
+        dϕ[ind] = -rcomp - zcomp
+    end
+
+
+    if verbose &&  eltype(u) <: Float64
+        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
+    end
     return nothing
 end
