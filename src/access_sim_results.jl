@@ -1,5 +1,5 @@
 export calc_uϕTp_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
-export get_subf_z, get_subf_r, get_ϕ
+export get_subf_z, get_subf_r, get_ϕ, get_SA
 export virtual_thermocouple
 
 function get_t_Tf(simresults::Dict)
@@ -172,6 +172,28 @@ function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Di
 end
 
 """
+    get_SA(res::Dict)
+    get_SA(ts, res::Dict)
+
+Compute surface area over time for the given simulaiton results.
+    
+Returns (ts, SA_t)
+"""
+function get_SA(res)
+    ts = res["sol"].t
+    get_SA(ts, res)
+end
+function get_SA(ts, res)
+    @unpack sol, dom = res
+    SA_t = map(ts) do ti
+        u = sol(ti)
+        ϕ = ϕ_T_from_u(u, dom)[1]
+        SA = compute_icesurf_δ(ϕ, dom)
+    end
+    return ts, SA_t
+end
+
+"""
     get_subf_z(ϕ, dom)
 
 Compute the average 𝑧 position of the sublimation front.
@@ -222,4 +244,5 @@ function get_subf_r(ϕ, dom)
     δ = compute_discrete_δ(ϕ, dom)
     ave_z = sum(δ .* dom.rgrid .*dom.rgrid) / sum(δ .* dom.rgrid)
 end
+
 

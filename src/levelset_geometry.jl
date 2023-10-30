@@ -52,6 +52,16 @@ function compute_icegl_area(ϕ, dom::Domain)
     return outsurf
 end
 
+function compute_icesurf_δ(ϕ, dom)
+    δ = compute_discrete_δ(ϕ, dom)
+    SA = 2π*sum(δ .* dom.rgrid)*dom.dr*dom.dz
+end
+
+function compute_icevol_H(ϕ, dom)
+    H = compute_discrete_H(ϕ, dom)
+    SA = 2π*sum(H .* dom.rgrid)*dom.dr*dom.dz
+end
+
 """
     compute_icevol(ϕ, dom::Domain)
 
@@ -281,14 +291,6 @@ function compute_iceht_bottopcont(ϕ, dom)
     return heights, bottom_contact, top_contact
 end
 
-function compute_icesurf_δ(ϕ, dom)
-    δ = compute_discrete_δ(ϕ, dom)
-    SA = 2π*sum(δ .* dom.rgrid)*dom.dr*dom.dz
-end
-function compute_icevol_H(ϕ, dom)
-    H = compute_discrete_H(ϕ, dom)
-    SA = 2π*sum(H .* dom.rgrid)*dom.dr*dom.dz
-end
 
 # --------------- Min & Gibou 2008 on surface integrals
 
