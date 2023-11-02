@@ -247,7 +247,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         prob = ODEProblem(func, u0, tspan, prob_pars)
         sol = solve(prob, FBDF(); callback=cbs)
     elseif dudt_func == dudt_heatmass_implicit!
-        sol = solve(prob, Rosenbrock23(), callback=cbs; ) # Adaptive timestepping: default
+        sol = solve(prob, Rodas4P(), callback=cbs; ) # Adaptive timestepping: default
     else
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     end
@@ -255,10 +255,10 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 end
 
 function sim_and_postprocess(config)
-    res = sim_from_dict(config)
+    @time res = sim_from_dict(config)
     rpos = [0,   0  , 0, 0.5, 1]
     zpos = [0.5, 0.25, 0, 0  , 0]
-    Tf_sol = virtual_thermocouple(rpos, zpos, res, config)
+    @time Tf_sol = virtual_thermocouple(rpos, zpos, res, config)
     return @strdict res Tf_sol config
 end
 

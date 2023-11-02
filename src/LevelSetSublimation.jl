@@ -6,6 +6,7 @@ using DrWatson, Reexport
 @reexport using Contour  
 @reexport using Plots
 @reexport using Unitful
+@reexport using LaTeXStrings
 using CSV
 # using ProgressMeter
 using LinearAlgebra: norm, Diagonal

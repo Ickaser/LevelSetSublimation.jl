@@ -164,7 +164,7 @@ function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Di
         else
             Tf = pseudosteady_Tf(u, dom, params, Tf)
         end
-        @info "check" ti Tf[1]
+        # @info "check" ti Tf[1]
         T = solve_T(u, Tf, dom, params)
         Tloc = T[inds]
     end

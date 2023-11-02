@@ -297,9 +297,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             end
         elseif ir == dom.nr
             dTfdr = params[:Kw]/kf*(Tw - Tf[ir])
-            d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
-            if has_ice[2]
-                d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[2])*dom.dr2 # Adiabatic ghost cell
+            if has_ice[dom.nr-1]
+                d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
             else
                 # d2Tfdr2 = 0 
                 # @warn "Possible mistreatment: set d2Tf/dr2 to 0 at right boundary, in an unlikely case"
