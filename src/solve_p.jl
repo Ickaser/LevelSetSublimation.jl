@@ -116,8 +116,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
 
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
-    vals = Vector{eltype(Tf)}(undef, 0)
-
+    vals = similar(Tf, 0)
     vcr = (vals, cols, rows)
     rhs = similar(Tf, ntot)
     rhs .= 0

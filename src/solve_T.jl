@@ -46,8 +46,7 @@ function solve_T(u, Tf, dom::Domain, params)
 
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
-    vals = Vector{eltype(Tf)}(undef, 0)
-
+    vals = similar(Tf, 0)
     vcr = (vals, cols, rows)
     rhs = similar(Tf, ntot)
     rhs .= 0
