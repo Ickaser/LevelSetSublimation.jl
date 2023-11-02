@@ -67,11 +67,10 @@ function params_nondim_setup(cparams, controls)
     nondim_controls = deepcopy(controls)
 
     for pk in keys(cparams)
-        try
-            params[pk] = ustrip.(PBD[pk], cparams[pk])
-        catch DomainError
+        if dimension(PBD[pk]) != dimension(cparams[pk])
             @error "Bad dimensions in passed parameter." pk params[pk] PBD[pk]   
         end
+        params[pk] = ustrip.(PBD[pk], cparams[pk])
     end
     for mk in keys(controls)
         # nondim_controls[mk] = ustrip.(PBD[mk], controls[mk])
