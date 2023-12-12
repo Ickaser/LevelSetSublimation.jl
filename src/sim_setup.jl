@@ -48,7 +48,7 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
                 for r in dom.rgrid, z in dom.zgrid] .*sqrt(dom.rmax*dom.zmax)
     elseif ϕtype == :cone
         @warn "The more arcane starting shapes are not well-tested."
-        ϕ0 = [0.5r + z - 0.9dom.zmax + ϵ 
+        ϕ0 = [0.5*(dom.zmax/dom.rmax)*r + z - 0.6dom.zmax + ϵ 
                 for r in dom.rgrid, z in dom.zgrid]
     else
         @error "ArgumentError: Invalid ϕ0 kind to make_ϕ0" ϕtype
@@ -67,11 +67,10 @@ function params_nondim_setup(cparams, controls)
     nondim_controls = deepcopy(controls)
 
     for pk in keys(cparams)
-        try
-            params[pk] = ustrip.(PBD[pk], cparams[pk])
-        catch DomainError
+        if dimension(PBD[pk]) != dimension(cparams[pk])
             @error "Bad dimensions in passed parameter." pk params[pk] PBD[pk]   
         end
+        params[pk] = ustrip.(PBD[pk], cparams[pk])
     end
     for mk in keys(controls)
         # nondim_controls[mk] = ustrip.(PBD[mk], controls[mk])
@@ -101,6 +100,14 @@ function params_nondim_setup(cparams, controls)
     return params, nondim_controls
 end
 
+function nondim_controlvar(varname::Symbol, control_dim::Q) where Q <: Quantity
+    if dimension(control_dim) != dimension(PBD[varname])
+        @error "Bad units on controlled variable." varname control_dim PBD[varname]
+    end
+    base_un = PBD[varname]
+    control_ndim = RampedVariable(ustrip(base_un, control_dim))
+    return control_ndim
+end
 function nondim_controlvar(varname::Symbol, control_dim::RampedVariable)
     if dimension(control_dim(0u"s")) != dimension(PBD[varname])
         @error "Bad units on ramped variable." varname control_dim PBD[varname]
@@ -138,6 +145,7 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     :Cpf => u"J/kg/K",
     :ΔH => u"J/kg",
     :m_cp_gl => u"J/K",
+    :vial_thick => u"m",
 
     :ϵ => NoUnits,
     :l => u"m",

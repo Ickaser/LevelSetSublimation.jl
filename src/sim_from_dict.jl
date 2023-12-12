@@ -1,4 +1,4 @@
-export sim_from_dict, sim_heatonly
+export sim_from_dict, sim_heatonly, sim_and_postprocess
 
 """
     reinit_wrap(integ; verbose=false)
@@ -13,12 +13,12 @@ function reinit_wrap(integ; verbose=false)
     dom = integ.p[1]
     ϕ = ϕ_T_from_u_view(integ.u, dom)[1]
     verbose && (pre_err = sdf_err_L∞(ϕ, dom, region=:B))
-    reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=20, tol=0.02, err_reg=:B) 
+    reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=50, tol=0.02, err_reg=:B) 
     if verbose
         post_err = sdf_err_L∞(ϕ, dom, region=:B)
         dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         # @info "Reinit at t=$(integ.t)"
-        @info "Reinit" integ.t pre_err post_err dryfrac
+        @info "Reinit" integ.t pre_err post_err dryfrac spy(ϕ .< 0)
     end
 end
 
@@ -91,20 +91,20 @@ function needs_reinit(u, t, integ)
 end
 
 
-function input_measurements!(integ, meas_keys::Base.KeySet, controls::Dict)
-    if isnothing(meas_keys)
-        return
-    end
-    t_samp = controls[:t_samp]
-    ti = argmin(abs.(t_samp .- integ.t))
-    if !(integ.t ≈ t_samp[ti])
-        @error "Issue with time sampling" integ.t t_samp[ti]
-    end
-    params = integ.p[2]
-    for key in meas_keys
-        params[key] = controls[key][ti]
-    end
-end
+# function input_measurements!(integ, meas_keys::Base.KeySet, controls::Dict)
+#     if isnothing(meas_keys)
+#         return
+#     end
+#     t_samp = controls[:t_samp]
+#     ti = argmin(abs.(t_samp .- integ.t))
+#     if !(integ.t ≈ t_samp[ti])
+#         @error "Issue with time sampling" integ.t t_samp[ti]
+#     end
+#     params = integ.p[2]
+#     for key in meas_keys
+#         params[key] = controls[key][ti]
+#     end
+# end
 
 function input_measurements!(params, t::Number, controls)
     for key in keys(controls)
@@ -171,18 +171,19 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # Default values for non-essential parameters
     Tw0 = get(fullconfig, :Tw0, Tf0) # Default to same ice & glass temperature if glass initial not given
-    dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to same ice & glass temperature if glass initial not given
+    dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to heat and mass transfer-based evolution
 
     # --------- Set up simulation domain, including grid size (defaults to 51x51)
 
     dom = Domain(fullconfig)
+    # If no vial thickness defined, get it from vial size
+    if !haskey(cparams, :vial_thick) 
+        cparams[:vial_thick] =  get_vial_thickness(vialsize)
+    end
 
     # ----- Nondimensionalize everything
 
     params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
-    # if verbose
-    #     @info "Variables used in callback:" meas_keys
-    # end
 
     u0 = make_u0_ndim(init_prof, Tf0, Tw0, dom)
 
@@ -202,7 +203,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
 
     # ---- Set up ODEProblem
-    prob_pars = (dom, params, p_last, Tf_last, ncontrols)
+    prob_pars = (dom, params, p_last, Tf_last, ncontrols, verbose)
     tspan = (0, tf)
     prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
 
@@ -237,23 +238,31 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     end
     # --- Solve
     if dudt_func == dudt_heatmass!
-        # CFL = 0.5
-        # α = params[:kf]/params[:ρf]/params[:Cpf]
-        # dt = CFL / (α/dom.dr^2)
-        # dt = 60
-        # if verbose
-        #     @info "Timestepping:" dt
-        # end
-        # sol = solve(prob, SSPRK33(), dt=dt, callback=cbs; ) # Fixed timestepping: 1 minute
+        # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+    elseif dudt_func == dudt_heatmass_dae!
+        # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
+        massmat = Diagonal(vcat(ones(length(ϕ0)), zeros(dom.nr), [1]))
+        func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
+        prob = ODEProblem(func, u0, tspan, prob_pars)
+        sol = solve(prob, FBDF(); callback=cbs)
+    elseif dudt_func == dudt_heatmass_implicit!
+        sol = solve(prob, Rodas4P(), callback=cbs; ) # Adaptive timestepping: default
     else
         sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
     end
-    # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
-    # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
-    # sol = solve(prob, Tsit5(), callback=cbs; ) # Different adaptive integrator
     return @strdict sol dom
 end
+
+function sim_and_postprocess(config)
+    @time res = sim_from_dict(config)
+    rpos = [0,   0  , 0, 0.5, 1]
+    zpos = [0.5, 0.25, 0, 0  , 0]
+    @time Tf_sol = virtual_thermocouple(rpos, zpos, res, config)
+    return @strdict res Tf_sol config
+end
+
+
 
 # """
 # next_reinit_time_heatonly(integ)

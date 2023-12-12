@@ -38,7 +38,7 @@ Compute area of where ice meets radial outer surface of vial.
 function compute_icegl_area(ϕ, dom::Domain)
     outϕ = ϕ[end,:]
     # outsurf = dom.rmax*dom.dz*2π * sum(outϕ .> 0)
-    outsurf::Float64 = 0.0
+    outsurf::eltype(ϕ) = 0.0
     outcoeff = dom.rmax*dom.dz*2π
     for seg in zip(outϕ[begin:end-1], outϕ[begin+1:end])
         if seg[1] <= 0 && seg[2] <= 0 # full segment in ice
@@ -50,6 +50,16 @@ function compute_icegl_area(ϕ, dom::Domain)
         end
     end
     return outsurf
+end
+
+function compute_icesurf_δ(ϕ, dom)
+    δ = compute_discrete_δ(ϕ, dom)
+    SA = 2π*sum(δ .* dom.rgrid)*dom.dr*dom.dz
+end
+
+function compute_icevol_H(ϕ, dom)
+    H = compute_discrete_H(ϕ, dom)
+    SA = 2π*sum(H .* dom.rgrid)*dom.dr*dom.dz
 end
 
 """
@@ -69,7 +79,7 @@ function compute_icevol(ϕ, dom::Domain)
         return CI(rloc, zloc)
     end
 
-    totvol::Float64 = 0.0
+    totvol::eltype(ϕ) = 0.0
     # Volume from outer cylinder edge: R/2 * outer surface area
     totvol += dom.rmax/2 * compute_icegl_area(ϕ, dom)
 
@@ -168,7 +178,7 @@ function compute_icesurf(ϕ, dom::Domain)
 end
 
 function compute_icegl_area_weights(ϕ, dom)
-    zweights = zeros(Float64, dom.nz) 
+    zweights = zeros(eltype(ϕ), dom.nz) 
     for iz in 1:dom.nz-1
         ϕl, ϕr = ϕ[end, iz:iz+1]
         if ϕl <= 0 && ϕr <= 0
@@ -184,9 +194,33 @@ function compute_icegl_area_weights(ϕ, dom)
 end
 
 function compute_icesh_area_weights(ϕ, dom)
-    rweights = zeros(Float64, dom.nr) 
+    rweights = zeros(eltype(ϕ), dom.nr) 
     for ir in 1:dom.nr-1
         ϕl, ϕr = ϕ[ir:ir+1, 1]
+        if ϕl <= 0 && ϕr <= 0
+            rmid = (dom.rgrid[ir] + dom.rgrid[ir+1])/2
+            rweights[ir] += rmid^2/2
+            rweights[ir+1] -= rmid^2/2
+        elseif ϕl <= 0
+            θr = -(ϕl/(ϕl - ϕr))
+            rmid =dom.rgrid[ir] + dom.dr*θr
+            rweights[ir] += rmid^2/2
+        elseif ϕr <= 0
+            θr = -(ϕr/(ϕr - ϕl))
+            rmid = dom.rgrid[ir+1] - dom.dr*θr
+            rweights[ir+1] -= rmid^2/2
+        # else # Nothing needed to do in this case
+        end
+    end
+    if ϕ[dom.nr] <= 0
+        rweights[dom.nr] += dom.rmax^2/2
+    end
+    return rweights
+end
+function compute_icetop_area_weights(ϕ, dom)
+    rweights = zeros(eltype(ϕ), dom.nr) 
+    for ir in 1:dom.nr-1
+        ϕl, ϕr = ϕ[ir:ir+1, dom.nz]
         if ϕl <= 0 && ϕr <= 0
             rmid = (dom.rgrid[ir] + dom.rgrid[ir+1])/2
             rweights[ir] += rmid^2/2
@@ -222,7 +256,7 @@ function compute_iceht_bottopcont(ϕ, dom)
     bottom_contact = (ϕ[:,begin] .<= 0)
     top_contact = (ϕ[:,end] .<= 0)
 
-    heights = fill(0.0, dom.nr)
+    heights = zeros(eltype(ϕ), dom.nr)
     ice_contig = fill(true, dom.nr)
     for ir in axes(ϕ, 1)
         # # Begin with 1 grid space per frozen cell
@@ -246,25 +280,17 @@ function compute_iceht_bottopcont(ϕ, dom)
         if interfaces > 2 || (interfaces == 2 && bottom_contact[ir])
             ice_contig[ir] = false
             @warn "Along a column, ice is not contiguous--more than two interfaces.
-                This case is not properly treated." interfaces 
+                This case is not properly treated." interfaces ir 
             println(ϕ[ir, :] .<= 0)
                 
         end
     end
-    if !any(bottom_contact)
-        display(heat(ϕ, dom))
-    end
+    # if !any(bottom_contact)
+    #     display(heat(ϕ, dom))
+    # end
     return heights, bottom_contact, top_contact
 end
 
-function compute_icesurf_δ(ϕ, dom)
-    δ = compute_discrete_δ(ϕ, dom)
-    SA = 2π*sum(δ .* dom.rgrid)*dom.dr*dom.dz
-end
-function compute_icevol_H(ϕ, dom)
-    H = compute_discrete_H(ϕ, dom)
-    SA = 2π*sum(H .* dom.rgrid)*dom.dr*dom.dz
-end
 
 # --------------- Min & Gibou 2008 on surface integrals
 

@@ -46,13 +46,11 @@ function solve_T(u, Tf, dom::Domain, params)
 
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
-    vals = Vector{eltype(Tf)}(undef, 0)
-
+    vals = similar(Tf, 0)
     vcr = (vals, cols, rows)
     rhs = similar(Tf, ntot)
     rhs .= 0
 
-    θ_thresh = 0.05
 
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration
@@ -86,7 +84,7 @@ function solve_T(u, Tf, dom::Domain, params)
             if eϕ < 0 # Front is within a cell of boundary
                 θr = pϕ/(pϕ-eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
-                if θr >= θ_thresh
+                if θr >= θ_THRESH
                     pc += -2k*dr2/θr
                     rhs[imx] -= 2k*Tf_loc*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within .05 cells of boundary
@@ -107,7 +105,7 @@ function solve_T(u, Tf, dom::Domain, params)
             if wϕ < 0 # Front is within a cell of boundary
                 θr = pϕ/(pϕ-wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                if θr >= θ_thresh
+                if θr >= θ_THRESH
                     pc += -2k*dr2/θr - Kw*(r1 + 2dr1)
                     rhs[imx] -= 2Tf_loc*k*dr2/θr + Kw*Tw*(r1 + 2dr1)
                 else 
@@ -139,28 +137,74 @@ function solve_T(u, Tf, dom::Domain, params)
             elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
-                if θr >= θ_thresh
-                    pc += -2k*dr2 # Regular 
-                    pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
-                    wc += k*(-0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf_loc*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
+                if θr >= θ_THRESH
+                    # Quadratic
+                    pc += k*(-2*dr2 -(1-θr)*dr1*r1)/θr
+                    wc += k*(-dr1*r1*θr + 2dr2)/(θr+1)# Regular + b gradient
+                    rhs[imx] -= Tf_loc*k*(2dr2 + dr1*r1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # Linear
+                    # pc += -2k*dr2 # Regular 
+                    # pc += k*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                    # wc += k*(-0.5dr1*r1 + dr2) # Regular
+                    # rhs[imx] -= Tf_loc*k*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
+                    # Linear extrapolation, a cell out
                     pc += -2k*dr2 # Regular
                     wc += k*(-dr1*r1 + 2θr*dr2)/(θr+1)  
                     rhs[imx] -= Tf_loc*k*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
+                    # Constant
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    # rhs[imx] = Tf[ir]
+                    # continue
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
+                # rΓ = r - θr*dr
+                # rm = rgrid[ir-1]
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                if θr >= θ_thresh # Regular magnitude θ
-                    pc += -2k*dr2 # Regular 
-                    pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
-                    ec += k*( 0.5dr1*r1 + dr2) # Regular
-                    rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                if θr >= θ_THRESH # Regular magnitude θ
+                    # Quadratic ghost cell extrapolation
+                    pc += (k*(-2*dr2+(1-θr)*dr1*r1))/θr
+                    ec += (k*( dr1*r1*θr + 2dr2))/(θr+1)# Regular + b gradient
+                    rhs[imx] -= Tf_loc*(k*(2dr2 - dr1*r1))/θr/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # Linear extrapolation for ghost cell
+                    # pc += -2k*dr2 # Regular 
+                    # pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                    # ec += k*( 0.5dr1*r1 + dr2) # Regular
+                    # rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    # if ir > 2 # Avoid singular at r=0
+                    #     # Logarithmic extrapolation for ghost cell
+                    #     pc += k*(log(rΓ/rm)*0.5*r1*dr1 + log(rΓ*rm*r1*r1)*dr2)/log(r/rΓ)
+                    #     ec += k*(0.5r1*dr1 + dr2)
+                    #     rhs[imx] -= Tf_loc*k*(0.5dr1*r1*log(rm*r1) + log(r/rm)*dr2)/log(r/rΓ)
+                    # else 
+                    #     # Linear extrapolation for ghost cell
+                    #     pc += -2k*dr2 # Regular 
+                    #     pc += k*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
+                    #     ec += k*( 0.5dr1*r1 + dr2) # Regular
+                    #     rhs[imx] -= Tf_loc*k*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
+                    # end
                 else # Very small θ
+                    # if ir > 2
+                    #     # Logarithmic extrapolation
+                    #     rp = rgrid[ir+1]
+                    #     pc += -2k*dr2 # Regular
+                    #     ec += k*(0.5dr1*r1*log(rm/rp) + log(rΓ*rΓ/rp/rm)*dr2)/log(rΓ/rp)
+                    #     rhs[imx] -= Tf_loc*k*(0.5dr1*r1*log(rp/rm) + log(rm/rp)*dr2)/log(rΓ/rp)
+                    # else
+                    #     # Linear extrapolation
+                    #     pc += -2k*dr2 # Regular
+                    #     ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
+                    #     rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # end
+                    # Linear extrapolation
                     pc += -2k*dr2 # Regular
                     ec += k*(dr1*r1 + 2θr*dr2)/(θr+1)  
                     rhs[imx] -= Tf_loc*k*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # Treat as constant
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    # rhs[imx] = Tf[ir]
+                    # continue
                 end
 
             else # Bulk, not at front 
@@ -182,7 +226,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
-                if θz > θ_thresh
+                if θz > θ_THRESH
                     pc += -2k*dz2/θz - 2Kv*dz1
                     rhs[imx] -= 2*Tf[ir]*k*dz2/θz + 2Kv*Tsh*dz1
                 else
@@ -205,7 +249,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-sϕ)
-                if θz > θ_thresh
+                if θz > θ_THRESH
                     pc += -2*k*dz2/θz
                     rhs[imx] -= 2*Tf[ir]*k*dz2/θz + BC4*2*dz1
                 else
@@ -233,27 +277,47 @@ function solve_T(u, Tf, dom::Domain, params)
                 # stefan_debug = true
                 θz = pϕ / (pϕ - nϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, north")
-                if θz >= θ_thresh
-                    pc += -k*dz2*(θz+1)/θz
-                    sc += k*dz2
-                    rhs[imx] -= Tf[ir]*k*dz2/θz
+                if θz >= θ_THRESH
+                    # Quadratic
+                    pc += (k*(-2*dz2))/θz
+                    sc += (k*(2dz2))/(θz+1)# Regular + b gradient
+                    rhs[imx] -= Tf[ir]*(k*2dz2)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
+                    # Linear
+                    # pc += -k*dz2*(θz+1)/θz
+                    # sc += k*dz2
+                    # rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
+                    # Linear
                     pc += -2k*dz2
                     sc += 2*k*θz*dz2/(θz+1)
                     rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
+                    # Constant
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    # rhs[imx] = Tf[ir]
+                    # continue
                 end
             elseif sϕ <= 0
                 # stefan_debug = true
                 θz = pϕ / (pϕ - sϕ)
                 # println("θz=$θz, ir=$ir, iz = $iz, south")
-                if θz >= θ_thresh
-                    pc += -k*dz2*(θz+1)/θz
-                    nc += k*dz2
-                    rhs[imx] -= Tf[ir]*k*dz2/θz
+                if θz >= θ_THRESH
+                    # Quadratic
+                    pc += (k*(-2*dz2))/θz
+                    nc += (k*(2dz2))/(θz+1)# Regular + b gradient
+                    rhs[imx] -= Tf[ir]*(k*2dz2)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
+                    # Linear
+                    # pc += -k*dz2*(θz+1)/θz
+                    # nc += k*dz2
+                    # rhs[imx] -= Tf[ir]*k*dz2/θz
                 else
+                    # Linear
                     pc += -2k*dz2
                     nc += 2*k*θz*dz2/(θz+1)
                     rhs[imx] -= 2Tf[ir]*k*dz2/(θz+1)
+                    # Constant
+                    # add_to_vcr!(vcr, dom, imx, ( 0, 0), 1)
+                    # rhs[imx] = Tf[ir]
+                    # continue
                 end
 
             else # Bulk, no Stefan front
@@ -306,58 +370,77 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     @unpack ρf, Cpf, kf, Q_ic = params
     @unpack kf, ρf, Cpf = params
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
-
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
-
     if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
         return Tf_g
     end
-        
+    # if any(isnan.(Tf_g))
+    #     @warn "NaN guess" Tf_g
+    #     Tf_g[isnan.(Tf_g)] .= 245.0
+    # end
 
+    # edges = has_ice[1:end-1] .⊻ has_ice[2:end]
+    # if sum(edges)>2 || (sum(edges)==2 && has_ice[1])
+    #     @warn "Extrapolation within Tf domain (gaps in ice) not carefully treated." findall(edges) has_ice
+    # end
 
-
-    # T_cache = solve_T(u, Tfv, dom, params)
-    # p_cache = solve_p(u, Tfv, T_cache, dom, params)
-    function resid!(dTfdt, Tf)
-    # function resid!(dTfdt, Tf, ssparams, t)
-        # Tfv .= Tf
+    # function resid!(dTfdt, Tf)
+    function resid!(dTfdt, Tf, p)
         if any(isnan.(Tf))
-            @warn "NaN found"
+            @warn "NaN found" Tf
         end
         extrap_Tf_noice!(Tf, has_ice, dom)
-        if any(clamp.(Tf, 200, 400) .!= Tf)
-            if typeof(Tf[1]) <: AbstractFloat
-                @info "Crazy Tf" Tf has_ice
+        if any(clamp.(Tf[has_ice], 200, 300) .!= Tf[has_ice])
+            if sum(has_ice) > 0.75*dom.nr
+                els = findall(.~has_ice)
             else
-                @info "Crazy Tf" [Tfi.value for Tfi in Tf] has_ice
+                els = has_ice
+            end
+            if typeof(Tf[1]) <: AbstractFloat
+                @info "Crazy Tf" Tf[has_ice] els
+            else
+                @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
+            end
+            clamp!(Tf, 200, 350)
+            if typeof(Tf[1]) <: AbstractFloat
+                @info "after Crazy Tf" Tf[has_ice] els
+            else
+                @info "after Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
             end
         end
-        # @info "resid"
-        # @info "resid: $(norm(dTfdt, 1)), $(norm(dTfdt, Inf))"
-        # T_cache .= solve_T(u, Tf, dom, params)
-        # p_cache .= solve_p(u, Tf, T_cache, dom, params, p_cache)
-        # dTfdt_radial!(dTfdt, u, Tf, T_cache, p_cache, dϕdx_all, dom, params)
-        # Tf_extrap = copy(Tf)
         T = solve_T(u, Tf, dom, params)
         p = solve_p(u, Tf, T, dom, params)
         dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
-
-        # dTfdt[no_ice] = Tfv[no_ice] .- Tf[no_ice]
-        # @info "resid" extrema(dTfdt) extrema(Tf) extrema(Tf_extrap)
-        nothing
     end
-    # α = kf/ρf/Cpf
-    # CFL = 0.4
-    # dt = CFL / (α/dom.dr^2)
 
-    sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
-    Tfs = sol.zero
-    # extrap_Tf_noice!(Tfs, has_ice, dom)
-    # return sol, Tfs, resid!
-    # prob = SteadyStateProblem(resid!, copy(Tfv))
-    # solve(prob, DynamicSS(Euler(), abstol=1e-2), dt=dt)
-    # solve(NonlinearProblem(prob), NewtonRaphson())
-    # return resid!
+    if all(has_ice) # IF all ice present, use all DOF
+        # sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
+        prob = NonlinearProblem(resid!, Tf_g)
+        sol = solve(prob)
+        Tfs = sol.u
+        # Tfs = sol.zero
+    else # If ice doesn't cover full radial extent, trim out those DOF
+        Tf_trim = Tf_g[has_ice]
+        function resid_lessdof!(dTfdt_trim, Tf_trim, p)
+        # resid! = function (dTfdt_trim, Tf_trim)
+            dTfdt = zeros(eltype(dTfdt_trim), dom.nr)
+            Tf = zeros(eltype(Tf_trim), dom.nr)
+            Tf[has_ice] .= Tf_trim
+            Tf[.~has_ice] .= Tf_trim[1]
+            extrap_Tf_noice!(Tf, has_ice, dom)
+            resid!(dTfdt, Tf, p)
+            dTfdt_trim .= dTfdt[has_ice]
+            nothing
+        end
+        # sol = nlsolve(resid_lessdof!, Tf_trim, autodiff=:forward, ftol=1e-10)
+        # Tfs[has_ice] = sol.zero
+        prob = NonlinearProblem(resid_lessdof!, Tf_trim)
+        sol = solve(prob)
+        Tfs = zeros(dom.nr)
+        Tfs[has_ice] = sol.u
+        extrap_Tf_noice!(Tfs, has_ice, dom)
+    end
+
     return Tfs
 end
 
@@ -408,6 +491,57 @@ function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
 
 end
 
+extrap_quad(ir, ir1, ir2, ir3, Tf1, Tf2, Tf3) = Tf1*(ir-ir2)*(ir-ir3)/(ir1-ir2)/(ir1-ir3) + 
+                Tf2*(ir-ir1)*(ir-ir3)/(ir2-ir1)/(ir2-ir3) +
+                Tf3*(ir-ir1)*(ir-ir2)/(ir3-ir1)/(ir3-ir2)
+extrap_lin(ir, ir1, ir2, Tf1, Tf2) = Tf1*(ir-ir2)/(ir1-ir2) + Tf2*(ir-ir1)/(ir2-ir1)
+function right_extrap!(Tf, extrap_region, has_ice)
+    left = extrap_region[begin]-1
+    if checkbounds(Bool, has_ice, left-2) && has_ice[left-1] && has_ice[left-2]
+        ref_pts = left .- (0:2)
+        for ir in extrap_region
+            Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
+        end
+    elseif checkbounds(Bool, has_ice, left-1) && has_ice[left-1]
+        ref_pts = left .- (0:1)
+        for ir in extrap_region
+            Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
+        end
+    else
+        Tf[extrap_region] .= Tf[left]
+    end
+end
+function left_extrap!(Tf, extrap_region, has_ice)
+    right = extrap_region[end]+1
+    if checkbounds(Bool, has_ice, right+2) && has_ice[right+1] && has_ice[right+2]
+        ref_pts = right .+ (0:2)
+        for ir in extrap_region
+            Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
+        end
+    elseif checkbounds(Bool, has_ice, right+1) && has_ice[right+1]
+        ref_pts = right .+ (0:1)
+        for ir in extrap_region
+            Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
+        end
+    else
+        Tf[extrap_region] .= Tf[right]
+    end
+end
+function mid_extrap!(Tf, extrap_region, has_ice)
+    if length(extrap_region) == 1
+        loc = extrap_region[1]
+        Tf[loc] = 0.5*(Tf[loc+1] + Tf[loc - 1])
+    else
+        n = length(extrap_region)
+        leftsec = extrap_region[begin:n÷2]
+        rightsec = extrap_region[n÷2+1:end]
+        right_extrap!(Tf, leftsec, has_ice)
+        left_extrap!(Tf, rightsec, has_ice)
+    end
+    if any(Tf[extrap_region] .< 0)
+    end
+end
+
 function extrap_Tf_noice!(Tf, has_ice, dom)
     if all(.~ has_ice)
         return
@@ -416,45 +550,117 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         return
     end
 
-
-    if findfirst(has_ice) > 1 && has_ice[findfirst(has_ice)+1]
-        # Build a linear extrapolation
-        ir1 = findfirst(has_ice)
-        ir2 = ir1 + 1
-        Tf1 = Tf[ir1]
-        Tf2 = Tf[ir2]
-        # Assuming uniform grid, can work in indices rather than space
-        left_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
-        for ir in 1:ir1-1
-            Tf[ir] = extrap(ir)
-        end
-    elseif findfirst(has_ice) > 1 # No neighboring ice, so constant extrapolation
-        Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
-    end
-    if findlast(has_ice) < dom.nr && has_ice[findlast(has_ice)-1]
-        # Build a linear extrapolation
-        ir1 = findlast(has_ice)
-        ir2 = ir1 - 1
-        Tf1 = Tf[ir1]
-        Tf2 = Tf[ir2]
-        # Assuming uniform grid, can work in indices rather than space
-        right_Textrap(ir) = (Tf2-Tf1)/(ir2-ir1) * (ir-ir1) + Tf1
-        for ir in ir1+1:dom.nr
-            Tf[ir] = right_Textrap(ir)
-        end
-    elseif findlast(has_ice) < dom.nr # No neighboring ice, so constant extrapolation
-        Tf[findlast(has_ice)+1:end] .= Tf[findlast(has_ice)]
-    end
-
     edges = has_ice[1:end-1] .⊻ has_ice[2:end]
-    if sum(edges) > 2
-        gaps = findall(edges)[2:end-1] 
-        for g in gaps
-            if g-1 ∉ gaps && g+1 ∉ gaps
-                Tf[g] = (Tf[g-1] + Tf[g+1]) / 2
-            else
-                @warn "unhandled: large gaps in ice"
-            end
-        end
+
+    if all(.~edges) # No gaps
+        return # This case shouldn't actually be reached
     end
+
+    # Treat first gap
+    left = findfirst(edges)
+    if ~has_ice[1] # First empty is at left edge, so no treatment necessary
+        right = findfirst(has_ice)
+        left_extrap!(Tf, 1:left, has_ice)
+        # Extrapolation done
+        edges[left] = false
+        left = findfirst(edges)
+    end
+    while any(edges)
+        edges[left] = false
+        if all(.~edges) # Goes all the way to the boundary: right interpolate
+            right_extrap!(Tf, left+1:dom.nr, has_ice)
+            break
+        end
+        right = findfirst(edges)
+        mid_extrap!(Tf, left+1:right, has_ice)
+        edges[right] = false
+        left = findfirst(edges) # If there are no edges left, this is fine
+    end
+
+    # elseif sum(edges) == 1 # No or one edge
+    # elseif sum(edges) == 2 && ~has_ice[1]
+    #     first = findfirst(has_ice)
+    #     if first > 1 && first+1<dom.nr && has_ice[first+1] && has_ice[first+2]
+    #         # Enough points to do a quadratic extrapolation, so do that.
+    #         # Is fine because we only really need one grid point of extrapolation
+    #         # ir1 = findfirst(has_ice)
+    #         # ir2 = ir1 + 1
+    #         # ir3 = ir1 + 2
+    #         # Tf1 = Tf[ir1]
+    #         # Tf2 = Tf[ir2]
+    #         # Tf3 = Tf[ir3]
+    #         ref_pts = findfirst(has_ice) .+ 0:2
+
+    #         for ir in 1:ir1-1
+    #             Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
+    #         end
+    #     elseif first > 1 && first < dom.nr && has_ice[first+1]
+    #         # ir1 = findfirst(has_ice)
+    #         # ir2 = ir1 + 1
+    #         # Tf1 = Tf[ir1]
+    #         # Tf2 = Tf[ir2]
+    #         ref_pts = findfirst(has_ice) .+ 0:1
+    #         # Assuming uniform grid, can work in indices rather than space
+    #         # Build a linear extrapolation
+    #         for ir in 1:ir1-1
+    #             Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
+    #             # Tf[ir] = left_Textrap(ir)
+    #         end
+    #     elseif first > 1 # No neighboring ice, so constant extrapolation
+    #         Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
+    #     end
+
+
+    #     last = findlast(has_ice)
+    #     if last < dom.nr && last-1>1 && has_ice[last-1] && has_ice[last-2]
+    #         # Enough points to do a quadratic extrapolation, so do that.
+    #         # Is fine because we only really need one grid point of extrapolation
+    #         ir1 = findlast(has_ice)
+    #         ir2 = ir1 - 1
+    #         ir3 = ir1 - 2
+    #         Tf1 = Tf[ir1]
+    #         Tf2 = Tf[ir2]
+    #         Tf3 = Tf[ir3]
+    #         ref_pts = findlast(has_ice) .- 0:2
+    #         for ir in ir1+1:dom.nr
+    #             Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
+    #         end
+    #         # typeof(Tf1) <: AbstractFloat && @info "R extrap" Tf[ir3:ir1+2]
+    #     elseif last < dom.nr && last > 1 && has_ice[last-1]
+    #         # Build a linear extrapolation
+    #         # ir1 = findlast(has_ice)
+    #         # ir2 = ir1 - 1
+    #         # Tf1 = Tf[ir1]
+    #         # Tf2 = Tf[ir2]
+    #         ref_pts = findlast(has_ice) .- 0:1
+    #         # Assuming uniform grid, can work in indices rather than space
+    #         for ir in ir1+1:dom.nr
+    #             # Tf[ir] = right_Textrap(ir)
+    #             Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
+    #         end
+    #     elseif last < dom.nr # No neighboring ice, so constant extrapolation
+    #         Tf[findlast(has_ice)+1:end] .= Tf[findlast(has_ice)]
+    #     end
+    # elseif sum(edges) == 2 && has_ice[1] # One gap in the middle of the ice
+    #     # Handle this poorly for comparison sake
+    #     first = findfirst(edges)
+    #     last = findlast(edges)
+    #     # Interpolate on all the intermediate points
+    #     Tf[first+1:last] .= range(Tf[first], Tf[last+1], length=last-first+2)[2:end-1]
+
+        # gaps = findall(edges)#[2:end-1] 
+        # @info "check2" gaps
+        # for g in gaps
+        #     if g-1 ∉ gaps && g+1 ∉ gaps
+        #         Tf[g] = (Tf[g-1] + Tf[g+1]) / 2
+        #     else
+        #         @warn "unhandled: large gaps in ice"
+        #     end
+        # end
+
+
+
+
+
+    nothing
 end

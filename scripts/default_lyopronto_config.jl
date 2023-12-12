@@ -11,15 +11,7 @@ init_prof = :flat
 
 
 # ---- Variables which can be controlled during a run
-# Set points
 
-# t_samp = range(0, 2, step=1//60) .* u"hr"
-# # Ramp from -35 to 20
-# Tsh = fill(20.0u"°C", length(t_samp))
-# Tsh[1:101] .= make_ramp(-35u"°C", 20u"°C", 1u"K/minute", t_samp[1:101])
-# p_ch = cparams[:p_ch] = 150u"mTorr"
-# Q_gl_RF = 0u"W"
-# Q_ic = 0u"W/cm^3"
 Tsh = RampedVariable([238.15u"K", 293.15u"K"], [1u"K/minute"], [10u"hr"])
 p_ch = RampedVariable(150u"mTorr")
 Q_gl_RF = RampedVariable(0u"W")
@@ -53,6 +45,7 @@ controls = Dict{Symbol, Any}()
 config = Dict{Symbol, Any}()
 @pack! config = cparams, init_prof, Tf0, controls, vialsize, fillvol
 
+# config[:dudt_func] = LSS.dudt_heatmass_dae!
 
 # -------------------- Read in LyoPronto data
 
@@ -71,8 +64,15 @@ dryfrac_lp = lpdat["Percent Dried"][slice] / 100
 @time res = sim_from_dict(config)
 
 # ------------- Comparison plots
+# pl1 = plot(tsol, [T_lp, Tsol], ylabel="Tp", labels=permutedims(["LyoPronto", "LevelSetSublimation"]), legend=:bottomright)
+# pl2 = plot(tsol, [m_lp, msol], ylabel="sub. flux", labels=permutedims(["LyoPronto", "LevelSetSublimation"]), legend=:bottomright)
+# pl3 = plot(tsol, [dryfrac_lp, fsol], ylabel="drying progress", labels=permutedims(["LyoPronto", "LevelSetSublimation"]))
+
 tsol, Tsol, msol, fsol = compare_lyopronto_res(t_lp, res, config)
-pl1 = plot(tsol, [T_lp, Tsol], ylabel="Tp", labels=permutedims(["LyoPronto", "LevelSetSublimation"]), legend=:bottomright)
-pl2 = plot(tsol, [m_lp, msol], ylabel="sub. flux", labels=permutedims(["LyoPronto", "LevelSetSublimation"]))
-pl3 = plot(tsol, [dryfrac_lp, fsol], ylabel="drying progress", labels=permutedims(["LyoPronto", "LevelSetSublimation"]))
+pl1 = plot(t_lp, T_lp, label="LyoPronto", ylabel="Tp", legend=:bottomright)
+plot!(tsol, Tsol, label="LevelSetSublimation")
+pl2 = plot(t_lp, m_lp, label="LyoPronto", ylabel="sub. flux", legend=:bottomright)
+plot!(tsol, msol, label="LevelSetSublimation")
+pl3 = plot(t_lp, dryfrac_lp, label="LyoPronto", ylabel="drying progress", legend=:bottomright)
+plot!(tsol, fsol, label="LevelSetSublimation")
 plot(pl1, pl2, pl3)

@@ -56,7 +56,6 @@ end
 
 Compute transport coefficient `b` as a function of space, given `T`, `p`, and `params`.
 
-Uses the following fields from `params`, as documented in `sim_from_dict`: `\eps
 `params` should have the following fields: `l`, `κ`, `R`, `Mw`, `μ`. 
 `l`, and `κ` may be passed as scalars (and assumed as spatially uniform) or arrays (describing value throughout space, should match `Domain` dimensions).
 
@@ -117,13 +116,11 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
 
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
-    vals = Vector{eltype(Tf)}(undef, 0)
-
+    vals = similar(Tf, 0)
     vcr = (vals, cols, rows)
     rhs = similar(Tf, ntot)
     rhs .= 0
 
-    θ_thresh = 0.01
 
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration
@@ -160,7 +157,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 θr = pϕ/(pϕ-eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
-                if θr >= θ_thresh
+                if θr >= θ_THRESH
                     pc += -2bp*dr2/θr
                     rhs[imx] -= 2bp*psub_l*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within .05 cells of boundary
@@ -185,7 +182,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 θr = pϕ/(pϕ-wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
-                if θr >= θ_thresh
+                if θr >= θ_THRESH
                     pc += -2bp*dr2/θr
                     rhs[imx] -= 2psub_l*bp*dr2/θr + BC2*(r1 + 2dr1)
                 else 
@@ -221,14 +218,21 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 θr = pϕ / (pϕ - eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
-                if θr >= θ_thresh
-                    pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/θr
-                    wc +=  bp*(-0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
-                    rhs[imx] -= psub_l*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                if θr >= θ_THRESH
+                    # Linear ghost cell extrap
+                    # pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/θr
+                    # wc +=  bp*(-0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
+                    # rhs[imx] -= psub_l*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                    # Quadratic ghost cell
+                    pc += (bp*(-2*dr2 -(1-θr)*dr1*r1) - dbr*(1-θr)*dr1)/θr
+                    wc += (bp*(-dr1*r1*θr + 2dr2) - dbr*dr1*θr )/(θr+1)# Regular + b gradient
+                    rhs[imx] -= psub_l*(bp*(2dr2 + dr1*r1) + dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                 else
+                    # Linear a cell further out
                     pc += -2bp*dr2 
                     wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                     rhs[imx] -= psub_l*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # # Constant
                     # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
                     # rhs[imx] = calc_psub(Tf[ir])
                     # continue
@@ -237,8 +241,21 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 θr = pϕ / (pϕ - wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
-                if θr >= θ_thresh # Regular magnitude θ
-                    # # Linear ghost cell extrapolation
+                if θr >= θ_THRESH # Regular magnitude θ
+                    # if ir > 2
+                    #     # Logarithmic ghost cell extrapolation
+                    #     pc += (bp*(0.5dr1*r1*log(rΓ/rm) + dr2*log(r1*r1*rΓ*rm)) + dbr*0.5*dr1*log(rΓ/rm))/log(r/rΓ)
+                    #     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
+                    #     rhs[imx] -= psub_l*(bp*(dr2*log(r/rm) + 0.5dr1*r1*log(rm*r1)) + dbr*0.5dr1*log(rm*r1))/log(r/rΓ) # Dirichlet BC in ghost cell extrap
+                    #     @show ir iz pc ec rhs[imx]
+                    # else
+                    #     # Linear ghost cell extrapolation
+                    #     pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
+                    #     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
+                    #     rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
+                    #     @show ir iz pc ec rhs[imx]
+                    # end
+                    # Linear ghost cell extrapolation
                     # pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
                     # ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
                     # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
@@ -251,11 +268,24 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
                     # rhs[imx] = calc_psub(Tf[ir])
                     # continue
-
+                    # if ir > 2
+                    #     # Logarithmic extrapolation
+                    #     rp = rgrid[ir+1]
+                    #     pc += -2bp*dr2 
+                    #     ec += (bp*(dr2*log(rΓ*rΓ/rp/rm) + 0.5dr1*r1*log(rm/rp)) + 0.5dbr*dr1*log(rm/rp))/log(rΓ/rp) # Weaker dependence on this cell
+                    #     # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    #     rhs[imx] -= psub_l*(bp*(dr2*log(rm/rp) + 0.5dr1*r1*log(rp/rm)) + dbr*0.5dr1*log(rp/rm))/log(rΓ/rp) # Dirichlet BC in ghost cell extrap
+                    # else
+                    #     # Linear extrapolation, looking a cell further out
+                    #     pc += -2bp*dr2 
+                    #     ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
+                    #     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+                    # end
                     # Linear extrapolation, looking a cell further out
                     pc += -2bp*dr2 
                     ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
                     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
+
                     
                     # if iz == nz
                     #     # No special treatment
@@ -305,7 +335,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             if nϕ < 0 # Front is within a cell of boundary
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
-                if θz > θ_thresh
+                if θz > θ_THRESH
                     pc += -2bp*dz2/θz
                     rhs[imx] -= 2*psub_l*bp*dz2/θz + 2*BC3*dz1
                 else
@@ -332,7 +362,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 # stefan_debug = true
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-sϕ)
-                if θz > θ_thresh
+                if θz > θ_THRESH
                     pc += -2bp*dz2/θz -2/Rp0*dz1 - dbz/bp/Rp0
                     rhs[imx] -= 2*psub_l*bp*dz2/θz + p_ch/Rp0*(dbz/bp + 2dz1)
                 else
@@ -361,10 +391,15 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 rhs[imx] += 0
             elseif nϕ <= 0 # North ghost cell
                 θz = pϕ / (pϕ - nϕ)
-                if θz >= θ_thresh
-                    pc += (dbz*(θz-1)*dz1 - bp*(θz+1)*dz2 )/θz
-                    sc += bp*dz2 - dbz*0.5*dz1
-                    rhs[imx] -= psub_l*(bp*dz2 + dbz*0.5*dz1)/θz
+                if θz >= θ_THRESH
+                    # Quadratic
+                    pc += (bp*(-2*dz2) - dbz*(1-θz)*dz1)/θz
+                    sc += (bp*(2dz2) - dbz*dz1*θz )/(θz+1)# Regular + b gradient
+                    rhs[imx] -= psub_l*(bp*2dz2 + dbz*dz1)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
+                    # Linear
+                    # pc += (dbz*(θz-1)*dz1 - bp*(θz+1)*dz2 )/θz
+                    # sc += bp*dz2 - dbz*0.5*dz1
+                    # rhs[imx] -= psub_l*(bp*dz2 + dbz*0.5*dz1)/θz
                 else
                     pc += -2bp*dz2
                     sc += (2*bp*θz*dz2 - dbz*dz1)/(θz+1)
@@ -375,10 +410,15 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 end
             elseif sϕ <= 0
                 θz = pϕ / (pϕ - sϕ)
-                if θz >= θ_thresh
-                    pc += (-bp*dz2*(θz+1) + dbz*(1-θz)*dz1)/θz
-                    nc += bp*dz2 + dbz*0.5dz1
-                    rhs[imx] -= psub_l*(bp*dz2 - dbz*0.5dz1)/θz
+                if θz >= θ_THRESH
+                    # Linear
+                    # pc += (-bp*dz2*(θz+1) + dbz*(1-θz)*dz1)/θz
+                    # nc += bp*dz2 + dbz*0.5dz1
+                    # rhs[imx] -= psub_l*(bp*dz2 - dbz*0.5dz1)/θz
+                    # Quadratic
+                    pc += (bp*(-2*dz2) + dbz*(1-θz)*dz1)/θz
+                    nc += (bp*(2dz2) + dbz*dz1*θz )/(θz+1)# Regular + b gradient
+                    rhs[imx] -= psub_l*(bp*2dz2 - dbz*dz1)/θz/(θz+1) # Dirichlet BC in ghost cell extrap
                 else
                     pc += -2bp*dz2
                     nc += (2*bp*θz*dz2 + dbz*dz1)/(θz+1)
@@ -398,8 +438,8 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
 
         # if ec == 0 && nc == 0
         #     @info "doubleghost" ir iz pc wc sc rhs[imx]
-        # elseif nc == 0
-        #     @info "northghost" ir iz pc wc ec sc rhs[imx]
+        # elseif ec == 0
+        #     @info "eastghost" ir iz pc wc nc sc rhs[imx]
         # end
 
         # Assign all computed stencil values into matrix
@@ -413,7 +453,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
     mat_lhs = sparse(rows, cols, vals, ntot, ntot)
     prob = LinearProblem(mat_lhs, rhs)
     sol = solve(prob, SparspakFactorization()).u 
-    # sol = solve(prob, UMFPACKFactorization()).u 
     # sol = mat_lhs \ rhs
     psol = reshape(sol, nr, nz)
 end

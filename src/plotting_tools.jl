@@ -151,28 +151,48 @@ Unpack simulation results and plot the state at time `t`.
 `heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
-function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, p0=nothing, clims=nothing)
+function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, Tf0=nothing, clims=nothing)
     @unpack sol, dom = simresults
 
     if heatvar == :ϕ 
         ϕ = ϕ_T_from_u(sol(t), dom)[1]
         heatvar_vals = ϕ
         clab = "ϕ, m"
-        cmap = :algae
+        # cmap = :algae
+        cmap = :linear_green_5_95_c69_n256
         cont_c = :black
+        Tf = fill(0.0, dom.nr)
     elseif heatvar == :T 
-        u, ϕ, T, p = calc_uϕTp_res(t, simresults, simconfig; p0=p0)
+        if isnothing(Tf0)
+            Tf0 = fill(245.0, dom.nr)
+        end
+        u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
         # T = solve_T(u, dom, params)
+        ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
+        Tw -= 273.15
         heatvar_vals = T .- 273.15
         clab = " \nT, °C"
-        cmap = :plasma
+        # cmap = :plasma
+        cmap = :linear_bmy_10_95_c78_n256
         if maximum(ϕ_T_from_u(u, dom)[2]) > maximum(T) # Tf > T
             cont_c = :black
         else
             cont_c = :white
         end
+        Tsh = ustrip(u"°C", simconfig[:controls][:Tsh](t*u"s"))
+        maxT = max(Tw, Tsh, maximum(heatvar_vals))
+        if isnothing(clims)
+            clims = extrema(heatvar_vals)
+        end
+        if maximum(clims) < maxT
+            clims = (clims[1], maxT)
+        end
     elseif heatvar == :p
-        u, ϕ, T, p = calc_uϕTp_res(t, simresults, simconfig; p0=p0)
+        if isnothing(Tf0)
+            Tf0 = fill(245.0, dom.nr)
+        end
+        u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
+        ϕ = ϕ_T_from_u(u, dom)[1]
         # T = solve_T(u, dom, params)
         # p = solve_p(u, T, dom, params, p0)
         heatvar_vals = ustrip.(u"mTorr", p.*u"Pa")
@@ -194,8 +214,16 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     tr = round(t/3600, digits=2)
     local pl = plot(aspect_ratio=:equal, xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
     # plot_cylheat(heatvar_vals, dom; clims=clims)
+    if heatvar == :T
+        plot!(xlim=(-1, 1) .* (dom.rmax+1.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
+        heatmap!(vcat(dom.rgrid .- dom.rmax, dom.rgrid), [-dom.dz], fill(Tsh, 1, 2dom.nr), cmap=cmap, clims=clims)
+        heatmap!([-dom.rmax-dom.dr], dom.zgrid, fill(Tw, 1, dom.nz)', cmap=cmap, clims=clims)
+        heatmap!([ dom.rmax+dom.dr], dom.zgrid, fill(Tw, 1, dom.nz)', cmap=cmap, clims=clims)
+        plot!([-1, -1, 1, 1] .* (dom.rmax+0.5dom.dr), [dom.zmax, -0.5dom.dz, -0.5dom.dz, dom.zmax], c=:black, label=:none)
+    end
     heatmap!(dom.rgrid, dom.zgrid, heatvar_vals', c=cmap, clims=clims)
-    heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, heatvar_vals[end:-1:begin, :]', c=cmap) # plot reflected
+    heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, heatvar_vals[end:-1:begin, :]', c=cmap, clims=clims) # plot reflected
+    heatvar == :T && plot!([-1, -1, 1, 1] .* (dom.rmax+0.5dom.dr), [dom.zmax, -0.5dom.dz, -0.5dom.dz, dom.zmax], c=:black, label=:none)
     plot_cylcont(ϕ, dom, c=cont_c)
     if heatvar == :ϕ
         Plots.contour!(dom.rgrid, dom.zgrid, ϕ', color=:black)
@@ -205,7 +233,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], ["-R", "0", "R"]), )
     plot!(y_ticks = ([0, dom.zmax], ["0", "L"]),  )
     # plot!(x_ticks=[-dom.rmax, 0, dom.rmax], xlabel="radius")
-    return pl, heatvar_vals
+    return pl, heatvar_vals, Tf
 end
 
 function finalframe(simresults, simconfig; kwargs...)
@@ -275,9 +303,10 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=
     frames = range(0, tf, length=seconds_length*fps)
     # if heatvar == :p
     heatvals = fill(0.0, size(dom))
+    Tf_g = fill(245.0, dom.nr)
     # end
     anim = @animate for ti ∈ frames
-        pl, heatvals = plotframe(ti, simresults, simconfig, heatvar=heatvar, p0=heatvals, clims=clims)
+        pl, heatvals, Tf_g = plotframe(ti, simresults, simconfig, heatvar=heatvar, Tf0=Tf_g, clims=clims)
         # heat_p_min = heat_ex[1] - 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # heat_p_max = heat_ex[2] + 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # plot!(p, clims=(heat_p_min, heat_p_max))

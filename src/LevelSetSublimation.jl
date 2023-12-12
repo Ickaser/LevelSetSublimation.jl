@@ -6,11 +6,12 @@ using DrWatson, Reexport
 @reexport using Contour  
 @reexport using Plots
 @reexport using Unitful
+@reexport using LaTeXStrings
 using CSV
-using ProgressMeter
-using LinearAlgebra: norm
+# using ProgressMeter
+using LinearAlgebra: norm, Diagonal
 using UnicodePlots: spy
-using NLsolve
+# using NLsolve
 using NonlinearSolve
 using LinearSolve
 using NaNMath
@@ -23,6 +24,9 @@ end
 const CI = CartesianIndex
 
 # Export statements belong in each source file below.
+
+# A constant which shows up in multiple places, defined globally here:
+const θ_THRESH = 0.01
 
 include(srcdir("structs.jl"))
 include(srcdir("get_vial_dims.jl"))
