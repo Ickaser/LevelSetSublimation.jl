@@ -11,6 +11,7 @@ if abspath(PROGRAM_FILE) == @__FILE__ # Run as individual script
     @info "Reading input from: $(projectdir(inputfile))"
 else
     @info "hpc_sim.jl run not as standalone, using `example_input.jl` as input"
+    # inputfile = scriptsdir("nosync_siminputs", "input_highcurvature.jl")
     inputfile = scriptsdir("example_input.jl")
 end
 

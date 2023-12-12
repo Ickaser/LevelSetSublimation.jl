@@ -8,9 +8,13 @@
 data
 videos
 plots
+
 # notebooks
 _research
 .vscode
+
+# Input folder I don't want to be linked to Git tracking
+/scripts/nosync_siminputs
 
 /scripts/run_from_dict.jl
 
