@@ -146,6 +146,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
             # @info "Condition used" dTr b
         else
             # Robin boundary condition: employ explicitly
+
             dTr = Kw/k*(Tw - pT)
         end
     else 
@@ -257,13 +258,32 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
     end
 
     if ir == 1 
-        # Enforce BC explicitly for boundary cells
-        dpr = 0.0
-        # TODO: eval at interface, not boundary
+        if ϕp*ϕ[ir+1,iz] <= 0 
+            # If interface is near boundary, quadratic interpolant using T(b), dT/dr(b), T(Γ)
+            θr = ϕp /(ϕp - ϕ[ir+1,iz])
+            Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
+            psub_loc = calc_psub(Tf_loc)
+            b = 0
+            dpr = 2(psub_loc - p[ir,iz] )/θr*dr1 + b
+            # @info "Condition used" dTr b
+        else
+            # Neumann boundary condition: employ explicitly
+            dpr = 0
+        end
     elseif ir == nr
-        # Enforce BC explicitly for boundary cells
-        dpr = 0.0
-        # TODO: eval at interface, not boundary
+        # dpr = 0.0
+        if ϕp*ϕ[ir-1,iz] <= 0 
+            # If interface is near boundary, quadratic interpolant using T(b), dT/dr(b), T(Γ)
+            θr = ϕp /(ϕp - ϕ[ir-1,iz])
+            Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
+            psub_loc = calc_psub(Tf_loc)
+            b = 0
+            dpr = 2(p[ir,iz] - psub_loc)/θr*dr1 - b
+            # @info "Condition used" dTr b
+        else
+            # Neumann boundary condition: employ explicitly
+            dpr = 0
+        end
     else 
         # Bulk
         eϕ = ϕ[ir+1, iz]
