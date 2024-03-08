@@ -346,9 +346,9 @@ function solve_T(u, Tf, dom::Domain, params)
     # sol = mat_lhs \ rhs
     T = reshape(sol, nr, nz)
 
-    if minimum(T) <= 0
-        @info "negative temperatures" T
-    end
+    # if minimum(T) <= 0
+    #     @info "negative temperatures" T
+    # end
     return T
 end
 
@@ -371,6 +371,8 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     @unpack kf, ρf, Cpf = params
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
+    # Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
+    # @info "Tf solve" extrema(Δξ) extrema(Tf_g)
     if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
         return Tf_g
     end
@@ -385,7 +387,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     # end
 
     # function resid!(dTfdt, Tf)
-    function resid!(dTfdt, Tf, p)
+    function resid!(dTfdt, Tf, unused_arg)
         if any(isnan.(Tf))
             @warn "NaN found" Tf
         end
@@ -401,43 +403,63 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             else
                 @info "Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
             end
-            clamp!(Tf, 200, 350)
-            if typeof(Tf[1]) <: AbstractFloat
-                @info "after Crazy Tf" Tf[has_ice] els
-            else
-                @info "after Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
-            end
+            # clamp!(Tf, 200, 350)
+            # if typeof(Tf[1]) <: AbstractFloat
+            #     @info "after Crazy Tf" Tf[has_ice] els
+            # else
+            #     @info "after Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
+            # end
         end
+        # if minimum(Δξ) < 1e-4
+        #     @time T = solve_T(u, Tf, dom, params)
+        #     @time p = solve_p(u, Tf, T, dom, params)
+        # else
         T = solve_T(u, Tf, dom, params)
         p = solve_p(u, Tf, T, dom, params)
+        # end
         dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
+        nothing
     end
 
     if all(has_ice) # IF all ice present, use all DOF
         # sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
         prob = NonlinearProblem(resid!, Tf_g)
-        sol = solve(prob)
+        # prob = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
+        sol = solve(prob, maxiters=20)
+        # sol = solve(prob, NewtonRaphson())
+        # sol = solve(prob, DynamicSS(Rosenbrock23()))
+        if sol.retcode == ReturnCode.MaxIters
+            @info "maxit" sol.retcode sol.u
+            prob_ss = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
+            sol = solve(prob_ss, DynamicSS(Rosenbrock23()), maxiters=100)
+            @info "SS iterations" sol.retcode sol.stats sol.u
+        end
         Tfs = sol.u
         # Tfs = sol.zero
     else # If ice doesn't cover full radial extent, trim out those DOF
         Tf_trim = Tf_g[has_ice]
-        function resid_lessdof!(dTfdt_trim, Tf_trim, p)
+        function resid_lessdof!(dTfdt_trim, Tf_trim, unused_arg2)
         # resid! = function (dTfdt_trim, Tf_trim)
             dTfdt = zeros(eltype(dTfdt_trim), dom.nr)
             Tf = zeros(eltype(Tf_trim), dom.nr)
             Tf[has_ice] .= Tf_trim
-            Tf[.~has_ice] .= Tf_trim[1]
+            # Tf[.~has_ice] .= Tf_trim[1]
             extrap_Tf_noice!(Tf, has_ice, dom)
-            resid!(dTfdt, Tf, p)
+            resid!(dTfdt, Tf, unused_arg2)
             dTfdt_trim .= dTfdt[has_ice]
             nothing
         end
         # sol = nlsolve(resid_lessdof!, Tf_trim, autodiff=:forward, ftol=1e-10)
         # Tfs[has_ice] = sol.zero
         prob = NonlinearProblem(resid_lessdof!, Tf_trim)
+        # prob = NonlinearProblem(resid_2!, Tf_trim)
         sol = solve(prob)
         Tfs = zeros(dom.nr)
         Tfs[has_ice] = sol.u
+        # @info "arrived" resid! resid!(fill(1.0, 51), Tf_g, 0)
+        # prob = NonlinearProblem(resid!, Tf_g)
+        # sol = solve(prob)
+        # Tfs = sol.u
         extrap_Tf_noice!(Tfs, has_ice, dom)
     end
 
