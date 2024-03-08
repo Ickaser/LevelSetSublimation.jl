@@ -50,6 +50,10 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
         @warn "The more arcane starting shapes are not well-tested."
         ϕ0 = [0.5*(dom.zmax/dom.rmax)*r + z - 0.6dom.zmax + ϵ 
                 for r in dom.rgrid, z in dom.zgrid]
+    elseif ϕtype == :cornercone
+        @warn "The more arcane starting shapes are not well-tested."
+        ϕ0 = [0.5*(dom.zmax/dom.rmax)*r + z - 0.5dom.zmax + ϵ 
+                for r in dom.rgrid, z in dom.zgrid]
     else
         @error "ArgumentError: Invalid ϕ0 kind to make_ϕ0" ϕtype
     end
@@ -173,6 +177,7 @@ function make_default_params()
     Kv = 20 * u"W/K/m^2"
     Q_ic = 0.0u"W/cm^3"
     Q_ck = 0.0u"W/m^3"
+    
     m_cp_gl = 5u"g" * LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
 
     # Mass transfer
