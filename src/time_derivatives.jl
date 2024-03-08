@@ -65,8 +65,14 @@ function dudt_heatmass!(du, u, integ_pars, t)
     Qgl = compute_Qgl(u, T, dom, params)
     # A_vsh = π*((dom.rmax+vial_thick)^2 - dom.rmax^2)
     # Q_vsh = params[:Kv]*(params[:Tsh]-Tw[1]) * A_vsh
+    A_v = π*((dom.rmax+vial_thick)^2)
+    Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 )
+    # Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 ) + (A_v-π*dom.rmax^2)*params[:Kv]*(params[:Tsh]-Tw[1])
+    # @info "rad" Q_shvw Qgl params[:Tsh] Tw[1]
     # dTw .= (Q_gl_RF + Q_vsh - Qgl) / m_cp_gl
-    dTw .= (Q_gl_RF - Qgl) / m_cp_gl
+    dTw .= (Q_gl_RF - Qgl + Q_shvw) / m_cp_gl
+    # @info "glass" dTw Q_shvw Qgl
+    # dTw .= (Q_gl_RF - Qgl) / m_cp_gl
 
     # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
@@ -180,7 +186,6 @@ function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
     qflux = k*(dϕdr*dTdr + dϕdz*dTdz)
     mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
 
-    # isnan(qflux + ΔH*mflux) && @info "subheat" ir,iz qflux mflux dTdr dTdz dpdr dpdz
 
     return qflux + ΔH*mflux, dϕdr, dϕdz
 end
@@ -484,7 +489,11 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         else
             iz = findlast(ϕ[ir,:] .<=0) + 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-            top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
+            # top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
+            # top_bound_term = q*sqrt( (dϕdr/ dϕdz)^2 + 1)
+            dξdr = -dϕdr/dϕdz
+            top_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
+            # top_bound_term = q/dϕdz + kf*dξdr*dTfdr
             isnan(top_bound_term) && @info "top bound" q dϕdr dϕdz dTfdr
             # top_bound_term = q*dϕdz
         end
@@ -492,15 +501,22 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         if bot_contact[ir]
             # Shelf boundary
             # bot_bound_term = params[:Kv]*(Tf[ir] - params[:Tsh]) * compute_local_H(CI(ir, 1), ϕ, dom)*2
-            K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
+            if Δξ[ir] > dom.dz
+                K_eff = params[:Kv]
+            else
+                K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
+            end
             bot_bound_term = K_eff*(Tf[ir] - params[:Tsh]) 
             isnan(bot_bound_term) && @info "NaN bottom" Tf[ir] T[ir,begin] params[:Tsh]
         else
             # Stefan boundary
             iz = findfirst(ϕ[ir,:] .<=0) - 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-            bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
-            # bot_bound_term = q*dϕdz
+            # bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
+            # bot_bound_term = q*sqrt( (dϕdr/ dϕdz)^2 + 1)
+            dξdr = -dϕdr/dϕdz
+            bot_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
+            # bot_bound_term = q/dϕdz + kf*dξdr*dTfdr
             isnan(bot_bound_term) && @info "NaN bottom" q dϕdz dϕdr dTfdr
         end
 
@@ -509,6 +525,9 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
         dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + Q_ic + 
             (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
+        # if ir ∈ [dom.nr-2, dom.nr-1, dom.nr] && Δξ[dom.nr] <= 5e-4
+        #     @info "right edge" ir kf*r1*dTfdr kf*d2Tfdr2 Q_ic top_bound_term bot_bound_term Δξ[ir] dTfdt[ir] dξdr q
+        # end
 
         # isnan(dTfdt[ir]) && @info "NaN in dTfdt" dTfdr d2Tfdr2 top_bound_term bot_bound_term Δξ[ir]
     end
