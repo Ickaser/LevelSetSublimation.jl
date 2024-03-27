@@ -82,8 +82,8 @@ function dudt_heatmass!(du, u, integ_pars, t)
 
         rcomp = dϕdr * vr[ind]
         zcomp = dϕdz * vz[ind]
-        # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
-        dϕ[ind] = -rcomp - zcomp
+        dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
+        # dϕ[ind] = -rcomp - zcomp
     end
     if verbose && eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
@@ -185,7 +185,6 @@ function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
 
     qflux = k*(dϕdr*dTdr + dϕdz*dTdz)
     mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
-
 
     return qflux + ΔH*mflux, dϕdr, dϕdz
 end
@@ -302,6 +301,19 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             end
         elseif ir == dom.nr
             dTfdr = params[:Kw]/kf*(Tw - Tf[ir])
+            # if Δξ[ir] < dom.dz/2 # At small ice height, need a special case
+            #     iz = findlast(ϕ[ir,:] .<=0) + 1
+            #     q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
+            #     dξdr = -dϕdr/dϕdz
+            #     qtop = q*sqrt(dξdr^2 + 1)
+            #     # We get terms that go to zero, and can therefore solve a linear equaiton for Tf, other than q_top
+            #     rhs = (dξdr*params[:Kw]*Tw + params[:Kv]*params[:Tsh] + qtop)/(dξdr*params[:Kw] + params[:Kv])
+            #     dTfdt[ir] = rhs - Tf[ir]
+            #     @info "Edge case" rhs dTfdt[ir]
+            #     continue
+                
+
+            # elseif has_ice[dom.nr-1]
             if has_ice[dom.nr-1]
                 d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
             else
@@ -494,7 +506,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             dξdr = -dϕdr/dϕdz
             top_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
             # top_bound_term = q/dϕdz + kf*dξdr*dTfdr
-            isnan(top_bound_term) && @info "top bound" q dϕdr dϕdz dTfdr
+            # isnan(top_bound_term) && @info "top bound" q dϕdr dϕdz dTfdr
             # top_bound_term = q*dϕdz
         end
 
@@ -507,7 +519,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
             end
             bot_bound_term = K_eff*(Tf[ir] - params[:Tsh]) 
-            isnan(bot_bound_term) && @info "NaN bottom" Tf[ir] T[ir,begin] params[:Tsh]
+            # isnan(bot_bound_term) && @info "NaN bottom" Tf[ir] T[ir,begin] params[:Tsh]
         else
             # Stefan boundary
             iz = findfirst(ϕ[ir,:] .<=0) - 1
@@ -517,7 +529,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             dξdr = -dϕdr/dϕdz
             bot_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
             # bot_bound_term = q/dϕdz + kf*dξdr*dTfdr
-            isnan(bot_bound_term) && @info "NaN bottom" q dϕdz dϕdr dTfdr
+            # isnan(bot_bound_term) && @info "NaN bottom" q dϕdz dϕdr dTfdr
         end
 
 
@@ -751,7 +763,8 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
 
         rcomp = dϕdr * vr[ind]
         zcomp = dϕdz * vz[ind]
-        dϕ[ind] = -rcomp - zcomp
+        dϕ[ind] = max(0.0, -rcomp - zcomp)
+        # dϕ[ind] = -rcomp - zcomp
     end
 
 
