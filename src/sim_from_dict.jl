@@ -258,21 +258,23 @@ end
 Flat copy of sim_from_dict as of 2024-02-07, except it takes u0 as argument, allowing starting from midway through cycle.
 """
 function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
-    @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = fullconfig
+    @unpack cparams, init_prof, controls, vialsize, fillvol = fullconfig
     dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to heat and mass transfer-based evolution
     dom = Domain(fullconfig)
     if !haskey(cparams, :vial_thick) 
         cparams[:vial_thick] =  get_vial_thickness(vialsize)
     end
     params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
-    ϕ0 = ϕ_T_from_u_view(u0, dom)[1]
+    ϕ0, Tf0, Tvw0 = ϕ_T_from_u_view(u0, dom)
     if verbose
         @info "Initializing ϕ"
     end
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
-    p_sub = calc_psub(ustrip(u"K", Tf0))
+    # p_sub = calc_psub(ustrip(u"K", Tf0))
+    p_sub = calc_psub(Tf0[1])
     p_last = fill(p_sub, size(dom))
-    Tf_last = fill(ustrip(u"K", Tf0), dom.nr)
+    # Tf_last = fill(ustrip(u"K", Tf0), dom.nr)
+    Tf_last = copy(Tf0)
     prob_pars = (dom, params, p_last, Tf_last, ncontrols, verbose)
     tspan = (t0, tf)
     prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
@@ -281,7 +283,7 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
     cb_end = ContinuousCallback(cond_end, terminate!)
     cbs = CallbackSet(cb_reinit, cb_end)
     if verbose
-        @info "Beginning solve"
+        @info "Beginning solve" u0 t0
     end
     if dudt_func == dudt_heatmass!
         # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
