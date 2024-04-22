@@ -239,8 +239,18 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # --- Solve
     if dudt_func == dudt_heatmass!
         # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
-        sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
-    elseif dudt_func == dudt_heatmass_dae!
+        # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+        function store_Tf!(integrator)
+            ϕ, Tf, Tw = ϕ_T_from_u_view(integrator.u, integrator.p[1])
+            @info "callback"
+            @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], integrator.p[2], integrator.p[4])
+            Tf .= Tf_sol
+        end
+
+        cb_store = DiscreteCallback((a,b,c)->true, store_Tf!, save_positions=(false,true))
+        # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
+        sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Adaptive timestepping: default
+    elseif dudt_func == dudt_heatmass_dae! || dudt_func == dudt_heatmass_dae_or_newton!
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
         massmat = Diagonal(vcat(ones(length(ϕ0)), zeros(dom.nr), [1]))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
@@ -286,14 +296,23 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
         @info "Beginning solve" u0 t0
     end
     if dudt_func == dudt_heatmass!
+        function store_Tf!(integrator)
+            ϕ, Tf, Tw = ϕ_T_from_u_view(integrator.u)
+            @info "callback"
+            @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], integrator.p[2], integrator.p[4])
+            Tf .= Tf_sol
+        end
+
+        cb_store = DiscreteCallback((a,b,c)->true, store_Tf!, store_positions=(false,true))
         # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
-        sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
-    elseif dudt_func == dudt_heatmass_dae!
+        sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Adaptive timestepping: default
+    elseif dudt_func == dudt_heatmass_dae! || dudt_func == dudt_heatmass_dae_or_newton!
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
         massmat = Diagonal(vcat(ones(length(ϕ0)), zeros(dom.nr), [1]))
-        func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
+        func = ODEFunction(dudt_func, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
-        sol = solve(prob, FBDF(); callback=cbs)
+        sol = solve(prob, Rodas4P2(); callback=cbs)
+        # sol = solve(prob, FBDF(); callback=cbs)
     elseif dudt_func == dudt_heatmass_implicit!
         sol = solve(prob, Rodas4P(), callback=cbs; ) # Adaptive timestepping: default
     else
