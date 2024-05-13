@@ -89,7 +89,7 @@ function compute_Qgl(u, T, dom::Domain, params)
     ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
     # Heat flux from glass, at outer radius
     # zweights = compute_icegl_area_weights(ϕ, dom) # area for ice-glass
-    zweights = fill(dom.dz, dom.nr)
+    zweights = fill(dom.dz, dom.nz)
     zweights[begin] = zweights[end] = dom.dz/2 # area for ice-glass + ice-cake
     Qgl = 2π*dom.rmax * Kw * sum(zweights .* ( Tw .- T[end,:]))
 end
