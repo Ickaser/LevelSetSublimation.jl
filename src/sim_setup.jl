@@ -50,6 +50,10 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
         @warn "The more arcane starting shapes are not well-tested."
         ϕ0 = [0.5*(dom.zmax/dom.rmax)*r + z - 0.6dom.zmax + ϵ 
                 for r in dom.rgrid, z in dom.zgrid]
+    elseif ϕtype == :cornercone
+        @warn "The more arcane starting shapes are not well-tested."
+        ϕ0 = [0.5*(dom.zmax/dom.rmax)*r + z - 0.5dom.zmax + ϵ 
+                for r in dom.rgrid, z in dom.zgrid]
     else
         @error "ArgumentError: Invalid ϕ0 kind to make_ϕ0" ϕtype
     end
@@ -100,27 +104,35 @@ function params_nondim_setup(cparams, controls)
     return params, nondim_controls
 end
 
-function nondim_controlvar(varname::Symbol, control_dim::Q) where Q <: Quantity
-    if dimension(control_dim) != dimension(PBD[varname])
-        @error "Bad units on controlled variable." varname control_dim PBD[varname]
-    end
-    base_un = PBD[varname]
-    control_ndim = RampedVariable(ustrip(base_un, control_dim))
-    return control_ndim
-end
-function nondim_controlvar(varname::Symbol, control_dim::RampedVariable)
+# function nondim_controlvar(varname::Symbol, control_dim::Q) where Q <: Quantity
+#     if dimension(control_dim) != dimension(PBD[varname])
+#         @error "Bad units on controlled variable." varname control_dim PBD[varname]
+#     end
+#     base_un = PBD[varname]
+#     control_ndim = RampedVariable(ustrip(base_un, control_dim))
+#     return control_ndim
+# end
+# function nondim_controlvar(varname::Symbol, control_dim::RampedVariable)
+#     if dimension(control_dim(0u"s")) != dimension(PBD[varname])
+#         @error "Bad units on ramped variable." varname control_dim PBD[varname]
+#     end
+#     base_un = PBD[varname]
+#     if length(control_dim.setpts) > 1
+#         setpts = ustrip.(base_un, control_dim.setpts)
+#         ramprates = ustrip.(base_un/u"s", control_dim.ramprates)
+#         holds = ustrip.(u"s", control_dim.holds)
+#         control_ndim = RampedVariable(setpts, ramprates, holds)
+#     else
+#         control_ndim = RampedVariable(ustrip(base_un, control_dim.setpts[1]))
+#     end
+#     return control_ndim
+# end
+function nondim_controlvar(varname, control_dim)
     if dimension(control_dim(0u"s")) != dimension(PBD[varname])
         @error "Bad units on ramped variable." varname control_dim PBD[varname]
     end
     base_un = PBD[varname]
-    if length(control_dim.setpts) > 1
-        setpts = ustrip.(base_un, control_dim.setpts)
-        ramprates = ustrip.(base_un/u"s", control_dim.ramprates)
-        holds = ustrip.(u"s", control_dim.holds)
-        control_ndim = RampedVariable(setpts, ramprates, holds)
-    else
-        control_ndim = RampedVariable(ustrip(base_un, control_dim.setpts[1]))
-    end
+    control_ndim = t->ustrip.(base_un, control_dim(t*u"s"))
     return control_ndim
 end
 
@@ -173,6 +185,7 @@ function make_default_params()
     Kv = 20 * u"W/K/m^2"
     Q_ic = 0.0u"W/cm^3"
     Q_ck = 0.0u"W/m^3"
+    
     m_cp_gl = 5u"g" * LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
 
     # Mass transfer

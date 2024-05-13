@@ -239,8 +239,18 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # --- Solve
     if dudt_func == dudt_heatmass!
         # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
-        sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
-    elseif dudt_func == dudt_heatmass_dae!
+        # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+        function store_Tf!(integrator)
+            ϕ, Tf, Tw = ϕ_T_from_u_view(integrator.u, integrator.p[1])
+            @info "callback"
+            @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], integrator.p[2], integrator.p[4])
+            Tf .= Tf_sol
+        end
+
+        cb_store = DiscreteCallback((a,b,c)->true, store_Tf!, save_positions=(false,true))
+        # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
+        sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Adaptive timestepping: default
+    elseif dudt_func == dudt_heatmass_dae! || dudt_func == dudt_heatmass_dae_or_newton!
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
         massmat = Diagonal(vcat(ones(length(ϕ0)), zeros(dom.nr), [1]))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
@@ -254,8 +264,65 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     return @strdict sol dom
 end
 
-function sim_and_postprocess(config)
-    @time res = sim_from_dict(config)
+"""
+Flat copy of sim_from_dict as of 2024-02-07, except it takes u0 as argument, allowing starting from midway through cycle.
+"""
+function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
+    @unpack cparams, init_prof, controls, vialsize, fillvol = fullconfig
+    dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to heat and mass transfer-based evolution
+    dom = Domain(fullconfig)
+    if !haskey(cparams, :vial_thick) 
+        cparams[:vial_thick] =  get_vial_thickness(vialsize)
+    end
+    params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
+    ϕ0, Tf0, Tvw0 = ϕ_T_from_u_view(u0, dom)
+    if verbose
+        @info "Initializing ϕ"
+    end
+    reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
+    # p_sub = calc_psub(ustrip(u"K", Tf0))
+    p_sub = calc_psub(Tf0[1])
+    p_last = fill(p_sub, size(dom))
+    # Tf_last = fill(ustrip(u"K", Tf0), dom.nr)
+    Tf_last = copy(Tf0)
+    prob_pars = (dom, params, p_last, Tf_last, ncontrols, verbose)
+    tspan = (t0, tf)
+    prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
+    cb_reinit = DiscreteCallback(needs_reinit, x->reinit_wrap(x, verbose=verbose))
+    cond_end(u, t, integ) = minimum(u) 
+    cb_end = ContinuousCallback(cond_end, terminate!)
+    cbs = CallbackSet(cb_reinit, cb_end)
+    if verbose
+        @info "Beginning solve" u0 t0
+    end
+    if dudt_func == dudt_heatmass!
+        function store_Tf!(integrator)
+            ϕ, Tf, Tw = ϕ_T_from_u_view(integrator.u)
+            @info "callback"
+            @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], integrator.p[2], integrator.p[4])
+            Tf .= Tf_sol
+        end
+
+        cb_store = DiscreteCallback((a,b,c)->true, store_Tf!, store_positions=(false,true))
+        # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
+        sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Adaptive timestepping: default
+    elseif dudt_func == dudt_heatmass_dae! || dudt_func == dudt_heatmass_dae_or_newton!
+        # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
+        massmat = Diagonal(vcat(ones(length(ϕ0)), zeros(dom.nr), [1]))
+        func = ODEFunction(dudt_func, mass_matrix=massmat)
+        prob = ODEProblem(func, u0, tspan, prob_pars)
+        sol = solve(prob, Rodas4P2(); callback=cbs)
+        # sol = solve(prob, FBDF(); callback=cbs)
+    elseif dudt_func == dudt_heatmass_implicit!
+        sol = solve(prob, Rodas4P(), callback=cbs; ) # Adaptive timestepping: default
+    else
+        sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+    end
+    return @strdict sol dom
+end
+
+function sim_and_postprocess(config; kwargs...)
+    @time res = sim_from_dict(config; kwargs...)
     rpos = [0,   0  , 0, 0.5, 1]
     zpos = [0.5, 0.25, 0, 0  , 0]
     @time Tf_sol = virtual_thermocouple(rpos, zpos, res, config)

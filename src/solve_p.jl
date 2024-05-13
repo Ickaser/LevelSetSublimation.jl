@@ -103,16 +103,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             rgrid, zgrid, nr, nz, ntot = dom
     @unpack Rp0, p_ch = params
 
-    # To prevent blowup, artificially add some corner ice if none is present
-    # This is by tampering with level set field, hopefully memory safe
-    if minimum(ϕ) > 0
-        # @info "Solving heat equation without any ice, artificially introducing some"
-        ϕ = copy(ϕ)
-        ϕ[argmin(ϕ)] = - max(dr, dz)
-    end
-    if any(isnan.(Tf))
-        @warn "NaN found"
-    end
 
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)

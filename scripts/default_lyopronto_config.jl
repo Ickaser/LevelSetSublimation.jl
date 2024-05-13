@@ -6,7 +6,7 @@ Tf0 = -35.857u"°C"
 vialsize = "6R"
 fillvol = 2u"mL"
 
-simgridsize = (51, 51)
+simgridsize = (26, 51)
 init_prof = :flat 
 
 
@@ -61,7 +61,11 @@ m_lp = lpdat["Sublimation Flux [kg/hr/m^2]"][slice]*u"kg/hr/m^2"
 dryfrac_lp = lpdat["Percent Dried"][slice] / 100
 
 # -------------------- Run simulation
-@time res = sim_from_dict(config)
+@time sim, fname = produce_or_load(sim_and_postprocess, config; filename=hash, verbose=false, tag=true, prefix=datadir("sims", "lyopronto"))
+# @time sim = sim_and_postprocess(config)
+# safesave(datadir("sims", savename(fi)))
+
+res = sim["res"]
 
 # ------------- Comparison plots
 # pl1 = plot(tsol, [T_lp, Tsol], ylabel="Tp", labels=permutedims(["LyoPronto", "LevelSetSublimation"]), legend=:bottomright)
@@ -69,10 +73,19 @@ dryfrac_lp = lpdat["Percent Dried"][slice] / 100
 # pl3 = plot(tsol, [dryfrac_lp, fsol], ylabel="drying progress", labels=permutedims(["LyoPronto", "LevelSetSublimation"]))
 
 tsol, Tsol, msol, fsol = compare_lyopronto_res(t_lp, res, config)
-pl1 = plot(t_lp, T_lp, label="LyoPronto", ylabel="Tp", legend=:bottomright)
+pl1 = plot(t_lp, T_lp, label="LyoPronto", ylabel=L"T_\textrm{f}", unitformat=:square, legend=:bottomright)
 plot!(tsol, Tsol, label="LevelSetSublimation")
-pl2 = plot(t_lp, m_lp, label="LyoPronto", ylabel="sub. flux", legend=:bottomright)
+pl2 = plot(t_lp, m_lp, label="LyoPronto", legend=:bottomright)
 plot!(tsol, msol, label="LevelSetSublimation")
+plot!(ylabel=P"$\dot{m}''$  [$kg\ hr^{-1} m^{-2}$]", )
 pl3 = plot(t_lp, dryfrac_lp, label="LyoPronto", ylabel="drying progress", legend=:bottomright)
 plot!(tsol, fsol, label="LevelSetSublimation")
 plot(pl1, pl2, pl3)
+
+# ------------- Plots for prelim
+plot!(pl1, size=(300, 250))
+savefig(plotsdir("lyopronto_T.pdf"))
+plot!(pl2, size=(300, 250))
+savefig(plotsdir("lyopronto_subflux.pdf"))
+plot!(pl3, size=(300, 250))
+savefig(plotsdir("lyopronto_dryfrac.pdf"))

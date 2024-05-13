@@ -171,7 +171,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
         ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
         Tw -= 273.15
         heatvar_vals = T .- 273.15
-        clab = " \nT, °C"
+        clab = "Temperature [°C]"
         # cmap = :plasma
         cmap = :linear_bmy_10_95_c78_n256
         if maximum(ϕ_T_from_u(u, dom)[2]) > maximum(T) # Tf > T
@@ -256,7 +256,7 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
 
     plots = []
     nplots = prod(layout)
-    frames = range(0.0, tf*0.99, length=nplots)
+    frames = range(0.0, tf*0.95, length=nplots)
 
     max_heat = 250.0
     min_heat = 250.0
@@ -267,7 +267,7 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
 
     for f in frames
         # p = plotframe(f, simresults, simconfig, maxT=maxT, heatvar=heatvar)
-        pl, heatvals = plotframe(f, simresults, simconfig, heatvar=heatvar, p0= heatvals)
+        pl, heatvals = plotframe(f, simresults, simconfig, heatvar=heatvar)
         ext_heat = extrema(heatvals)
         if f == 0
             min_heat, max_heat = ext_heat
@@ -278,9 +278,6 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
         push!(plots, pl)
     end
 
-    # for p_i in plots
-    #     plot!(p_i, clims=(min_heat, max_heat))
-    # end
     plsize = (1.25*(2*dom.rmax/dom.zmax)*200 * layout[2], 200*layout[1])
     bigplot = plot(plots..., size=plsize, layout=layout)
 end

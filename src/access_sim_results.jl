@@ -104,13 +104,14 @@ function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothi
     params = calc_params_at_t(t, simconfig)
     
     u = sol(t)
-    if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
-        Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
-    elseif haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_implicit!
-        Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
-    else
-        Tf = pseudosteady_Tf(u, dom, params, Tf0)
-    end
+    # if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
+    #     Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+    # elseif haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_implicit!
+    #     Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+    # else
+    #     Tf = pseudosteady_Tf(u, dom, params, Tf0)
+    # end
+    Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
 
     # p_sub = calc_psub(Tf)
     T = solve_T(u, Tf, dom, params)
@@ -150,20 +151,21 @@ function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Di
         @error "Number of radial positions should match number of vertical positions." rpos zpos
     end
     @unpack sol, dom = simresults
-    Tf = fill(245.0, dom.nr)
+    # Tf = fill(245.0, dom.nr)
     ri = @. round(Int, rpos*(dom.nr-1)) + 1
     zi = @. round(Int, zpos*(dom.nz-1)) + 1
     inds = [CI(ir, iz) for (ir, iz) in zip(ri, zi)]
     Tdat = map(t) do ti 
         params = calc_params_at_t(ti, simconfig)
         u = sol(ti)
-        if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
-            Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
-        elseif haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_implicit!
-            Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
-        else
-            Tf = pseudosteady_Tf(u, dom, params, Tf)
-        end
+        # if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
+        #     Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+        # elseif haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_implicit!
+        #     Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+        # else
+        #     Tf = pseudosteady_Tf(u, dom, params, Tf)
+        # end
+        Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
         # @info "check" ti Tf[1]
         T = solve_T(u, Tf, dom, params)
         Tloc = T[inds]

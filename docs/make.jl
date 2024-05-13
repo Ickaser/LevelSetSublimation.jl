@@ -6,7 +6,6 @@ using DocumenterCitations
 bib = CitationBibliography(projectdir("bib", "Zotero_LevelSet.bib"))
 
 makedocs(
-        bib,
         sitename="Level Set Sublimation Documentation",
         pages = [
             "Table of Contents" => "index.md",
@@ -20,6 +19,7 @@ makedocs(
             ],
             "References" => "refs.md",
             "Everything for Good Measure" => "alldocs.md",
-        ] 
+        ]
+        ; plugins = [bib], 
         )
 
