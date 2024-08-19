@@ -425,11 +425,11 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
 
     if all(has_ice) # IF all ice present, use all DOF
         # sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
-        # prob = NonlinearProblem(resid!, Tf_g)
+        prob = NonlinearProblem(resid!, Tf_g)
         # sol = solve(prob, maxiters=20)
-        # sol = solve(prob, NewtonRaphson())
-        prob = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
-        sol = solve(prob, DynamicSS(Rosenbrock23()))
+        sol = solve(prob, NewtonRaphson())
+        # prob = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
+        # sol = solve(prob, DynamicSS(Rosenbrock23()))
         # if sol.retcode == ReturnCode.MaxIters
         #     @info "maxit" sol.retcode sol.u
         #     prob_ss = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
