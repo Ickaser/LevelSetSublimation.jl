@@ -71,9 +71,19 @@ function params_nondim_setup(cparams, controls)
     nondim_controls = deepcopy(controls)
 
     for pk in keys(cparams)
-        if dimension(PBD[pk]) != dimension(cparams[pk])
+        if (length(cparams[pk]) > 1) 
+            if any([dimension(PBD[pk])] .!= dimension(cparams[pk]))
             @error "Bad dimensions in passed parameter." pk params[pk] PBD[pk]   
+            end
+        else
+            if (dimension(PBD[pk]) != dimension(cparams[pk]))
+                @error "Bad dimensions in passed parameter." pk params[pk] PBD[pk]   
+            end
         end
+        #     @info "arr" pk cparams[pk]
+        # elseif dimension(PBD[pk]) != dimension(cparams[pk])
+        #     @info "scalar" pk cparams[pk] length(cparams[pk]) (length(cparams[pk])>1)
+        #     @error "Bad dimensions in passed parameter." pk params[pk] PBD[pk]   
         params[pk] = ustrip.(PBD[pk], cparams[pk])
     end
     for mk in keys(controls)
