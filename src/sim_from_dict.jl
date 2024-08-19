@@ -200,7 +200,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # --- Set up simulation end callback
 
     # When the minimum value of ϕ is 0, front has disappeared
-    cond_end(u, t, integ) = minimum(u) - min(dom.zmax, dom.rmax)/2 
+    cond_end(u, t, integ) = minimum(u) + min(dom.dz, dom.dr)/4 
     # ContinuousCallback gets thrown when `cond` evaluates to 0
     # `terminate!` ends the solve there
     cb_end = ContinuousCallback(cond_end, terminate!)
@@ -226,7 +226,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
         function store_Tf!(integrator)
             ϕ, Tf, Tw = ϕ_T_from_u_view(integrator.u, integrator.p[1])
-            @info "callback" integrator.t
+            verbose && @info "callback" integrator.t
             @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], integrator.p[2], integrator.p[4])
             Tf .= Tf_sol
         end
