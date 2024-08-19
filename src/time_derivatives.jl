@@ -490,7 +490,10 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     dTfdt[no_ice] .= 0 # Set to 0 elsewhere
 
     # if any(isnan.(dTfdt))
-    #     @info "NaN in dTfdt"
+    #     @info "NaN in dTfdt" Tf dTfdt
+    # end
+    # if any(Tf .> 300) || any(Tf .< 100)
+    #     @info "weird Tf" Tf dTfdt
     # end
 
 end

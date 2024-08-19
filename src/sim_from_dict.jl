@@ -90,22 +90,6 @@ function needs_reinit(u, t, integ)
     return err > tol
 end
 
-
-# function input_measurements!(integ, meas_keys::Base.KeySet, controls::Dict)
-#     if isnothing(meas_keys)
-#         return
-#     end
-#     t_samp = controls[:t_samp]
-#     ti = argmin(abs.(t_samp .- integ.t))
-#     if !(integ.t ≈ t_samp[ti])
-#         @error "Issue with time sampling" integ.t t_samp[ti]
-#     end
-#     params = integ.p[2]
-#     for key in meas_keys
-#         params[key] = controls[key][ti]
-#     end
-# end
-
 function input_measurements!(params, t::Number, controls)
     for key in keys(controls)
         params[key] = controls[key](t)
@@ -216,7 +200,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # --- Set up simulation end callback
 
     # When the minimum value of ϕ is 0, front has disappeared
-    cond_end(u, t, integ) = minimum(u) 
+    cond_end(u, t, integ) = minimum(u) - min(dom.zmax, dom.rmax)/2 
     # ContinuousCallback gets thrown when `cond` evaluates to 0
     # `terminate!` ends the solve there
     cb_end = ContinuousCallback(cond_end, terminate!)
@@ -242,13 +226,14 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
         # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
         function store_Tf!(integrator)
             ϕ, Tf, Tw = ϕ_T_from_u_view(integrator.u, integrator.p[1])
-            @info "callback"
+            @info "callback" integrator.t
             @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], integrator.p[2], integrator.p[4])
             Tf .= Tf_sol
         end
 
         cb_store = DiscreteCallback((a,b,c)->true, store_Tf!, save_positions=(false,true))
-        # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
+        # @info "fixed"
+        # sol = solve(prob, SSPRK33(), dt=60, callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Fixed timestepping: 1 minute
         sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Adaptive timestepping: default
     elseif dudt_func == dudt_heatmass_dae! || dudt_func == dudt_heatmass_dae_or_newton!
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
