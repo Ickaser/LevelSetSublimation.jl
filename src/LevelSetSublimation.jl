@@ -17,6 +17,8 @@ using LinearSolve
 using NaNMath
 using PrecompileTools
 
+@reexport using LyoPronto
+
 export contour
 if !isdefined(LevelSetSublimation, :contour)
     const contour = Contour.contour # I want access to all of Plots, because I'm lazy, so I have to specify this one.
