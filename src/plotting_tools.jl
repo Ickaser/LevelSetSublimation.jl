@@ -249,14 +249,14 @@ Return a 2x3 plot of simulation results from start to finish.
 `simresults` should have a field `"sol"` , which is passed to `get_ϕ(sol, t, dom::Domain)` .  
 `heatvar` determines what is plotted as a heatmap in the results (`:T` or `:ϕ`, currently.)
 """
-function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
+function summaryplot(simresults::Dict, simconfig; layout=(3,2), tstart=0, tend=0.95, heatvar=:T)
     @unpack sol, dom = simresults
 
     tf = sol.t[end]
 
     plots = []
     nplots = prod(layout)
-    frames = range(0.0, tf*0.95, length=nplots)
+    frames = range(tf*tstart, tf*tend, length=nplots)
 
     max_heat = 250.0
     min_heat = 250.0
