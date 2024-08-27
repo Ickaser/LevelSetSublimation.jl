@@ -28,10 +28,11 @@ With the current implementation, `u` is a vector, with `nr*nz` values of the lev
 
 ```@docs
 plot_cylheat
-plot_cylcont
 freshplot
 heat
-plot_contour
+LevelSet
 arrows
 markfront
 ```
+
+`plot(::LevelSet, reflect=true)` plots the zero-level set for a level set function `LevelSet(phi, dom::Domain)`. `reflect` reflects across the y-axis to make cylindrical plots.

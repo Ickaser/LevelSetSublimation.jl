@@ -1,4 +1,4 @@
-export compute_Qice, compute_icesurf, compute_icevol
+export compute_Qice
 export compute_frontvel_heat, compute_frontvel_mass, plot_frontvel
 export compute_frontvel_fixedspeed
 
@@ -459,7 +459,7 @@ function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
     dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
     Qice = compute_Qice_nodry(u, T, dom, params)
-    Q_ice_per_surf = Qice / compute_icesurf(ϕ, dom)
+    Q_ice_per_surf = Qice / compute_icesurf_δ(ϕ, dom)
 
     for c in Γ⁺
         ir, iz = Tuple(c)

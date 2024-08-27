@@ -37,6 +37,6 @@ compute_frontvel_fixedspeed
 ```@docs
 compute_icesh_area
 compute_icegl_area
-compute_icevol
-compute_icesurf
+compute_icesurf_δ
+compute_icevol_H
 ```

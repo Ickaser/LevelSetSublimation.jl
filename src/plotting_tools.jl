@@ -1,5 +1,6 @@
-export heat, plot_contour, freshplot, markfront, markcells
-export plot_cylheat, plot_cylcont, arrows
+export heat, freshplot, markfront, markcells
+export plot_cylheat, arrows
+export LevelSet
 export summaryplot, resultsanim,  gen_sumplot, gen_anim
 export plotframe, finalframe 
 
@@ -15,21 +16,34 @@ function heat(field, dom::Domain; kwargs...)
                     xlim=(dom.rmin,dom.rmax), ylim=(dom.zmin, dom.zmax),
                      aspect_ratio=:equal, kwargs...)
 end
-"""
-    plot_contour(phi, dom::Domain; lab="", c=:black)
 
-In a mutating fashion, add 0-level contour of `phi` to current plot.
-"""
-function plot_contour(phi, dom::Domain; lab="", c=:black)
-    # cl = levels(contours(dom.rgrid,dom.zgrid,phi, [0.0]))[1]
-    cl = contour(dom.rgrid,dom.zgrid,phi, 0.0)
-    p = nothing
-    for seg in lines(cl)
-        xs, ys = coordinates(seg) # coordinates of this line segment
-        p = plot!(xs, ys, color=c, label=lab) 
-    end
-    p
+struct LevelSet
+    phi
+    dom::Domain
 end
+@recipe function f(ls::LevelSet; reflect=true)
+    cl = Contour.contour(ls.dom.rgrid,ls.dom.zgrid,ls.phi, 0.0)
+    for seg in lines(cl)
+        xs, ys = coordinates(seg)
+        @series begin
+            seriestype := :path
+            color --> :black
+            label --> ""
+            (xs, ys)
+        end
+        if reflect
+            @series begin
+                seriestype := :path
+                color --> :black
+                label := ""
+                (-xs, ys)
+            end
+        end
+    end
+end
+
+
+
 """
     freshplot(dom::Domain)  
 
@@ -54,21 +68,6 @@ function plot_cylheat(T, dom::Domain; maxT=nothing, clims=nothing)
     heatmap!(dom.rgrid, dom.zgrid, T', c=:thermal, clims=clims)
     heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, T[end:-1:begin, :]', c=:thermal) # plot reflected
     plot!(xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
-end
-"""
-    plot_cylcont(ϕ, dom::Domain; lab="", c=:black)
-
-In a mutating fashion, add a "cylindrical" 0-level contour of `ϕ` to the current plot.
-("Cylindrical" meaning reflected across x=0 axis.)
-"""
-function plot_cylcont(phi, dom::Domain; lab="", c=:black)
-    # cl = levels(contours(dom.rgrid,dom.zgrid,phi, [0.0]))[1]
-    cl = contour(dom.rgrid,dom.zgrid,phi, 0.0)
-    for seg in lines(cl)
-        xs, ys = coordinates(seg) # coordinates of this line segment
-        plot!(xs, ys, color=c, label=lab) 
-        plot!(-xs, ys, color=c, label="") 
-    end
 end
 """
     markfront(phi, dom::Domain; lab="", c=:white)
@@ -224,7 +223,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     heatmap!(dom.rgrid, dom.zgrid, heatvar_vals', c=cmap, clims=clims)
     heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, heatvar_vals[end:-1:begin, :]', c=cmap, clims=clims) # plot reflected
     heatvar == :T && plot!([-1, -1, 1, 1] .* (dom.rmax+0.5dom.dr), [dom.zmax, -0.5dom.dz, -0.5dom.dz, dom.zmax], c=:black, label=:none)
-    plot_cylcont(ϕ, dom, c=cont_c)
+    plot(LevelSet(ϕ, dom), c=cont_c)
     if heatvar == :ϕ
         Plots.contour!(dom.rgrid, dom.zgrid, ϕ', color=:black)
     end

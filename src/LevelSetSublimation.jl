@@ -7,11 +7,11 @@ using DrWatson, Reexport
 # @reexport using OrdinaryDiffEqRosenbrock # Already have this coming from LyoPronto
 @reexport using OrdinaryDiffEqSSPRK
 @reexport using OrdinaryDiffEqBDF
-@reexport using Contour  
-@reexport using Plots
+@reexport using Plots: plot, heatmap
 @reexport using Unitful
 @reexport using LaTeXStrings
 using CSV
+using Contour: contour
 # using ProgressMeter
 using LinearAlgebra: norm, Diagonal
 using UnicodePlots: spy
@@ -23,10 +23,6 @@ using PrecompileTools
 
 @reexport using LyoPronto
 
-export contour
-if !isdefined(LevelSetSublimation, :contour)
-    const contour = Contour.contour # I want access to all of Plots, because I'm lazy, so I have to specify this one.
-end
 const CI = CartesianIndex
 
 # Export statements belong in each source file below.

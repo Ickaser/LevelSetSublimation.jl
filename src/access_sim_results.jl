@@ -201,24 +201,9 @@ end
 Compute the average 𝑧 position of the sublimation front.
 """
 function get_subf_z(ϕ, dom)
-    # cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
-    # ls = lines(cl)
-    # if length(ls) == 0 # No sublimation front: average z is 0
-    #     zbar = 0
-    # elseif length(ls) > 1
-    #     @warn "Interface has more than one contiguous component"
-    #     zbar = 0
-    #     for line in ls
-    #         rs, zs = coordinates(line)
-    #         zbar += sum(zs) / length(zs)
-    #     end
-    # else
-    #     rs, zs = coordinates(ls[1])
-    #     zbar = sum(zs) / length(zs)
-    # end
-    # zbar
     δ = compute_discrete_δ(ϕ, dom)
     ave_z = sum(δ .* permutedims(dom.zgrid) .*dom.rgrid) / sum(δ .* dom.rgrid)
+    return ave_z
 end
 """
     get_subf_r(ϕ, dom)
@@ -226,25 +211,9 @@ end
 Compute the average 𝓇 position of the sublimation front.
 """
 function get_subf_r(ϕ, dom)
-    # cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
-    # ls = lines(cl)
-    # if length(ls) == 0 # No sublimation front: average z is 0
-    #     rbar = 0
-    # elseif length(ls) > 1
-    #     @warn "Interface has more than one contiguous component"
-    #     rbar = 0
-    #     for line in ls
-    #         rs, zs = coordinates(line)
-    #         rbar += sum(rs) / length(rs)
-    #     end
-    # else
-    #     line = ls[1]
-    #     rs, zs = coordinates(line)
-    #     rbar = sum(rs) / length(rs)
-    # end
-    # rbar
     δ = compute_discrete_δ(ϕ, dom)
-    ave_z = sum(δ .* dom.rgrid .*dom.rgrid) / sum(δ .* dom.rgrid)
+    ave_r = sum(δ .* permutedims(dom.zgrid) .*dom.rgrid) / sum(δ .* permutedims(dom.zgrid))
+    return ave_r
 end
 
 
