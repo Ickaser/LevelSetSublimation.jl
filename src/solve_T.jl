@@ -452,13 +452,10 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             dTfdt_trim .= dTfdt[has_ice]
             nothing
         end
-        # sol = nlsolve(resid_lessdof!, Tf_trim, autodiff=:forward, ftol=1e-10)
-        # Tfs[has_ice] = sol.zero
-        prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
-        sol = solve(prob, DynamicSS(Rosenbrock23()))
-        # prob = NonlinearProblem(resid_lessdof!, Tf_trim)
-        # prob = NonlinearProblem(resid_2!, Tf_trim)
-        # sol = solve(prob)
+        # prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
+        # sol = solve(prob, DynamicSS(Rosenbrock23()))
+        prob = NonlinearProblem(resid_lessdof!, Tf_trim)
+        sol = solve(prob, NewtonRaphson())
 
         Tfs = zeros(dom.nr)
         Tfs[has_ice] = sol.u

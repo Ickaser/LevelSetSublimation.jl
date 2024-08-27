@@ -2,7 +2,11 @@ module LevelSetSublimation
 
 using DrWatson, Reexport
 @reexport using SparseArrays
-@reexport using DifferentialEquations
+# @reexport using DifferentialEquations
+# @reexport using DiffEqCallbacks # Already have this coming from LyoPronto
+# @reexport using OrdinaryDiffEqRosenbrock # Already have this coming from LyoPronto
+@reexport using OrdinaryDiffEqSSPRK
+@reexport using OrdinaryDiffEqBDF
 @reexport using Contour  
 @reexport using Plots
 @reexport using Unitful
