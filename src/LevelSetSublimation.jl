@@ -7,7 +7,7 @@ using DrWatson, Reexport
 # @reexport using OrdinaryDiffEqRosenbrock # Already have this coming from LyoPronto
 @reexport using OrdinaryDiffEqSSPRK
 @reexport using OrdinaryDiffEqBDF
-@reexport using Plots: plot, heatmap
+@reexport using Plots
 @reexport using Unitful
 @reexport using LaTeXStrings
 using CSV
