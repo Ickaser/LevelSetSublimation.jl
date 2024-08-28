@@ -642,7 +642,7 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
 
 
     if verbose &&  eltype(u) <: Float64
-        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh] extrema(Δξ) extrema(dTf)
     end
@@ -715,7 +715,7 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
 
 
     if verbose &&  eltype(u) <: Float64
-        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
     end
     return nothing

@@ -16,7 +16,7 @@ function reinit_wrap(integ; verbose=false)
     reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=50, tol=0.02, err_reg=:B) 
     if verbose
         post_err = sdf_err_L∞(ϕ, dom, region=:B)
-        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         # @info "Reinit at t=$(integ.t)"
         @info "Reinit" integ.t pre_err post_err dryfrac spy(ϕ .< 0)
     end

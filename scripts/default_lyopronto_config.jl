@@ -12,7 +12,7 @@ init_prof = :flat
 
 # ---- Variables which can be controlled during a run
 
-Tsh = RampedVariable([238.15u"K", 293.15u"K"], [1u"K/minute"], [10u"hr"])
+Tsh = RampedVariable([238.15u"K", 293.15u"K"], [1u"K/minute"], [])
 p_ch = RampedVariable(150u"mTorr")
 Q_gl_RF = RampedVariable(0u"W")
 Q_ic = RampedVariable(0u"W/cm^3")

@@ -38,9 +38,9 @@ cparams[:m_cp_gl] = 7.9u"g" * 840u"J/kg/K"
 # Vial wall to ice/cake heat transfer coefficenit
 cparams[:Kw] = 50.0u"W/m^2/K"
 
-# Shelf ramp: [setpoints], [ramprate between setpoints], [hold time after ramp]
+# Shelf ramp: [setpoints], [ramprate between setpoints], [hold time between ramps]
 # Same syntax holds for other variables; if constant, just pass the constant value 
-Tsh = RampedVariable([233.15u"K", 283.15u"K"], [1u"K/minute"], [10u"hr"])
+Tsh = RampedVariable([233.15u"K", 283.15u"K"], [1u"K/minute"], [])
 p_ch = RampedVariable(100u"mTorr")
 Q_ic = RampedVariable(0.12u"W/cm^3")
 Q_gl_RF = RampedVariable(0.06u"W") # = volumetric * relevant vial volume

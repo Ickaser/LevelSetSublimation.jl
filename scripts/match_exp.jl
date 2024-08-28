@@ -49,7 +49,7 @@ tdat = uconvert.(u"hr", tdat)
 
 @show tdat[end] - tdat[begin]
 
-Tsh_rv = RampedVariable(uconvert.(u"K", [-40u"°C", 10u"°C"]).+0.0u"K", [0.5u"K/minute"], [1u"hr"])
+Tsh_rv = RampedVariable(uconvert.(u"K", [-40u"°C", 10u"°C"]).+0.0u"K", [0.5u"K/minute"], [])
 
 
 

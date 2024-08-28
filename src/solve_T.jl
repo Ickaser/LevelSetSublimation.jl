@@ -423,10 +423,8 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         nothing
     end
 
-    if all(has_ice) # IF all ice present, use all DOF
-        # sol = nlsolve(resid!, Tf_g, autodiff=:forward, ftol=1e-10)
+    if all(has_ice) # If all ice present, use all DOF
         prob = NonlinearProblem(resid!, Tf_g)
-        # sol = solve(prob, maxiters=20)
         sol = solve(prob, NewtonRaphson())
         # prob = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
@@ -437,7 +435,6 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         #     @info "SS iterations" sol.retcode sol.stats sol.u
         # end
         Tfs = sol.u
-        # Tfs = sol.zero
     else # If ice doesn't cover full radial extent, trim out those DOF
         Tf_trim = Tf_g[has_ice]
         
