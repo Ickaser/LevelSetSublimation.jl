@@ -23,7 +23,7 @@ struct LevelSet
     dom::Domain
 end
 @recipe function f(ls::LevelSet; reflect=true)
-    cl = Contour.contour(ls.dom.rgrid,ls.dom.zgrid,ls.phi, 0.0)
+    cl = contour(ls.dom.rgrid,ls.dom.zgrid,ls.phi, 0.0)
     for seg in lines(cl)
         xs, ys = coordinates(seg)
         @series begin

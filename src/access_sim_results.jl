@@ -60,7 +60,7 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
     totvol = π*dom.rmax^2 * dom.zmax
     dryfrac = map(ts_ndim) do ti
         ϕ = ϕ_T_from_u(sol(ti), dom)[1]
-        1 - compute_icevol(ϕ, dom) / totvol
+        1 - compute_icevol_H(ϕ, dom) / totvol
     end
 
     completed = dryfrac .== 1

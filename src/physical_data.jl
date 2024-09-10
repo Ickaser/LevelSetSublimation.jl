@@ -1,6 +1,5 @@
 
 # A listing of physical properties for use in simulation, with references to sources
-export calc_psub
 
 # -----------------------------------
 # Sublimation pressure, to more significant figures than necessary but hey
@@ -41,16 +40,6 @@ end
 # -----------------------------
 # Sublimation pressure, correlation used in LyoPRONTO: 
 # simple Arrhenius form is almost certainly less accurate but probably not significantly so
-"""
-    calc_psub(T)
-
-Compute pressure (in Pascals) of sublimation at temperature `T` in Kelvin.
-
-From...somewhere else. Used in LyoPRONTO
-"""
-calc_psub(T::F) where F<:Number = 359.7e10 * exp(-6144.96/T)
-calc_psub(T::Q) where Q<:Quantity = 359.7e10*u"Pa" * exp(-6144.96u"K"/uconvert(u"K",T))
-
 # --------------------
 
 
