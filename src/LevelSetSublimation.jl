@@ -32,13 +32,12 @@ const CI = CartesianIndex
 const θ_THRESH = 0.01
 
 include(srcdir("structs.jl"))
-include(srcdir("get_vial_dims.jl"))
 include(srcdir("plotting_tools.jl"))
 include(srcdir("levelset_reinit.jl"))
 include(srcdir("vel_extrap.jl"))
-include(srcdir("solve_T.jl"))
+include(srcdir("heat_transfer.jl"))
 include(srcdir("physical_data.jl"))
-include(srcdir("solve_p.jl"))
+include(srcdir("mass_transfer.jl"))
 include(srcdir("front_motion.jl"))
 include(srcdir("sim_setup.jl"))
 include(srcdir("time_derivatives.jl"))
@@ -46,6 +45,8 @@ include(srcdir("sim_from_dict.jl"))
 include(srcdir("access_sim_results.jl"))
 include(srcdir("levelset_geometry.jl"))
 
-include(srcdir("precompile.jl"))
+include(srcdir("without_mass_transfer.jl"))
+
+# include(srcdir("precompile.jl"))
 
 end # module LevelSetSublimation
