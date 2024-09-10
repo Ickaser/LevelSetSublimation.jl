@@ -105,6 +105,9 @@ const k_gl = 1.0u"W/m/K"
 # Rough estimate from Bansal and Doremus 1986, "Handbook of Glass Properties"
 const cp_gl = 8.0u"J/kg/K"
 
+# Glass density
+const ρ_gl = 2.2u"g/cm^3"
+
 # Typical value of porosity, heuristically
 const ϵ_typical = 0.92
 

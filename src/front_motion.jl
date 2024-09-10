@@ -11,7 +11,7 @@ Quadratic ghost cell extrapolation (into frozen domain), second order finite dif
 """
 function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack k, Kshf, Kvwf, Tsh = params
+    @unpack kd, Kshf, Kvwf, Tsh = params
 
     ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
     pT = T[ir, iz]
@@ -26,18 +26,18 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     if ir == 1 # Symmetry
         dTr = 0
     elseif ir == nr # Robin: glass
-        # dTr = Kvwf/k*(Tw - pT)
+        # dTr = Kvwf/kd*(Tw - pT)
         if ϕp*ϕ[ir-1,iz] <= 0 
             # If interface is near boundary, quadratic interpolant using T(b), dT/dr(b), T(Γ)
             θr = ϕp /(ϕp - ϕ[ir-1,iz])
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-            b = Kvwf/k*(Tw - pT)
+            b = Kvwf/kd*(Tw - pT)
             dTr = 2(pT - Tf_loc)/θr*dr1 - b
             # @info "Condition used" dTr b
         else
             # Robin boundary condition: employ explicitly
 
-            dTr = Kvwf/k*(Tw - pT)
+            dTr = Kvwf/kd*(Tw - pT)
         end
     else 
         # Bulk
@@ -83,7 +83,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     Tf_loc = Tf[ir]
     # Enforce BCs explicitly for boundary cells
     if iz == 1 # Robin: shelf
-        dTz = Kshf/k*(Tsh-pT)
+        dTz = Kshf/kd*(Tsh-pT)
     elseif iz == nz # Adiabatic
         dTz = 0
     else 
@@ -278,7 +278,7 @@ Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on 
 """
 function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
 
-    @unpack k, ΔH, ρf, ϵ = params
+    @unpack kd, ΔH, ρf, ϵ = params
     ϕ = ϕ_T_from_u(u, dom)[1]
 
     Γf = identify_Γ(ϕ, dom)

@@ -41,16 +41,9 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
         return nothing
     end
 
-    # p = solve_p(u, T, dom, params, p_last)
-
-    # Tf = pseudosteady_Tf_T_p(u, dom, params, Tf_last, p_last)
     Tf = pseudosteady_Tf(u, dom, params, Tf_last)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
-
-    # Store pseudosteady in u, for use in other functions
-    # Tf .= Tfs
-    # dTf = (Tf - Tfg)/60
 
     integ_pars[3] .= p # Cache current state of p as a guess for next timestep
     integ_pars[4] .= Tf
@@ -59,32 +52,20 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
     vr = @view vf[:, :, 1]
     vz = @view vf[:, :, 2]
 
-    # Compute time derivatives for 
-    # dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
-    # dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
-    Q_vwf = compute_Qvwf(u, T, dom, params)
-    # A_vsh = π*((dom.rmax+vial_thick)^2 - dom.rmax^2)
-    # Q_vsh = params[:Kshf]*(params[:Tsh]-Tw[1]) * A_vsh
-    A_v = π*((dom.rmax+vial_thick)^2)
-    Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 )
-    # Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 ) + (A_v-π*dom.rmax^2)*params[:Kshf]*(params[:Tsh]-Tw[1])
-    # @info "rad" Q_shvw Q_vwf params[:Tsh] Tw[1]
-    # dTw .= (QRFvw + Q_vsh - Q_vwf) / m_cp_gl
-    dTw .= (QRFvw - Q_vwf + Q_shvw) / m_cp_gl
-    # @info "glass" dTw Q_shvw Q_vwf
-    # dTw .= (QRFvw - Q_vwf) / m_cp_gl
-
-    # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
-
         dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind] > 0, vz[ind] >0, dϕdx_all, dom)
-
         rcomp = dϕdr * vr[ind]
         zcomp = dϕdz * vz[ind]
         dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
-        # dϕ[ind] = -rcomp - zcomp
     end
+
+    # Compute time derivative for Tw
+    Q_vwf = compute_Qvwf(u, T, dom, params)
+    A_v = π*((dom.rmax+vial_thick)^2)
+    Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 )
+    dTw .= (QRFvw - Q_vwf + Q_shvw) / m_cp_gl
+
     if verbose && eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
@@ -95,10 +76,6 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
             # display(plot(pl1, pl2))
         end
     end
-    # if maximum(dϕ) > 1
-    #     @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
-    #     display(heat(T, dom))
-    # end
     if get_Tf
         return Tf
     else
@@ -180,14 +157,14 @@ end
 # For pseudosteady radial temperature
 
 function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-    @unpack k, ΔH = params
+    @unpack kd, ΔH = params
     b = eval_b_loc(T, p, ir, iz, params)
 
     dTdr, dTdz = compute_Tderiv(u, Tf, T, ir, iz, dom, params)
     dpdr, dpdz = compute_pderiv(u, Tf, T, p, ir, iz, dom, params)
     dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, dpdr<0, dpdz<0, dϕdx_all, dom)
 
-    qflux = k*(dϕdr*dTdr + dϕdz*dTdz)
+    qflux = kd*(dϕdr*dTdr + dϕdz*dTdz)
     mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
 
     return qflux + ΔH*mflux, dϕdr, dϕdz
@@ -641,23 +618,6 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     if verbose &&  eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
-    end
-    return nothing
-end
-
-function dudt_heatmass_dae_or_newton!(du, u, integ_pars, t)
-    dom = integ_pars[1]
-    ϕ = ϕ_T_from_u(u, dom)[1]
-    Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
-    if minimum(Δξ) > dom.dz/2
-        dudt_heatmass_dae!(du, u, integ_pars, t)
-    else
-        Tf_g = ϕ_T_from_u(u, dom)[2]
-        Tf_sol = dudt_heatmass!(du, u, integ_pars, t; get_Tf=true)
-        dTf = ϕ_T_from_u_view(du, dom)[2]
-        timefac = 100
-        dTf .= (Tf_g - Tf_sol)/timefac
-        @info "here" extrema(Tf_g) extrema(Tf_sol) extrema(dTf)
     end
     return nothing
 end

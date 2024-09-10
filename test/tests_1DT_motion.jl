@@ -29,7 +29,7 @@ end
 
 function case3_analyt_compare(simres, config)
     @unpack sol, dom = simres
-    @unpack Kvwf, k, ϵ, ρf, ΔH = config[:cparams]
+    @unpack Kvwf, kd, ϵ, ρf, ΔH = config[:cparams]
     Tw = config[:Tw0]
     Tf = config[:Tf0]
 
@@ -39,7 +39,7 @@ function case3_analyt_compare(simres, config)
     # analytical easier in terms of ξ, not t
     R = dom.rmax*u"m"
     R0 = R*(1 - 1e-4)
-    rkk = R*Kvwf/k
+    rkk = R*Kvwf/kd
     A = rkk*(Tw-Tf)
     B = rkk
     rrs = rs
@@ -47,7 +47,7 @@ function case3_analyt_compare(simres, config)
 
     term1 =@. 1/4*rrs^2 * (B*(2log(R/rrs)+1) + 2)
     term2 =   1/4*R0^2  * (B*(2log(R/R0 )+1) + 2)
-    ts_analyt = @. ϵ*ρf*ΔH/A *(term2-term1)/k
+    ts_analyt = @. ϵ*ρf*ΔH/A *(term2-term1)/kd
 
     return ts, rs, ts_analyt
 end

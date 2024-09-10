@@ -209,14 +209,14 @@ end
 
 # --- Analytical T 
 
-Bi = uconvert(NoUnits, cparams[:Kvwf]*R*u"m"/cparams[:k])
+Bi = uconvert(NoUnits, cparams[:Kvwf]*R*u"m"/cparams[:kd])
 function interface_Tflux(Tsub)
     C1 = Bi*(ustrip(u"K", Tw0)-Tsub)/(1+Bi*log(R/Ri))
-    return params[:k]*C1/Ri
+    return params[:kd]*C1/Ri
 end
 function interface_Tflux(Tsub, ie)
     C1 = Bi*(ustrip(u"K", Tw0)-Tsub)/(1+Bi*log(R/(Ri-perturbs[ie])))
-    return params[:k]*C1/(Ri-perturbs[ie])
+    return params[:kd]*C1/(Ri-perturbs[ie])
 end
 function analytical_T(r, Tsub)
     C1 = Bi*(ustrip(u"K", Tw0)-Tsub)/(1+Bi*log(R/Ri))
@@ -242,7 +242,7 @@ function nlobj(T_c; ie = 1)
     heat_d = interface_Tflux(Tf_sol[1,end], ie)
     mass_d = interface_mflux(Tf_sol[1,end], ie)
     heat_l = params[:ΔH] * mass_d
-    # @info "analytical" Tf_sol[1,end] Tf_sol[2,end] mass_d/b heat_d/params[:k] heat_f heat_d heat_l
+    # @info "analytical" Tf_sol[1,end] Tf_sol[2,end] mass_d/b heat_d/params[:kd] heat_f heat_d heat_l
     heat_f + heat_d + heat_l
 end
 

@@ -19,7 +19,6 @@ function gen_psol(Ri, R, L, Rp0, b, Δp; Nr=150, Nz=1000)
     charfun_r(l) = besselj0(l*Ri)*bessely1(l*R) - bessely0(l*Ri)*besselj1(l*R)
     λj = [find_zero(charfun_r, (j-0.5)*π/(R-Ri)) for j in 1:Nr]
     charfun_z(m) = cos(m*L) - Rp0*b*m*sin(m*L)
-    # μk = permutedims([find_zero(charfun_z, (k-0.5)*π/L) for k in 1:Nmax])
     μk = zeros(1, Nz)
     μk[1] = find_zero(charfun_z, 0.5*π/L)
     for i in 2:Nz
@@ -237,7 +236,7 @@ tot_flow2 = sum(z_fluxes .*r_nodes .*r_wts ) *2π
 
 # ---------------------- Temperature
 
-Bi = cparams[:Kvwf]*R*u"m"/cparams[:k]
+Bi = cparams[:Kvwf]*R*u"m"/cparams[:kd]
 ΔT = Tw0 - Tf0
 # C1 = Bi*ΔT/(1 + Bi*log(R/Ri))
 T_sol(r, Ri) = Bi*ΔT/(1 + Bi*log(R/Ri))*log(r/Ri) + Tf0

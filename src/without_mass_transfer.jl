@@ -81,7 +81,7 @@ Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on 
 """
 function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
 
-    @unpack k, ΔH, ρf, ϵ = params
+    @unpack kd, ΔH, ρf, ϵ = params
     ϕ = ϕ_T_from_u(u, dom)[1]
 
     Γf = identify_Γ(ϕ, dom)
@@ -103,7 +103,7 @@ function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
         # Normal is out of the ice
         # md >0 for sublimation occurring
         # v = md/ρ * -∇ϕ
-        q_grad = k* (dTr*dϕdr + dTz * dϕdz) 
+        q_grad = kd* (dTr*dϕdr + dTz * dϕdz) 
         md_l = (q_grad + Q_ice_per_surf)/ΔH
         vtot = md_l / ρf / ϵ 
         vf[c,1] = -vtot * dϕdr
@@ -221,7 +221,7 @@ Maximum simulation time is specified by `tf`.
     - `Kvwf`, 
     - `Kshf` : heat transfer coefficients shelf
     - `Q_ck` : volumetric heating in cake 
-    - `k`: thermal conductivity of cake
+    - `kd`: thermal conductivity of cake
     - `ρf`: density of ice
     - `ΔH` : heat of sublimation of ice
     - `ϵ` : porosity of porous medium
