@@ -113,6 +113,6 @@ const l_guess = 1e-5 * u"m" # 10 micron pore size
 const κ_guess = 1e-10 * u"m^2" # 100 Darcys
 
 # Typical value at around p_ch = 20 Pa
-const Kv_guess = 15.0u"W/m^2/K"
+const Kshf_guess = 15.0u"W/m^2/K"
 const p_ch_guess = 20.0u"Pa"
 

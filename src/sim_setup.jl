@@ -147,10 +147,10 @@ function nondim_controlvar(varname, control_dim)
 end
 
 const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
-    :Kw => u"W/m^2/K",
-    :Kv => u"W/m^2/K",
-    :Q_ic => u"W/m^3",
-    :Q_gl_RF => u"W",
+    :Kvwf => u"W/m^2/K",
+    :Kshf => u"W/m^2/K",
+    :QRFf => u"W/m^3",
+    :QRFvw => u"W",
     :Q_ck => u"W/m^3",
     :k => u"W/m/K",
 
@@ -191,9 +191,9 @@ function make_default_params()
             
     # Very artificial parameters
     # Heat transfer
-    Kw = 1e2 *u"W/K/m^2" # 1/(Contact resistance 1e-4 + cylindrical resistance from outer wall 1e-3 to 1e-5)
-    Kv = 20 * u"W/K/m^2"
-    Q_ic = 0.0u"W/cm^3"
+    Kvwf = 1e2 *u"W/K/m^2" # 1/(Contact resistance 1e-4 + cylindrical resistance from outer wall 1e-3 to 1e-5)
+    Kshf = 20 * u"W/K/m^2"
+    QRFf = 0.0u"W/cm^3"
     Q_ck = 0.0u"W/m^3"
     
     m_cp_gl = 5u"g" * LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
@@ -222,8 +222,8 @@ function make_default_params()
 
 
     params = Dict{Symbol, Any}()
-    @pack! params = Kw, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, Rp0, R, Mw, μ, Cpf
-    # @pack! params = Kw, Kv, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, Rp0, R, Mw, μ, Cpf
+    @pack! params = Kvwf, Kshf, QRFf, Q_ck, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, Rp0, R, Mw, μ, Cpf
+    # @pack! params = Kvwf, Kshf, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, Rp0, R, Mw, μ, Cpf
     return params
 end
         

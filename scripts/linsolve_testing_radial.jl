@@ -94,8 +94,8 @@ cparams = make_default_params()
 cparams[:l] = upreferred(l_bulk)
 cparams[:κ] = 0.0u"m^2"
 cparams[:Rp0] = Rp0*u"m/s"
-cparams[:Kv] *= 0
-cparams[:Kw] = 10u"W/m^2/K"
+cparams[:Kshf] *= 0
+cparams[:Kvwf] = 10u"W/m^2/K"
 
 simgridsize = (101, 101)
 Tfm = fill(ustrip(u"K", T0), simgridsize[1])
@@ -104,12 +104,12 @@ Tf0 = T0
 Tw0 = T0 + 20u"K"
 
 controls = Dict{Symbol, Any}()
-# @pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
-Q_gl_RF = RampedVariable(0.0u"W")
+# @pack! controls = t_samp, QRFvw, Tsh, QRFf, p_ch
+QRFvw = RampedVariable(0.0u"W")
 Tsh = RampedVariable(0.0u"K")
-Q_ic = RampedVariable(0.0u"W/cm^3")
+QRFf = RampedVariable(0.0u"W/cm^3")
 p_ch = RampedVariable(60u"Pa")
-@pack! controls = Q_gl_RF, Tsh, Q_ic, p_ch
+@pack! controls = QRFvw, Tsh, QRFf, p_ch
 
 init_prof = :rad
 vialsize = "6R"
@@ -237,7 +237,7 @@ tot_flow2 = sum(z_fluxes .*r_nodes .*r_wts ) *2π
 
 # ---------------------- Temperature
 
-Bi = cparams[:Kw]*R*u"m"/cparams[:k]
+Bi = cparams[:Kvwf]*R*u"m"/cparams[:k]
 ΔT = Tw0 - Tf0
 # C1 = Bi*ΔT/(1 + Bi*log(R/Ri))
 T_sol(r, Ri) = Bi*ΔT/(1 + Bi*log(R/Ri))*log(r/Ri) + Tf0

@@ -119,12 +119,12 @@ Employ Unitful to do unit conversions after simulation if necessary.
 - `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
     - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
     - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
-    - `Q_gl_RF`, glass RF heating. Scalar or array, like Tsh
-    - `Q_ic`, ice RF heating. 
+    - `QRFvw`, glass RF heating. Scalar or array, like Tsh
+    - `QRFf`, ice RF heating. 
     - `p_ch` : pressure at top of cake
 - `cparams`, which in turn has fields with Unitful units
-    - `Kw`, 
-    - `Kv` : heat transfer coefficients shelf
+    - `Kvwf`, 
+    - `Kshf` : heat transfer coefficients shelf
     - `Q_ck` : volumetric heating in cake 
     - `k`: thermal conductivity of cake
     - `m_cp_gl` total thermal mass of glass, relevant to heating/cooling of glass wall
@@ -141,7 +141,7 @@ Employ Unitful to do unit conversions after simulation if necessary.
 
 During simulation, at each value of `t_samp`, the values of any `controls` which are arrays will be added to an internal dict called `params`.
 
-If you pass in an array of values for multiple of `Tsh`, `Q_gl_RF`, or others, they must all have the same length as `t_samp`.
+If you pass in an array of values for multiple of `Tsh`, `QRFvw`, or others, they must all have the same length as `t_samp`.
 
 If you are getting a warning about instability, it can sometimes be fixed by tinkering with the reinitialization behavior.
 
@@ -385,10 +385,10 @@ Maximum simulation time is specified by `tf`.
 - `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
     - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
     - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
-    - `Q_ic`, ice RF heating. 
+    - `QRFf`, ice RF heating. 
 - `cparams`, which in turn has fields with Unitful units
-    - `Kw`, 
-    - `Kv` : heat transfer coefficients shelf
+    - `Kvwf`, 
+    - `Kshf` : heat transfer coefficients shelf
     - `Q_ck` : volumetric heating in cake 
     - `k`: thermal conductivity of cake
     - `ρf`: density of ice
@@ -399,7 +399,7 @@ Other parameters will be ignored.
 
 During simulation, at each value of `t_samp`, the values of any `controls` which are arrays will be added to an internal dict called `params`.
 
-If you pass in an array of values for multiple of `Tsh`, `Q_gl_RF`, or others, they must all have the same length as `t_samp`.
+If you pass in an array of values for multiple of `Tsh`, `QRFvw`, or others, they must all have the same length as `t_samp`.
 
 If you are getting a warning about instability, it can sometimes be fixed by tinkering with the reinitialization behavior.
 

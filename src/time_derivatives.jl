@@ -27,7 +27,7 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
     dTf .= 0 # Just in case some weird stuff got left there
 
     ϕ, Tw = ϕ_T_from_u_view(u, dom)[[true, false, true]]
-    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF, vial_thick = params
+    @unpack ρf, Cpf, m_cp_gl, QRFvw, vial_thick = params
 
     if minimum(ϕ) > 0 # No ice left
         l_ave = 1/sum(1.0 ./params[:l])/length(params[:l])
@@ -62,17 +62,17 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
     # Compute time derivatives for 
     # dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
     # dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
-    Qgl = compute_Qgl(u, T, dom, params)
+    Q_vwf = compute_Qvwf(u, T, dom, params)
     # A_vsh = π*((dom.rmax+vial_thick)^2 - dom.rmax^2)
-    # Q_vsh = params[:Kv]*(params[:Tsh]-Tw[1]) * A_vsh
+    # Q_vsh = params[:Kshf]*(params[:Tsh]-Tw[1]) * A_vsh
     A_v = π*((dom.rmax+vial_thick)^2)
     Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 )
-    # Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 ) + (A_v-π*dom.rmax^2)*params[:Kv]*(params[:Tsh]-Tw[1])
-    # @info "rad" Q_shvw Qgl params[:Tsh] Tw[1]
-    # dTw .= (Q_gl_RF + Q_vsh - Qgl) / m_cp_gl
-    dTw .= (Q_gl_RF - Qgl + Q_shvw) / m_cp_gl
-    # @info "glass" dTw Q_shvw Qgl
-    # dTw .= (Q_gl_RF - Qgl) / m_cp_gl
+    # Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 ) + (A_v-π*dom.rmax^2)*params[:Kshf]*(params[:Tsh]-Tw[1])
+    # @info "rad" Q_shvw Q_vwf params[:Tsh] Tw[1]
+    # dTw .= (QRFvw + Q_vsh - Q_vwf) / m_cp_gl
+    dTw .= (QRFvw - Q_vwf + Q_shvw) / m_cp_gl
+    # @info "glass" dTw Q_shvw Q_vwf
+    # dTw .= (QRFvw - Q_vwf) / m_cp_gl
 
     # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
@@ -255,7 +255,7 @@ end
 
 function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
-    @unpack ρf, Cpf, kf, Q_ic, p_ch, ΔH, Rp0 = params
+    @unpack ρf, Cpf, kf, QRFf, p_ch, ΔH, Rp0 = params
 
     Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
 
@@ -294,17 +294,17 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     botarea = π*(ro^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
 
-                    K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
+                    K_eff = 1/(1/params[:Kshf] + Δξ[ir]/kf)
                     sumfluxes += botarea * K_eff*(params[:Tsh] - Tf_loc) # Shelf heat 
                 end
 
-                sumfluxes += Q_ic*vol # No A_l*kf*dTfdr becuase dTfdr=0
+                sumfluxes += QRFf*vol # No A_l*kf*dTfdr becuase dTfdr=0
                 # Write the energy balance differently for this case
                 dTfdt[ir] = sumfluxes/vol/ρf/Cpf
                 continue
             end
         elseif ir == dom.nr
-            dTfdr = params[:Kw]/kf*(Tw - Tf[ir])
+            dTfdr = params[:Kvwf]/kf*(Tw - Tf[ir])
             if Δξ[ir] < dom.dz/2 # At small ice height, need a special case
                 iz = findlast(ϕ[ir,:] .<=0) + 1
                 q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
@@ -313,10 +313,10 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 qtop = q*sqrt(dξdr^2 + 1)
 
                 # We get terms that go to zero, and can therefore solve a linear equaiton for Tf, other than q_top
-                # den = (Δξ[ir]/dom.dr/2*params[:Kw] + params[:Kv])
-                # rhs = (Δξ[ir]/dom.dr/2*params[:Kw]*Tw + params[:Kv]*params[:Tsh] + qtop)/den
-                den = params[:Kv]
-                rhs = (params[:Kv]*params[:Tsh] + qtop)/den
+                # den = (Δξ[ir]/dom.dr/2*params[:Kvwfwf] + params[:Kshf])
+                # rhs = (Δξ[ir]/dom.dr/2*params[:Kvwf]*Tw + params[:Kshf]*params[:Tsh] + qtop)/den
+                den = params[:Kshf]
+                rhs = (params[:Kshf]*params[:Tsh] + qtop)/den
                 # dTfdt[ir] = rhs - Tf[ir]
                 # timescale = Δξ[ir]^2/kf*ρf*Cpf
                 timescale = dom.zmax^2/kf*ρf*Cpf
@@ -349,12 +349,12 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     ri = dom.rgrid[ir] - θr*dom.dr
                     botarea = π*(ro^2-ri^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                    K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
+                    K_eff = 1/(1/params[:Kshf] + Δξ[ir]/kf)
                     sumfluxes += botarea * K_eff*(params[:Tsh] - Tf_loc) # Shelf heat 
                 end
 
                 A_l = dom.rgrid[ir] * Δξ[ir] *2π
-                sumfluxes += -A_l*kf*dTfdr + Q_ic*vol
+                sumfluxes += -A_l*kf*dTfdr + QRFf*vol
                 # Write the energy balance differently for this case
                 dTfdt[ir] = sumfluxes/vol/ρf/Cpf
                 continue
@@ -386,13 +386,13 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 botarea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
 
-                K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
+                K_eff = 1/(1/params[:Kshf] + Δξ[ir]/kf)
                 sumfluxes += botarea * K_eff*(params[:Tsh] - Tf_loc) # Shelf heat 
             end
 
             A_l = (dom.rgrid[ir] + 0.5dom.dr) * (Δξ[ir+1] + Δξ[ir])/2 *2π
             dTfdr = (Tf[ir+1] - Tf[ir])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
-            sumfluxes +=  A_l*kf*dTfdr + Q_ic*vol
+            sumfluxes +=  A_l*kf*dTfdr + QRFf*vol
             # Write the energy balance differently for this case
             dTfdt[ir] = sumfluxes/vol/ρf/Cpf
             continue
@@ -417,13 +417,13 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 botarea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
 
-                K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
+                K_eff = 1/(1/params[:Kshf] + Δξ[ir]/kf)
                 sumfluxes += botarea * K_eff*(params[:Tsh] - Tf_loc) # Shelf heat 
             end
 
             A_l = (dom.rgrid[ir] - 0.5dom.dr) * (Δξ[ir-1] + Δξ[ir])/2 *2π
             dTfdr = (Tf[ir] - Tf[ir-1])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
-            sumfluxes += -A_l*kf*dTfdr + Q_ic*vol
+            sumfluxes += -A_l*kf*dTfdr + QRFf*vol
             # Write the energy balance differently for this case
             dTfdt[ir] = sumfluxes/vol/ρf/Cpf
             continue
@@ -455,11 +455,11 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
         if bot_contact[ir]
             # Shelf boundary
-            # bot_bound_term = params[:Kv]*(Tf[ir] - params[:Tsh]) * compute_local_H(CI(ir, 1), ϕ, dom)*2
+            # bot_bound_term = params[:Kshf]*(Tf[ir] - params[:Tsh]) * compute_local_H(CI(ir, 1), ϕ, dom)*2
             if Δξ[ir] > dom.dz
-                K_eff = params[:Kv]
+                K_eff = params[:Kshf]
             else
-                K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
+                K_eff = 1/(1/params[:Kshf] + Δξ[ir]/kf)
             end
             bot_bound_term = K_eff*(Tf[ir] - params[:Tsh]) 
             # isnan(bot_bound_term) && @info "NaN bottom" Tf[ir] T[ir,begin] params[:Tsh]
@@ -478,10 +478,10 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
 
         r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
-        dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + Q_ic + 
+        dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + QRFf + 
             (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
         # if ir ∈ [dom.nr-2, dom.nr-1, dom.nr] && Δξ[dom.nr] <= 5e-4
-        #     @info "right edge" ir kf*r1*dTfdr kf*d2Tfdr2 Q_ic top_bound_term bot_bound_term Δξ[ir] dTfdt[ir] dξdr q
+        #     @info "right edge" ir kf*r1*dTfdr kf*d2Tfdr2 QRFf top_bound_term bot_bound_term Δξ[ir] dTfdt[ir] dξdr q
         # end
 
         # isnan(dTfdt[ir]) && @info "NaN in dTfdt" dTfdr d2Tfdr2 top_bound_term bot_bound_term Δξ[ir]
@@ -587,7 +587,7 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
 
     ϕ, Tf, Tw = ϕ_T_from_u_view(u, dom)
-    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
+    @unpack ρf, Cpf, m_cp_gl, QRFvw = params
 
     if any(Tf .< 0)
         @info "Negative temperatures passed"
@@ -636,8 +636,8 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     dTf .= 0 # zero out in case there was junk there before
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
-    Qgl = compute_Qgl(u, T, dom, params)
-    dTw .= (Q_gl_RF - Qgl) / m_cp_gl
+    Q_vwf = compute_Qvwf(u, T, dom, params)
+    dTw .= (QRFvw - Q_vwf) / m_cp_gl
 
 
 
@@ -662,7 +662,7 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
 
     ϕ, Tf, Tw = ϕ_T_from_u_view(u, dom)
-    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
+    @unpack ρf, Cpf, m_cp_gl, QRFvw = params
 
     if any(Tf .< 0)
         @info "Negative temperatures passed"
@@ -699,8 +699,8 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     # Compute time derivatives for Tf
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
-    Qgl = compute_Qgl(u, T, dom, params)
-    dTw .= (Q_gl_RF - Qgl) / m_cp_gl
+    Q_vwf = compute_Qvwf(u, T, dom, params)
+    dTw .= (QRFvw - Q_vwf) / m_cp_gl
 
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)

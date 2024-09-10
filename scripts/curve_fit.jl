@@ -16,7 +16,7 @@ function match_Tw_Tf(fdat, gldat, initconfig)
     optimize(opt_f, init_x)
 end
 
-function err_Tw_Tf(Kw, Q_gl_RF, Q_ic ,fdat, gldat, config)
+function err_Tw_Tf(Kvwf, QRFvw, QRFf ,fdat, gldat, config)
     tdatf = fdat["t"].*u"hr"   
     tdatgl = gldat["t"].*u"hr"   
     Tw_dat = gldat["Tw"].*u"°C"
@@ -24,16 +24,16 @@ function err_Tw_Tf(Kw, Q_gl_RF, Q_ic ,fdat, gldat, config)
     Tw_dat = uconvert.(u"K", Tw_dat)
     Tf_dat = uconvert.(u"K", Tf_dat)
 
-    Q_gl_RF = abs(Q_gl_RF)
-    Q_ic = abs(Q_ic)
+    QRFvw = abs(QRFvw)
+    QRFf = abs(QRFf)
 
-    Q_gl_RF *= u"W"
-    Q_ic *= u"W/m^3"
-    Kw *= u"W/K/m^2"
-    @pack! config[:cparams] = Kw  
-    @pack! config[:controls] = Q_gl_RF, Q_ic
+    QRFvw *= u"W"
+    QRFf *= u"W/m^3"
+    Kvwf *= u"W/K/m^2"
+    @pack! config[:cparams] = Kvwf  
+    @pack! config[:controls] = QRFvw, QRFf
 
-    @info "Optimization eval, with absolute value of Q_gl_RF and Q_ic:" Kw Q_gl_RF Q_ic 
+    @info "Optimization eval, with absolute value of QRFvw and QRFf:" Kvwf QRFvw QRFf 
 
     @time res = sim_from_dict(config, verbose=false, tf=1e5)
     @unpack sol, dom = res
@@ -62,19 +62,19 @@ function err_Tw_Tf(Kw, Q_gl_RF, Q_ic ,fdat, gldat, config)
     return err_gl + err_f + 50err_t
 end
 
-# function err_Tw(m_cp_gl, Kw, Q_gl_RF,dat,  config)
+# function err_Tw(m_cp_gl, Kvwf, QRFvw,dat,  config)
 #     tdat = dat["t"].*u"hr"   
 #     Tw_dat = dat["Tw"].*u"°C"
 #     Tw_dat = uconvert.(u"K", Tw_dat)
 
-#     @info "Optimization eval, with Q_gl_RF clamped to nonnegative:" m_cp_gl Kw Q_gl_RF
-#     Q_gl_RF = max(Q_gl_RF, 0.0)
+#     @info "Optimization eval, with QRFvw clamped to nonnegative:" m_cp_gl Kvwf QRFvw
+#     QRFvw = max(QRFvw, 0.0)
 
 #     m_cp_gl *= u"g/kg*J/K"
-#     Q_gl_RF *= u"W"
-#     Kw *= u"W/K/m^2"
-#     @pack! config[:cparams] = m_cp_gl, Kw  
-#     @pack! config[:controls] = Q_gl_RF  
+#     QRFvw *= u"W"
+#     Kvwf *= u"W/K/m^2"
+#     @pack! config[:cparams] = m_cp_gl, Kvwf  
+#     @pack! config[:controls] = QRFvw  
 #     @time res = sim_from_dict(config, verbose=false, tf=1e4)
 #     @unpack sol, dom = res
 

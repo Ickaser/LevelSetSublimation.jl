@@ -17,13 +17,13 @@ function compute_Qice(u, T, p, dom::Domain, params)
     @unpack ΔH= params
     # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)[1]
 
-    Q_glshvol, Qgl = compute_Qice_noflow(u, T, dom, params)
+    Q_glshvol, Q_vwf = compute_Qice_noflow(u, T, dom, params)
 
     # Sublimation rate
     md = compute_topmassflux(u, T, p, dom, params)
     Qsub = - md * ΔH
 
-    return Q_glshvol + Qsub, Qgl
+    return Q_glshvol + Qsub, Q_vwf
 end
 
 
@@ -34,27 +34,27 @@ Compute the total heat input into frozen & dried domains, assuming mass flow is 
 """
 function compute_Qice_noflow(u, T, dom::Domain, params)
 
-    @unpack Kv, Kw, Q_ic, Q_ck, Tsh= params
+    @unpack Kshf, Kvwf, QRFf, Q_ck, Tsh= params
     ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
     rweights = ones(Float64, dom.nr) 
     rweights[begin] = rweights[end] = 0.5
-    Qsh = 2π* Kv * dom.dr* sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
+    Qsh = 2π* Kshf * dom.dr* sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
 
     # Heat flux from glass, at outer radius
     zweights = ones(Float64, dom.nz) 
     zweights[begin] = zweights[end] = 0.5
-    Qgl = 2π*dom.rmax * Kw * dom.dz * sum(zweights .* ( Tw .- T[end,:]))
+    Q_vwf = 2π*dom.rmax * Kvwf * dom.dz * sum(zweights .* ( Tw .- T[end,:]))
 
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
     dryvol = π*dom.rmax^2*dom.zmax - icevol
-    Qvol = icevol * Q_ic + dryvol * Q_ck
+    Qvol = icevol * QRFf + dryvol * Q_ck
     
-    # @info "Q" Tsh Tf Qsh Qgl Qvol icevol
+    # @info "Q" Tsh Tf Qsh Q_vwf Qvol icevol
 
-    return Qsh + Qgl + Qvol, Qgl
+    return Qsh + Q_vwf + Qvol, Q_vwf
 end
 
 """
@@ -64,34 +64,34 @@ Compute the total heat input into frozen domain from volumetric, shelf, and glas
 Contrast with `compute_Qice_noflow` and `compute_Qice`, which include heat to dried domain.
 """
 function compute_Qice_nodry(u, T, dom::Domain, params)
-    @unpack Kv, Kw, Q_ic, Q_ck, Tsh = params
+    @unpack Kshf, Kvwf, QRFf, Q_ck, Tsh = params
     ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
     rweights = compute_icesh_area_weights(ϕ, dom)
-    Qsh = 2π* Kv * sum(rweights .* (Tsh .- T[:,1] ))
+    Qsh = 2π* Kshf * sum(rweights .* (Tsh .- T[:,1] ))
     
 
     # Heat flux from glass, at outer radius
     zweights = compute_icegl_area_weights(ϕ, dom)
-    Qgl = 2π*dom.rmax * Kw * sum(zweights .* ( Tw .- T[end,:]))
+    Q_vwf = 2π*dom.rmax * Kvwf * sum(zweights .* ( Tw .- T[end,:]))
 
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
-    Qvol = icevol * Q_ic 
+    Qvol = icevol * QRFf 
 
     # @info "geom" icevol get_subf_r(ϕ, dom)
-    return Qsh + Qgl + Qvol
+    return Qsh + Q_vwf + Qvol
 end
 
-function compute_Qgl(u, T, dom::Domain, params)
-    @unpack Kw = params
+function compute_Qvwf(u, T, dom::Domain, params)
+    @unpack Kvwf = params
     ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
     # Heat flux from glass, at outer radius
     # zweights = compute_icegl_area_weights(ϕ, dom) # area for ice-glass
     zweights = fill(dom.dz, dom.nz)
     zweights[begin] = zweights[end] = dom.dz/2 # area for ice-glass + ice-cake
-    Qgl = 2π*dom.rmax * Kw * sum(zweights .* ( Tw .- T[end,:]))
+    Q_vwf = 2π*dom.rmax * Kvwf * sum(zweights .* ( Tw .- T[end,:]))
 end
 
 """
@@ -123,7 +123,7 @@ Quadratic ghost cell extrapolation (into frozen domain), second order finite dif
 """
 function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack k, Kv, Kw, Tsh = params
+    @unpack k, Kshf, Kvwf, Tsh = params
 
     ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
     pT = T[ir, iz]
@@ -138,18 +138,18 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     if ir == 1 # Symmetry
         dTr = 0
     elseif ir == nr # Robin: glass
-        # dTr = Kw/k*(Tw - pT)
+        # dTr = Kvwf/k*(Tw - pT)
         if ϕp*ϕ[ir-1,iz] <= 0 
             # If interface is near boundary, quadratic interpolant using T(b), dT/dr(b), T(Γ)
             θr = ϕp /(ϕp - ϕ[ir-1,iz])
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-            b = Kw/k*(Tw - pT)
+            b = Kvwf/k*(Tw - pT)
             dTr = 2(pT - Tf_loc)/θr*dr1 - b
             # @info "Condition used" dTr b
         else
             # Robin boundary condition: employ explicitly
 
-            dTr = Kw/k*(Tw - pT)
+            dTr = Kvwf/k*(Tw - pT)
         end
     else 
         # Bulk
@@ -195,7 +195,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     Tf_loc = Tf[ir]
     # Enforce BCs explicitly for boundary cells
     if iz == 1 # Robin: shelf
-        dTz = Kv/k*(Tsh-pT)
+        dTz = Kshf/k*(Tsh-pT)
     elseif iz == nz # Adiabatic
         dTz = 0
     else 

@@ -20,14 +20,14 @@ Here is a sample simulation setup, in a case where nothing complicated is happen
 cparams = make_default_params()
 init_prof = :circ
 Tf0 = 233.15u"K"
-Q_gl_RF = 0.002u"W" # = volumetric * relevant vial volume
+QRFvw = 0.002u"W" # = volumetric * relevant vial volume
 t_samp = (0:0.1:1) .* u"hr"
 Tsh = 263.15u"K"
-Q_ic = 0.3u"W/cm^3"
+QRFf = 0.3u"W/cm^3"
 p_ch = 100u"mTorr"
 
 controls = Dict{Symbol, Any}()
-@pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
+@pack! controls = t_samp, QRFvw, Tsh, QRFf, p_ch
 
 
 vialsize = "10R"

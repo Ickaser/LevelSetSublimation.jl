@@ -3,7 +3,7 @@ export solve_T
 # function radial_Tf(u, dom, params) 
 #     @unpack dr, dz, dr1, dz1, dr2, dz2, 
 #             rgrid, zgrid, nr, nz, ntot = dom
-#     @unpack Kw, Kv, Q_ck, k, Tsh = params
+#     @unpack Kvwf, Kshf, Q_ck, k, Tsh = params
 #     ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
 # end 
 
@@ -31,7 +31,7 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 function solve_T(u, Tf, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Kw, Kv, Q_ck, k, Tsh = params
+    @unpack Kvwf, Kshf, Q_ck, k, Tsh = params
     # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
     ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
 
@@ -106,22 +106,22 @@ function solve_T(u, Tf, dom::Domain, params)
                 θr = pϕ/(pϕ-wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_THRESH
-                    pc += -2k*dr2/θr - Kw*(r1 + 2dr1)
-                    rhs[imx] -= 2Tf_loc*k*dr2/θr + Kw*Tw*(r1 + 2dr1)
+                    pc += -2k*dr2/θr - Kvwf*(r1 + 2dr1)
+                    rhs[imx] -= 2Tf_loc*k*dr2/θr + Kvwf*Tw*(r1 + 2dr1)
                 else 
                     # First, use Robin BC to define an east ghost cell
                     # THen, extrapolate across Stefan boundary using east ghost & Stefan
-                    pc += (Kw*(-r1 -2dr1*θr) + k*(r1*dr1 - 2dr2))/(θr+1)
-                    rhs[imx] -= (Tf_loc*k*(2dr2-r1*dr1) + Tw*Kw*(r1+2dr1*θr))/(θr+1)
+                    pc += (Kvwf*(-r1 -2dr1*θr) + k*(r1*dr1 - 2dr2))/(θr+1)
+                    rhs[imx] -= (Tf_loc*k*(2dr2-r1*dr1) + Tw*Kvwf*(r1+2dr1*θr))/(θr+1)
                 end
 
             else
                 # Using Robin boundary to define ghost point: east T= west T + 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2k*dr2 - Kw*(r1 + 2dr1)
+                pc += -2k*dr2 - Kvwf*(r1 + 2dr1)
                 wc +=  2k*dr2
-                rhs[imx] -= Kw*Tw*(2dr1 + r1)
+                rhs[imx] -= Kvwf*Tw*(2dr1 + r1)
             end
 
         else # r direction bulk
@@ -227,19 +227,19 @@ function solve_T(u, Tf, dom::Domain, params)
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
                 if θz > θ_THRESH
-                    pc += -2k*dz2/θz - 2Kv*dz1
-                    rhs[imx] -= 2*Tf[ir]*k*dz2/θz + 2Kv*Tsh*dz1
+                    pc += -2k*dz2/θz - 2Kshf*dz1
+                    rhs[imx] -= 2*Tf[ir]*k*dz2/θz + 2Kshf*Tsh*dz1
                 else
                     # First Robin ghost defined, then Stefan ghost extrap
-                    pc += -2k*dz2 - 2Kv*dz1
+                    pc += -2k*dz2 - 2Kshf*dz1
                     nc +=  2k*dz2
-                    rhs[imx] -= 2Kv*Tsh*dz1
+                    rhs[imx] -= 2Kshf*Tsh*dz1
                 end
             else
                 # Robin boundary
-                pc += -k*2dz2 - 2Kv*dz1
+                pc += -k*2dz2 - 2Kshf*dz1
                 nc +=  k*2dz2
-                rhs[imx] -= 2Tsh*Kv*dz1
+                rhs[imx] -= 2Tsh*Kshf*dz1
             end
         elseif iz == nz
             # Adiabatic BC
@@ -367,7 +367,7 @@ function pseudosteady_Tf(u, dom, params)
 end
 function pseudosteady_Tf(u, dom, params, Tf_g)
     ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
-    @unpack ρf, Cpf, kf, Q_ic = params
+    @unpack ρf, Cpf, kf, QRFf = params
     @unpack kf, ρf, Cpf = params
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
@@ -449,10 +449,10 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             dTfdt_trim .= dTfdt[has_ice]
             nothing
         end
-        # prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
-        # sol = solve(prob, DynamicSS(Rosenbrock23()))
-        prob = NonlinearProblem(resid_lessdof!, Tf_trim)
-        sol = solve(prob, NewtonRaphson())
+        prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
+        sol = solve(prob, DynamicSS(Rosenbrock23()))
+        # prob = NonlinearProblem(resid_lessdof!, Tf_trim)
+        # sol = solve(prob, NewtonRaphson())
 
         Tfs = zeros(dom.nr)
         Tfs[has_ice] = sol.u
