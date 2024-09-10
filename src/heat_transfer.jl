@@ -1,12 +1,5 @@
 export solve_T
 
-# function radial_Tf(u, dom, params) 
-#     @unpack dr, dz, dr1, dz1, dr2, dz2, 
-#             rgrid, zgrid, nr, nz, ntot = dom
-#     @unpack Kvwf, Kshf, Q_ck, k, Tsh = params
-#     ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
-# end 
-
 """
     solve_T(u, Tf, dom::Domain, params)
 
@@ -361,7 +354,6 @@ function add_to_vcr!(vcr, dom, p_imx, shift, val)
 end
 
 function pseudosteady_Tf(u, dom, params)
-    # ϕv, Tfv, Twv = ϕ_T_from_u(u, dom)#[[true, false, true]]
     Tfg = ϕ_T_from_u(u, dom)[2]
     pseudosteady_Tf(u, dom, params, Tfg)
 end
@@ -376,15 +368,6 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
         return Tf_g
     end
-    # if any(isnan.(Tf_g))
-    #     @warn "NaN guess" Tf_g
-    #     Tf_g[isnan.(Tf_g)] .= 245.0
-    # end
-
-    # edges = has_ice[1:end-1] .⊻ has_ice[2:end]
-    # if sum(edges)>2 || (sum(edges)==2 && has_ice[1])
-    #     @warn "Extrapolation within Tf domain (gaps in ice) not carefully treated." findall(edges) has_ice
-    # end
 
     # function resid!(dTfdt, Tf)
     function resid!(dTfdt, Tf, unused_arg)
@@ -392,42 +375,20 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             @warn "NaN found" Tf
         end
         extrap_Tf_noice!(Tf, has_ice, dom)
-        # if any(clamp.(Tf[has_ice], 220, 300) .!= Tf[has_ice])
-        #     if sum(has_ice) > 0.75*dom.nr
-        #         els = findall(.~has_ice)
-        #     else
-        #         els = has_ice
-        #     end
-        #     if typeof(Tf[1]) <: AbstractFloat
-        #         @info "Crazy Tf in resid" Tf[has_ice] els
-        #     else
-        #         @info "Crazy Tf in resid" [Tfi.value for Tfi in Tf][has_ice] els
-        #     end
-        #     # clamp!(Tf, 200, 350)
-        #     # if typeof(Tf[1]) <: AbstractFloat
-        #     #     @info "after Crazy Tf" Tf[has_ice] els
-        #     # else
-        #     #     @info "after Crazy Tf" [Tfi.value for Tfi in Tf][has_ice] els
-        #     # end
-        # end
-
-        # if minimum(Δξ) < 1e-4
-        #     @time T = solve_T(u, Tf, dom, params)
-        #     @time p = solve_p(u, Tf, T, dom, params)
-        # else
         T = solve_T(u, Tf, dom, params)
         p = solve_p(u, Tf, T, dom, params)
-        # end
         dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
 
         nothing
     end
 
     if all(has_ice) # If all ice present, use all DOF
+
         prob = NonlinearProblem(resid!, Tf_g)
         sol = solve(prob, NewtonRaphson())
         # prob = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
+
         # if sol.retcode == ReturnCode.MaxIters
         #     @info "maxit" sol.retcode sol.u
         #     prob_ss = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
@@ -449,6 +410,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             dTfdt_trim .= dTfdt[has_ice]
             nothing
         end
+
         prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
         sol = solve(prob, DynamicSS(Rosenbrock23()))
         # prob = NonlinearProblem(resid_lessdof!, Tf_trim)
@@ -462,57 +424,11 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     return Tfs
 end
 
-function pseudosteady_Tf_T_p(u, dom, params; abstol=1e-2)
-    Tf0 = ϕ_T_from_u(u, dom)[2]
-    T0 = solve_T(u, Tf0, dom, params)
-    p0 = solve_p(u, Tf0, T0, dom, params)
-    return pseudosteady_Tf_T_p(u, dom, params, Tf0, p0; abstol=abstol)
-end
-
-function pseudosteady_Tf_T_p(u, dom, params, Tfg, pg; abstol=1e-2)
-    ϕ, Tf, Tw = ϕ_T_from_u_view(u, dom)
-    @unpack kf, ρf, Cpf = params
-
-    dϕdx_all = dϕdx_all_WENO(ϕ, dom)
-
-    Tf .= Tfg
-    T0 = solve_T(u, Tf, dom, params)
-    p0 = solve_p(u, Tf, T0, dom, params, pg)
-    Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
-    α = kf/ρf/Cpf
-    CFL = 0.4
-    dt = CFL / (α/dom.dr^2) #* max(0.01, minimum(Δξ)/dom.zmax)
-    nt = max(3*dom.nr, ceil(Int, 100.0/dt))
-    has_ice = (Δξ .> 0)
-
-    dTfdt = zeros(dom.nr)
-
-    for it in 1:nt
-        # @info "step: it=$it, ext=$(extrema(dTfdt))"
-        dTfdt_radial!(dTfdt, u, Tf, T0, p0, dϕdx_all, dom, params)
-        @. Tf += dTfdt*dt
-        extrap_Tf_noice!(Tf, has_ice, dom)
-        T0 .= solve_T(u, Tf, dom, params)
-        p0 .= solve_p(u, Tf, T0, dom, params, p0)
-        if norm(dTfdt, Inf) < abstol
-            @info "num steps to pseudosteady" it
-            # break
-            return Tf, T0, p0
-        end
-    end
-
-
-
-
-    @info "max steps reached" nt dTfdt
-    return Tf, T0, p0
-
-end
-
 extrap_quad(ir, ir1, ir2, ir3, Tf1, Tf2, Tf3) = Tf1*(ir-ir2)*(ir-ir3)/(ir1-ir2)/(ir1-ir3) + 
                 Tf2*(ir-ir1)*(ir-ir3)/(ir2-ir1)/(ir2-ir3) +
                 Tf3*(ir-ir1)*(ir-ir2)/(ir3-ir1)/(ir3-ir2)
 extrap_lin(ir, ir1, ir2, Tf1, Tf2) = Tf1*(ir-ir2)/(ir1-ir2) + Tf2*(ir-ir1)/(ir2-ir1)
+
 function right_extrap!(Tf, extrap_region, has_ice)
     left = extrap_region[begin]-1
     if checkbounds(Bool, has_ice, left-2) && has_ice[left-1] && has_ice[left-2]
@@ -529,6 +445,7 @@ function right_extrap!(Tf, extrap_region, has_ice)
         Tf[extrap_region] .= Tf[left]
     end
 end
+
 function left_extrap!(Tf, extrap_region, has_ice)
     right = extrap_region[end]+1
     if checkbounds(Bool, has_ice, right+2) && has_ice[right+1] && has_ice[right+2]
@@ -545,6 +462,7 @@ function left_extrap!(Tf, extrap_region, has_ice)
         Tf[extrap_region] .= Tf[right]
     end
 end
+
 function mid_extrap!(Tf, extrap_region, has_ice)
     if length(extrap_region) == 1
         loc = extrap_region[1]
@@ -594,91 +512,15 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
         edges[right] = false
         left = findfirst(edges) # If there are no edges left, this is fine
     end
-
-    # elseif sum(edges) == 1 # No or one edge
-    # elseif sum(edges) == 2 && ~has_ice[1]
-    #     first = findfirst(has_ice)
-    #     if first > 1 && first+1<dom.nr && has_ice[first+1] && has_ice[first+2]
-    #         # Enough points to do a quadratic extrapolation, so do that.
-    #         # Is fine because we only really need one grid point of extrapolation
-    #         # ir1 = findfirst(has_ice)
-    #         # ir2 = ir1 + 1
-    #         # ir3 = ir1 + 2
-    #         # Tf1 = Tf[ir1]
-    #         # Tf2 = Tf[ir2]
-    #         # Tf3 = Tf[ir3]
-    #         ref_pts = findfirst(has_ice) .+ 0:2
-
-    #         for ir in 1:ir1-1
-    #             Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
-    #         end
-    #     elseif first > 1 && first < dom.nr && has_ice[first+1]
-    #         # ir1 = findfirst(has_ice)
-    #         # ir2 = ir1 + 1
-    #         # Tf1 = Tf[ir1]
-    #         # Tf2 = Tf[ir2]
-    #         ref_pts = findfirst(has_ice) .+ 0:1
-    #         # Assuming uniform grid, can work in indices rather than space
-    #         # Build a linear extrapolation
-    #         for ir in 1:ir1-1
-    #             Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
-    #             # Tf[ir] = left_Textrap(ir)
-    #         end
-    #     elseif first > 1 # No neighboring ice, so constant extrapolation
-    #         Tf[1:findfirst(has_ice)-1] .= Tf[findfirst(has_ice)]
-    #     end
-
-
-    #     last = findlast(has_ice)
-    #     if last < dom.nr && last-1>1 && has_ice[last-1] && has_ice[last-2]
-    #         # Enough points to do a quadratic extrapolation, so do that.
-    #         # Is fine because we only really need one grid point of extrapolation
-    #         ir1 = findlast(has_ice)
-    #         ir2 = ir1 - 1
-    #         ir3 = ir1 - 2
-    #         Tf1 = Tf[ir1]
-    #         Tf2 = Tf[ir2]
-    #         Tf3 = Tf[ir3]
-    #         ref_pts = findlast(has_ice) .- 0:2
-    #         for ir in ir1+1:dom.nr
-    #             Tf[ir] = extrap_quad(ir, ref_pts..., Tf[ref_pts]...)
-    #         end
-    #         # typeof(Tf1) <: AbstractFloat && @info "R extrap" Tf[ir3:ir1+2]
-    #     elseif last < dom.nr && last > 1 && has_ice[last-1]
-    #         # Build a linear extrapolation
-    #         # ir1 = findlast(has_ice)
-    #         # ir2 = ir1 - 1
-    #         # Tf1 = Tf[ir1]
-    #         # Tf2 = Tf[ir2]
-    #         ref_pts = findlast(has_ice) .- 0:1
-    #         # Assuming uniform grid, can work in indices rather than space
-    #         for ir in ir1+1:dom.nr
-    #             # Tf[ir] = right_Textrap(ir)
-    #             Tf[ir] = extrap_lin(ir, ref_pts..., Tf[ref_pts]...)
-    #         end
-    #     elseif last < dom.nr # No neighboring ice, so constant extrapolation
-    #         Tf[findlast(has_ice)+1:end] .= Tf[findlast(has_ice)]
-    #     end
-    # elseif sum(edges) == 2 && has_ice[1] # One gap in the middle of the ice
-    #     # Handle this poorly for comparison sake
-    #     first = findfirst(edges)
-    #     last = findlast(edges)
-    #     # Interpolate on all the intermediate points
-    #     Tf[first+1:last] .= range(Tf[first], Tf[last+1], length=last-first+2)[2:end-1]
-
-        # gaps = findall(edges)#[2:end-1] 
-        # @info "check2" gaps
-        # for g in gaps
-        #     if g-1 ∉ gaps && g+1 ∉ gaps
-        #         Tf[g] = (Tf[g-1] + Tf[g+1]) / 2
-        #     else
-        #         @warn "unhandled: large gaps in ice"
-        #     end
-        # end
-
-
-
-
-
     nothing
+end
+
+function compute_Qvwf(u, T, dom::Domain, params)
+    @unpack Kvwf = params
+    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+    # Heat flux from glass, at outer radius
+    # zweights = compute_icegl_area_weights(ϕ, dom) # area for ice-glass
+    zweights = fill(dom.dz, dom.nz)
+    zweights[begin] = zweights[end] = dom.dz/2 # area for ice-glass + ice-cake
+    Q_vwf = 2π*dom.rmax * Kvwf * sum(zweights .* ( Tw .- T[end,:]))
 end

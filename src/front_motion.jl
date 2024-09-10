@@ -1,118 +1,6 @@
-export compute_Qice
-export compute_frontvel_heat, compute_frontvel_mass, plot_frontvel
+export compute_frontvel_mass, plot_frontvel
 export compute_frontvel_fixedspeed
 
-"""
-    function compute_Qice(ϕ, T, p, dom::Domain, params)
-
-Compute the total heat input into frozen & dried domains. Also passes glass-ice heat as separate return.
-
-See p. 112-113 from paperlike notes. At pseudosteady conditions, all heat getting added to the system goes to the frozen domain,
-so we don't actually need to treat different areas of the surface.
-In addition, the sublimation flux is simply evaluated on the top surface.
-
-"""
-function compute_Qice(u, T, p, dom::Domain, params)
-
-    @unpack ΔH= params
-    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)[1]
-
-    Q_glshvol, Q_vwf = compute_Qice_noflow(u, T, dom, params)
-
-    # Sublimation rate
-    md = compute_topmassflux(u, T, p, dom, params)
-    Qsub = - md * ΔH
-
-    return Q_glshvol + Qsub, Q_vwf
-end
-
-
-"""
-    compute_Qice_noflow(u, T, dom::Domain, params)
-
-Compute the total heat input into frozen & dried domains, assuming mass flow is zero. Also passes glass-ice heat as separate return.
-"""
-function compute_Qice_noflow(u, T, dom::Domain, params)
-
-    @unpack Kshf, Kvwf, QRFf, Q_ck, Tsh= params
-    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
-
-    # Heat flux from shelf, at bottom of vial
-    rweights = ones(Float64, dom.nr) 
-    rweights[begin] = rweights[end] = 0.5
-    Qsh = 2π* Kshf * dom.dr* sum(rweights .* dom.rgrid .* (Tsh .- T[:,1] ))
-
-    # Heat flux from glass, at outer radius
-    zweights = ones(Float64, dom.nz) 
-    zweights[begin] = zweights[end] = 0.5
-    Q_vwf = 2π*dom.rmax * Kvwf * dom.dz * sum(zweights .* ( Tw .- T[end,:]))
-
-    # Volumetric heat in cake and ice
-    icevol = compute_icevol(ϕ, dom)
-    dryvol = π*dom.rmax^2*dom.zmax - icevol
-    Qvol = icevol * QRFf + dryvol * Q_ck
-    
-    # @info "Q" Tsh Tf Qsh Q_vwf Qvol icevol
-
-    return Qsh + Q_vwf + Qvol, Q_vwf
-end
-
-"""
-    compute_Qice_nodry(u, T, dom::Domain, params)
-
-Compute the total heat input into frozen domain from volumetric, shelf, and glass. 
-Contrast with `compute_Qice_noflow` and `compute_Qice`, which include heat to dried domain.
-"""
-function compute_Qice_nodry(u, T, dom::Domain, params)
-    @unpack Kshf, Kvwf, QRFf, Q_ck, Tsh = params
-    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
-
-    # Heat flux from shelf, at bottom of vial
-    rweights = compute_icesh_area_weights(ϕ, dom)
-    Qsh = 2π* Kshf * sum(rweights .* (Tsh .- T[:,1] ))
-    
-
-    # Heat flux from glass, at outer radius
-    zweights = compute_icegl_area_weights(ϕ, dom)
-    Q_vwf = 2π*dom.rmax * Kvwf * sum(zweights .* ( Tw .- T[end,:]))
-
-    # Volumetric heat in cake and ice
-    icevol = compute_icevol(ϕ, dom)
-    Qvol = icevol * QRFf 
-
-    # @info "geom" icevol get_subf_r(ϕ, dom)
-    return Qsh + Q_vwf + Qvol
-end
-
-function compute_Qvwf(u, T, dom::Domain, params)
-    @unpack Kvwf = params
-    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
-    # Heat flux from glass, at outer radius
-    # zweights = compute_icegl_area_weights(ϕ, dom) # area for ice-glass
-    zweights = fill(dom.dz, dom.nz)
-    zweights[begin] = zweights[end] = dom.dz/2 # area for ice-glass + ice-cake
-    Q_vwf = 2π*dom.rmax * Kvwf * sum(zweights .* ( Tw .- T[end,:]))
-end
-
-"""
-    compute_topmassflux(ϕ, T, p, dom::Domain, params)
-
-Compute total mass flow through top of the cake (that is, mass flux integrated across top surface).
-"""
-function compute_topmassflux(u, Tf, T, p, dom::Domain, params)
-    dpdz = [compute_pderiv(u, Tf, T, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
-    b = eval_b(T, p, params)[:,end] # all r, top of z
-    rweights = zeros(Float64, dom.nr) 
-    for ir in 1:dom.nr-1
-        rmid = (dom.rgrid[ir] + dom.rgrid[ir+1])/2
-        rweights[ir] += rmid^2/2
-        rweights[ir+1] -= rmid^2/2
-    end
-    # md = - 2π * sum(rweights .* b .*dpdz )
-    md = - 2π * sum(dpdz .*b .* dom.rgrid) * dom.dr
-    # @info "massflux" dpdz b md 1/dom.dz
-    return md
-end
 
 """
     compute_Tderiv(u, T, ir::Int, iz::Int, dom::Domain, params)
@@ -213,7 +101,6 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
         elseif sϕ <= 0 # South ghost cell
             θz = ϕp /(ϕp - sϕ)
             if θz > θ_THRESH
-                # dTz = (-Tf_loc/(θz+1)/θz + pT*(1-θz)/θz + nT*θz/(θz+1)) * dz1 # Quadratic extrapolation
                 dTz = (-Tf_loc*(2θz+1) + pT*(1+θz)^2 - nT*θz^2) * dz1/θz/(θz+1) # Quadratic extrapolation, eval at interface
                 # dTz = (pT - Tf_loc)/θz * dz1 # Linear extrapolation
             else
@@ -252,9 +139,6 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
     
-    # if ϕp > 2dr || ϕp > 2dz || ϕp < -2dr || ϕp < -2dz
-    #     @debug "Computing mass flux for cell which may not be at front." ir iz ϕp
-    # end
     if ϕp < 0
         @warn "p derivative computed in ice" ir iz ϕp
     end
@@ -296,11 +180,6 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
         # dpr = (pe - pw) * 0.5dr1
 
         if wϕ <= 0 && eϕ <= 0 # West and east ghost cell
-            # Constant Tf
-            # θr1 = ϕp/(ϕp - wϕ)
-            # θr2 = ϕp/(ϕp - eϕ)
-            # dpr = 0.5*dr1*(psub_l - pp)*(1/θr2 - 1/θr1)
-            # Varying Tf; I'm lazy and this is a rare case
             dpr = 0.5*dr1*(calc_psub(Tf[ir+1]) - calc_psub(Tf[ir-1]))
         elseif wϕ <= 0 # West ghost cell
             θr = ϕp /(ϕp - wϕ)
@@ -337,10 +216,6 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
         # Enforce BCs explicitly for Neumann boundary cells
         dpz = 0
     elseif iz == nz 
-        # # Robin boundary condition: employ explicitly
-        # # bp*dpz = Δp/Rp0
-        # bp = eval_b_loc(T, p, ir, iz, params)
-        # dpz = (p_ch - p[ir,iz])/bp/Rp0
 
         # NOTE: Numerical derivative leads to poor early-time behavior, so stick with BC
         # Use either numerical derivative or BC
@@ -351,7 +226,6 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             # dpz = min(0.0, (p[ir,iz] - psub_l)/θz*dz1)
             bound_der =(p_ch - p[ir,iz])/bp/Rp0
             dpz = 2(p[ir,iz] - psub_l)/θz*dz1 - bound_der
-            # typeof(p[ir,iz]) <: AbstractFloat && @info "eval" ir iz dpz p[ir,iz] psub_l
         else
             # Robin boundary condition: employ explicitly
             # bp*dpz = Δp/Rp0
@@ -441,45 +315,6 @@ function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
     return vf, dϕdx_all
 end
 
-"""
-    compute_frontvel_heat(u, T, p, dom::Domain, params; debug=false)
-
-Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on Γ with ϕ>0). 
-"""
-function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
-
-    @unpack k, ΔH, ρf, ϵ = params
-    ϕ = ϕ_T_from_u(u, dom)[1]
-
-    Γf = identify_Γ(ϕ, dom)
-    Γ = findall(Γf)
-    Γ⁺ = [c for c in Γ if ϕ[c]>0]
-     
-    vf = zeros(eltype(ϕ), dom.nr, dom.nz, 2)
-    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
-
-    Qice = compute_Qice_nodry(u, T, dom, params)
-    Q_ice_per_surf = Qice / compute_icesurf_δ(ϕ, dom)
-
-    for c in Γ⁺
-        ir, iz = Tuple(c)
-        dTr, dTz = compute_Tderiv(u, Tf, T, ir, iz, dom, params)
-
-        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, dTr<0, dTz<0, dϕdx_all, dom)
-
-        # Normal is out of the ice
-        # md >0 for sublimation occurring
-        # v = md/ρ * -∇ϕ
-        q_grad = k* (dTr*dϕdr + dTz * dϕdz) 
-        md_l = (q_grad + Q_ice_per_surf)/ΔH
-        vtot = md_l / ρf / ϵ 
-        vf[c,1] = -vtot * dϕdr
-        vf[c,2] = -vtot * dϕdz
-
-    end
-    
-    return vf, dϕdx_all
-end
 
 """
     compute_frontvel_fixedspeed(v0, ϕ, dom::Domain)
@@ -513,10 +348,6 @@ function compute_frontvel_fixedspeed(v0, ϕ, dom::Domain)
             dϕdz = (dϕdz_s > 0 ? dϕdz_s[c] : dϕdz_n[c])
         end
 
-        # With extrapolation in WENO, no need for special boundary treatment
-        # dϕdr = (dpr < 0 ? dϕdr_w[c] : dϕdr_e[c])
-        # dϕdz = (dpz < 0 ? dϕdz_s[c] : dϕdz_n[c])
-        
         vf[c,1] = -v0 * dϕdr
         vf[c,2] = -v0 * dϕdz
 

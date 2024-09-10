@@ -209,10 +209,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
                 if θr >= θ_THRESH
-                    # Linear ghost cell extrap
-                    # pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/θr
-                    # wc +=  bp*(-0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
-                    # rhs[imx] -= psub_l*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                     # Quadratic ghost cell
                     pc += (bp*(-2*dr2 -(1-θr)*dr1*r1) - dbr*(1-θr)*dr1)/θr
                     wc += (bp*(-dr1*r1*θr + 2dr2) - dbr*dr1*θr )/(θr+1)# Regular + b gradient
@@ -223,85 +219,21 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                     rhs[imx] -= psub_l*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                     # # Constant
-                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-                    # rhs[imx] = calc_psub(Tf[ir])
-                    # continue
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
                 if θr >= θ_THRESH # Regular magnitude θ
-                    # if ir > 2
-                    #     # Logarithmic ghost cell extrapolation
-                    #     pc += (bp*(0.5dr1*r1*log(rΓ/rm) + dr2*log(r1*r1*rΓ*rm)) + dbr*0.5*dr1*log(rΓ/rm))/log(r/rΓ)
-                    #     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    #     rhs[imx] -= psub_l*(bp*(dr2*log(r/rm) + 0.5dr1*r1*log(rm*r1)) + dbr*0.5dr1*log(rm*r1))/log(r/rΓ) # Dirichlet BC in ghost cell extrap
-                    #     @show ir iz pc ec rhs[imx]
-                    # else
-                    #     # Linear ghost cell extrapolation
-                    #     pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                    #     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    #     rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
-                    #     @show ir iz pc ec rhs[imx]
-                    # end
-                    # Linear ghost cell extrapolation
-                    # pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                    # ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                     # Quadratic ghost cell extrapolation
                     pc += (bp*(-2*dr2+(1-θr)*dr1*r1) + dbr*(1-θr)*dr1)/θr
                     ec += (bp*( dr1*r1*θr + 2dr2) + dbr*dr1*θr )/(θr+1)# Regular + b gradient
                     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                 else # Very small θ
-                    # Treat as constant
-                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-                    # rhs[imx] = calc_psub(Tf[ir])
-                    # continue
-                    # if ir > 2
-                    #     # Logarithmic extrapolation
-                    #     rp = rgrid[ir+1]
-                    #     pc += -2bp*dr2 
-                    #     ec += (bp*(dr2*log(rΓ*rΓ/rp/rm) + 0.5dr1*r1*log(rm/rp)) + 0.5dbr*dr1*log(rm/rp))/log(rΓ/rp) # Weaker dependence on this cell
-                    #     # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-                    #     rhs[imx] -= psub_l*(bp*(dr2*log(rm/rp) + 0.5dr1*r1*log(rp/rm)) + dbr*0.5dr1*log(rp/rm))/log(rΓ/rp) # Dirichlet BC in ghost cell extrap
-                    # else
-                    #     # Linear extrapolation, looking a cell further out
-                    #     pc += -2bp*dr2 
-                    #     ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
-                    #     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-                    # end
                     # Linear extrapolation, looking a cell further out
                     pc += -2bp*dr2 
                     ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
                     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-
-                    
-                    # if iz == nz
-                    #     # No special treatment
-                    #     pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                    #     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    #     rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
-                    #     # Constant extrapolation
-                    #     # pc += -2bp*dr2
-                    #     # ec += bp*(dr2  + 0.5dr1*r1) + 0.5dbr*r1
-                    #     # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - 0.5dbr*dr1)
-                    # else
-                    #     # pc += -2bp*dr2 # Regular
-                    #     # ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1)
-                    #     # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-                    #     pc += (bp*(-2*dr2+(1-θr)*dr1*r1) + dbr*(1-θr)*dr1)/θr
-                    #     ec += (bp*( dr1*r1*θr + 2dr2) + dbr*dr1*θr )/(θr+1)# Regular + b gradient
-                    #     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
-                    # end
-                    # Constant extrapolation
-                    # pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                    # ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
-                    # Funny custom linear extrapolation
-                    # pc += -2bp*dr2 - bp*0.5dr1*r1 - dbr*0.5dr1
-                    # ec += ((3+θr)*dbr*dr + (3+θr)*bp*dr1*r1 + 2*(θr-1)*bp*dr2)*0.5/(θr+1)
-                    # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                 end
 
             else # Bulk, not at front 
@@ -445,4 +377,24 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
     sol = solve(prob, SparspakFactorization()).u 
     # sol = mat_lhs \ rhs
     psol = reshape(sol, nr, nz)
+end
+
+"""
+    compute_topmassflux(ϕ, T, p, dom::Domain, params)
+
+Compute total mass flow through top of the cake (that is, mass flux integrated across top surface).
+"""
+function compute_topmassflux(u, Tf, T, p, dom::Domain, params)
+    dpdz = [compute_pderiv(u, Tf, T, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
+    b = eval_b(T, p, params)[:,end] # all r, top of z
+    rweights = zeros(Float64, dom.nr) 
+    for ir in 1:dom.nr-1
+        rmid = (dom.rgrid[ir] + dom.rgrid[ir+1])/2
+        rweights[ir] += rmid^2/2
+        rweights[ir+1] -= rmid^2/2
+    end
+    # md = - 2π * sum(rweights .* b .*dpdz )
+    md = - 2π * sum(dpdz .*b .* dom.rgrid) * dom.dr
+    # @info "massflux" dpdz b md 1/dom.dz
+    return md
 end
