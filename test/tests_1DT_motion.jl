@@ -30,7 +30,7 @@ end
 function case3_analyt_compare(simres, config)
     @unpack sol, dom = simres
     @unpack Kvwf, kd, ϵ, ρf, ΔH = config[:cparams]
-    Tw = config[:Tw0]
+    Tvw = config[:Tvw0]
     Tf = config[:Tf0]
 
     ts = sol.t *u"s"
@@ -40,7 +40,7 @@ function case3_analyt_compare(simres, config)
     R = dom.rmax*u"m"
     R0 = R*(1 - 1e-4)
     rkk = R*Kvwf/kd
-    A = rkk*(Tw-Tf)
+    A = rkk*(Tvw-Tf)
     B = rkk
     rrs = rs
     B = uconvert(NoUnits, B)
@@ -75,9 +75,9 @@ simgridsize = simgrid_coarse
 QRFvw = 0.0u"W" # = volumetric * relevant vial volume
 Tsh = 233.15u"K"
 QRFf = 0.0u"W/cm^3"
-p_ch = 100u"mTorr"
+pch = 100u"mTorr"
 controls = Dict{Symbol, Any}()
-@pack! controls = QRFvw, Tsh, QRFf, p_ch
+@pack! controls = QRFvw, Tsh, QRFf, pch
 
 cparams = deepcopy(params_base)
 config_base = Dict{Symbol, Any}()
@@ -137,13 +137,13 @@ end
     @test err2b < dom.dz
 end
 
-@testset "Case 3: Radial motion, constant Tw" begin
+@testset "Case 3: Radial motion, constant Tvw" begin
     
     casename = "sim_1D_r_glass"
 
     config_3a = deepcopy(config_base)
     config_3a[:init_prof] = :cyl
-    config_3a[:Tw0] = 243.15u"K"
+    config_3a[:Tvw0] = 243.15u"K"
     config_3a[:cparams][:Kvwf] = 50u"W/m^2/K"
 
     config_3b = deepcopy(config_3a)

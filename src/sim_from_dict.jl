@@ -59,13 +59,13 @@ Employ Unitful to do unit conversions after simulation if necessary.
 - `vialsize`, a string (e.g. `"2R"`) giving vial size
 - `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
 - `Tf0`, an initial ice temperature with Unitful units 
-- `Tw0`, an initial glass temperature (if the same as Tf0, can leave this out)
+- `Tvw0`, an initial glass temperature (if the same as Tf0, can leave this out)
 - `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
     - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
     - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
     - `QRFvw`, glass RF heating. Scalar or array, like Tsh
     - `QRFf`, ice RF heating. 
-    - `p_ch` : pressure at top of cake
+    - `pch` : pressure at top of cake
 - `cparams`, which in turn has fields with Unitful units
     - `Kvwf`, 
     - `Kshf` : heat transfer coefficients shelf
@@ -98,19 +98,16 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = fullconfig
 
     # Default values for non-essential parameters
-    Tw0 = get(fullconfig, :Tw0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    Tvw0 = get(fullconfig, :Tvw0, Tf0) # Default to same ice & glass temperature if glass initial not given
 
     # --------- Set up simulation domain, including grid size (defaults to 51x51)
 
     dom = Domain(fullconfig)
     # If no vial thickness defined, get it from vial size
-    if !haskey(cparams, :vial_thick) 
-        cparams[:vial_thick] = get_vial_thickness(vialsize)
-    end
 
 
 
-    u0 = make_u0_ndim(init_prof, Tf0, Tw0, dom)
+    u0 = make_u0_ndim(init_prof, Tf0, Tvw0, dom)
 
     ϕ0 = ϕ_T_from_u_view(u0, dom)[1]
     if verbose
@@ -172,7 +169,7 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
         # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
         # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
         function store_Tf!(integrator)
-            ϕ, Tf, Tw = ϕ_T_from_u_view(integrator.u, integrator.p[1])
+            ϕ, Tf, Tvw = ϕ_T_from_u_view(integrator.u, integrator.p[1])
             verbose && @info "callback" integrator.t
             @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], integrator.p[2], integrator.p[4])
             Tf .= Tf_sol

@@ -100,21 +100,21 @@ simgridsize = (101, 101)
 Tfm = fill(ustrip(u"K", T0), simgridsize[1])
 Tdm = fill(ustrip(u"K", T0), simgridsize)
 Tf0 = T0
-Tw0 = T0 + 20u"K"
+Tvw0 = T0 + 20u"K"
 
 controls = Dict{Symbol, Any}()
-# @pack! controls = t_samp, QRFvw, Tsh, QRFf, p_ch
+# @pack! controls = t_samp, QRFvw, Tsh, QRFf, pch
 QRFvw = RampedVariable(0.0u"W")
 Tsh = RampedVariable(0.0u"K")
 QRFf = RampedVariable(0.0u"W/cm^3")
-p_ch = RampedVariable(60u"Pa")
-@pack! controls = QRFvw, Tsh, QRFf, p_ch
+pch = RampedVariable(60u"Pa")
+@pack! controls = QRFvw, Tsh, QRFf, pch
 
 init_prof = :rad
 vialsize = "6R"
 fillvol = 5u"mL"
 config = Dict{Symbol, Any}()
-@pack! config = simgridsize, cparams, init_prof, Tf0, Tw0, controls, vialsize, fillvol
+@pack! config = simgridsize, cparams, init_prof, Tf0, Tvw0, controls, vialsize, fillvol
 
 dom = Domain(config)
 params, ncontrols = params_nondim_setup(cparams, controls)
@@ -237,7 +237,7 @@ tot_flow2 = sum(z_fluxes .*r_nodes .*r_wts ) *2π
 # ---------------------- Temperature
 
 Bi = cparams[:Kvwf]*R*u"m"/cparams[:kd]
-ΔT = Tw0 - Tf0
+ΔT = Tvw0 - Tf0
 # C1 = Bi*ΔT/(1 + Bi*log(R/Ri))
 T_sol(r, Ri) = Bi*ΔT/(1 + Bi*log(R/Ri))*log(r/Ri) + Tf0
 

@@ -24,10 +24,10 @@ QRFvw = 0.002u"W" # = volumetric * relevant vial volume
 t_samp = (0:0.1:1) .* u"hr"
 Tsh = 263.15u"K"
 QRFf = 0.3u"W/cm^3"
-p_ch = 100u"mTorr"
+pch = 100u"mTorr"
 
 controls = Dict{Symbol, Any}()
-@pack! controls = t_samp, QRFvw, Tsh, QRFf, p_ch
+@pack! controls = t_samp, QRFvw, Tsh, QRFf, pch
 
 
 vialsize = "10R"

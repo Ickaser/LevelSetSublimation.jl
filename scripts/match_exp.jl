@@ -10,7 +10,7 @@ using CSV
 # Tf_sol
 
 # plot(simt[1:end-1]./3600, Tf_sol[1:end-1,:] .-273.15, labels=permutedims(["TC$i" for i in 1:5]))
-# plot!(sol.t[1:end-5]./3600, sol[end,1:end-5] .-273.15, label="Tw")
+# plot!(sol.t[1:end-5]./3600, sol[end,1:end-5] .-273.15, label="Tvw")
 
 # plot!(xlabel="time (hr)", ylabel="temperature (°C)")
 # savefig(plotsdir("2023-10-25_multiT.svg"))

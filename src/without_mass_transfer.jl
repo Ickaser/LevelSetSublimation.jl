@@ -8,10 +8,10 @@
 
 Evaluate local time rate of change for `u` and put results in `du`.
 
-This function leaves `Tf` and `Tw` untouched, since there isn't a way to govern their dynamics without mass transfer.
+This function leaves `Tf` and `Tvw` untouched, since there isn't a way to govern their dynamics without mass transfer.
 
 `u` and `du` are both structured as follows:
-First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`, `dom.ntot+2` index is glass temperature `Tw`
+First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`, `dom.ntot+2` index is glass temperature `Tvw`
 
 Parameters `p` assumed to be `(dom::Domain, params)`
 This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
@@ -20,8 +20,8 @@ using `compute_frontvel_mass`.
 function dudt_heatonly!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params = integ_pars[2]
-    dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
-    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+    dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
+    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
 
     T = solve_T(u, Tf, dom, params)
 
@@ -31,7 +31,7 @@ function dudt_heatonly!(du, u, integ_pars, t)
     vz = @view vf[:, :, 2]
 
     dTf .= 0
-    dTw .= 0
+    dTvw .= 0
 
     # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
@@ -44,7 +44,7 @@ function dudt_heatonly!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
     # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[:Tsh] Tw extrema(vr) extrema(vz)
+    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[:Tsh] Tvw extrema(vr) extrema(vz)
     return nothing
 end
 
@@ -127,7 +127,7 @@ In addition, the sublimation flux is simply evaluated at the top cake surface.
 function compute_Qice(u, T, p, dom::Domain, params)
 
     @unpack ΔH= params
-    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)[1]
+    # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)[1]
 
     Q_glshvol, Q_vwf = compute_Qice_noflow(u, T, dom, params)
 
@@ -147,7 +147,7 @@ Compute the total heat input into frozen & dried domains, assuming mass flow is 
 function compute_Qice_noflow(u, T, dom::Domain, params)
 
     @unpack Kshf, Kvwf, QRFf, Q_ck, Tsh= params
-    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
     rweights = ones(Float64, dom.nr) 
@@ -157,7 +157,7 @@ function compute_Qice_noflow(u, T, dom::Domain, params)
     # Heat flux from glass, at outer radius
     zweights = ones(Float64, dom.nz) 
     zweights[begin] = zweights[end] = 0.5
-    Q_vwf = 2π*dom.rmax * Kvwf * dom.dz * sum(zweights .* ( Tw .- T[end,:]))
+    Q_vwf = 2π*dom.rmax * Kvwf * dom.dz * sum(zweights .* ( Tvw .- T[end,:]))
 
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
@@ -177,7 +177,7 @@ Contrast with `compute_Qice_noflow` and `compute_Qice`, which include heat to dr
 """
 function compute_Qice_nodry(u, T, dom::Domain, params)
     @unpack Kshf, Kvwf, QRFf, Q_ck, Tsh = params
-    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
     rweights = compute_icesh_area_weights(ϕ, dom)
@@ -186,7 +186,7 @@ function compute_Qice_nodry(u, T, dom::Domain, params)
 
     # Heat flux from glass, at outer radius
     zweights = compute_icegl_area_weights(ϕ, dom)
-    Q_vwf = 2π*dom.rmax * Kvwf * sum(zweights .* ( Tw .- T[end,:]))
+    Q_vwf = 2π*dom.rmax * Kvwf * sum(zweights .* ( Tvw .- T[end,:]))
 
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
@@ -212,7 +212,7 @@ Maximum simulation time is specified by `tf`.
 - `vialsize`, a string (e.g. `"2R"`) giving vial size
 - `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
 - `Tf0`, an ice temperature with Unitful units 
-- `Tw0`, a glass temperature (if the same as Tf0, can leave this out)
+- `Tvw0`, a glass temperature (if the same as Tf0, can leave this out)
 - `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
     - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
     - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
@@ -243,7 +243,7 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
     @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = fullconfig
 
     # Default values for non-essential parameters
-    Tw0 = get(fullconfig, :Tw0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    Tvw0 = get(fullconfig, :Tvw0, Tf0) # Default to same ice & glass temperature if glass initial not given
     simgridsize = get(fullconfig, :simgridsize, (51,51))
 
     # --------- Set up simulation domain
@@ -258,7 +258,7 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
     # ----- Nondimensionalize everything
 
     Tf0 = ustrip(u"K", Tf0)
-    Tw0 = ustrip(u"K", Tw0)
+    Tvw0 = ustrip(u"K", Tvw0)
     params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
     # if verbose
     #     @info "Variables used in callback:" meas_keys
@@ -278,11 +278,11 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     
     # Full array of starting state variables ------------
-    # u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tw
+    # u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tvw
     # u0[1:dom.ntot] .= ϕ0_flat
     # u0[dom.ntot+1] = Tf0 
-    # u0[dom.ntot+2] = Tw0 
-    u0 = make_u0_ndim(init_prof, Tf0, Tw0, dom)
+    # u0[dom.ntot+2] = Tvw0 
+    u0 = make_u0_ndim(init_prof, Tf0, Tvw0, dom)
 
     # Cached array for using last pressure state as guess
     p_last = fill(0.0, size(dom))

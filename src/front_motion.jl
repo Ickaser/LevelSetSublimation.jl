@@ -13,7 +13,7 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack kd, Kshf, Kvwf, Tsh = params
 
-    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
     pT = T[ir, iz]
     ϕp = ϕ[ir, iz]
     r = dom.rgrid[ir]
@@ -26,18 +26,18 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     if ir == 1 # Symmetry
         dTr = 0
     elseif ir == nr # Robin: glass
-        # dTr = Kvwf/kd*(Tw - pT)
+        # dTr = Kvwf/kd*(Tvw - pT)
         if ϕp*ϕ[ir-1,iz] <= 0 
             # If interface is near boundary, quadratic interpolant using T(b), dT/dr(b), T(Γ)
             θr = ϕp /(ϕp - ϕ[ir-1,iz])
             Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-            b = Kvwf/kd*(Tw - pT)
+            b = Kvwf/kd*(Tvw - pT)
             dTr = 2(pT - Tf_loc)/θr*dr1 - b
             # @info "Condition used" dTr b
         else
             # Robin boundary condition: employ explicitly
 
-            dTr = Kvwf/kd*(Tw - pT)
+            dTr = Kvwf/kd*(Tvw - pT)
         end
     else 
         # Bulk
@@ -134,8 +134,8 @@ The distinction in discretization between this and `compute_Tderiv` is essential
 """
 function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack p_ch, Rp0 = params
-    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
+    @unpack pch, Rp0 = params
+    ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
     
@@ -224,13 +224,13 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
             θz = ϕp /(ϕp - ϕ[ir,nz-1])
             # dpz = (p[ir,iz] - psub_l)/θz*dz1
             # dpz = min(0.0, (p[ir,iz] - psub_l)/θz*dz1)
-            bound_der =(p_ch - p[ir,iz])/bp/Rp0
+            bound_der =(pch - p[ir,iz])/bp/Rp0
             dpz = 2(p[ir,iz] - psub_l)/θz*dz1 - bound_der
         else
             # Robin boundary condition: employ explicitly
             # bp*dpz = Δp/Rp0
             bp = eval_b_loc(T, p, ir, iz, params)
-            dpz = (p_ch - p[ir,iz])/bp/Rp0
+            dpz = (pch - p[ir,iz])/bp/Rp0
         end
     else # Bulk
         nϕ = ϕ[ir, iz+1]

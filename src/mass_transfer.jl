@@ -17,10 +17,10 @@ Usually if it doesn't converge, it is because temperatures are outside the expec
 
 """
 function solve_p(u, Tf, T, dom::Domain, params; kwargs...) 
-    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+    # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
     ϕ = ϕ_T_from_u(u, dom)[1]
     # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
-    b = eval_b(T, params[:p_ch], params)
+    b = eval_b(T, params[:pch], params)
     p0 = similar(Tf, size(dom)) 
     p0 .= solve_p_given_b(ϕ, b, Tf, dom, params)
     if params[:κ] == 0
@@ -30,7 +30,7 @@ function solve_p(u, Tf, T, dom::Domain, params; kwargs...)
     end
 end
 function solve_p(u, Tf, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
-    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+    # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
     ϕ = ϕ_T_from_u(u, dom)[1]
 
     relerr::eltype(Tf) = 0.0
@@ -87,10 +87,10 @@ end
 Compute 2D axisymmetric pseudosteady pressure profile for given values of level set function `ϕ`, temperature `T`, and transport coefficient `b`.
 
 `b` is a dusty-gas transport coefficient for the pressure, which can vary spatially.
-Homogeneous Neumann boundary conditions at `r=0`, `r=R`, `z=0`; Dirichlet on zero-level set (`p=p_sub`), Robin at top (`dp/dz = (p_ch-p)/Rp0`).
+Homogeneous Neumann boundary conditions at `r=0`, `r=R`, `z=0`; Dirichlet on zero-level set (`p=p_sub`), Robin at top (`dp/dz = (pch-p)/Rp0`).
 `params` should have fields: 
 - `Rp0` : zero-thickness resistance offset, often written R0 in lyo literature
-- `p_ch` : chamber (or vial) pressure at top surface
+- `pch` : chamber (or vial) pressure at top surface
 
 This implementation uses second-order finite differences, with linear extrapolation into Ω⁻.  
 (For details, see [gibouFourthOrderAccurate2005](@cite).)  
@@ -101,7 +101,7 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 function solve_p_given_b(ϕ, b, Tf, dom::Domain, params) 
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Rp0, p_ch = params
+    @unpack Rp0, pch = params
 
 
     rows = Vector{Int}(undef, 0)
@@ -286,18 +286,18 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 θz = pϕ/(pϕ-sϕ)
                 if θz > θ_THRESH
                     pc += -2bp*dz2/θz -2/Rp0*dz1 - dbz/bp/Rp0
-                    rhs[imx] -= 2*psub_l*bp*dz2/θz + p_ch/Rp0*(dbz/bp + 2dz1)
+                    rhs[imx] -= 2*psub_l*bp*dz2/θz + pch/Rp0*(dbz/bp + 2dz1)
                 else
                     # First: use Robin BC to get ghost cell left
                     # Second: extrapolate using left ghost cell across front
                     pc += (-2bp*dz2 + dbz*dz1 - (dbz/bp + 2*θz*dz1)/Rp0)/(θz+1)
-                    rhs[imx] -= (psub_l*(2dz2*bp - dbz*dz1) + p_ch/Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
+                    rhs[imx] -= (psub_l*(2dz2*bp - dbz*dz1) + pch/Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
                 end
             else
-                # Using Robin boundary to define ghost point: north p= south p - 2dz/bp/Rp0*(pi - p_ch)
+                # Using Robin boundary to define ghost point: north p= south p - 2dz/bp/Rp0*(pi - pch)
                 pc += -2bp*dz2 - (2*dz1 + dbz/bp)/Rp0
                 sc +=  2bp*dz2
-                rhs[imx] -= p_ch*(dbz/bp + 2dz1)/Rp0
+                rhs[imx] -= pch*(dbz/bp + 2dz1)/Rp0
                 # @info "here" ir pc sc rhs[imx]
             end
 

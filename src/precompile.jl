@@ -10,13 +10,13 @@
         simgridsize = (51, 45)
         init_prof = :flat 
         Tsh = RampedVariable([238.15u"K", 293.15u"K"], 1u"K/minute")
-        p_ch = RampedVariable(150u"mTorr")
+        pch = RampedVariable(150u"mTorr")
         QRFvw = RampedVariable(0u"W")
         QRFf = RampedVariable(0u"W/cm^3")
         KC = 2.75e-4*u"cal/s/K/cm^2" # Original
         KP = 8.93e-4*u"cal/s/K/cm^2/Torr"
         KD = 0.46*u"1/Torr"
-        cparams[:Kshf] = RpFormFit(KC, KP, KD)(p_ch(0u"s")) 
+        cparams[:Kshf] = RpFormFit(KC, KP, KD)(pch(0u"s")) 
         # cparams[:Kshf] *= 3.8/3.14 # Correct for Av/Ap factor
         Rp0 = 1.4u"cm^2*hr*Torr/g"
         @pack! cparams = Rp0
@@ -30,7 +30,7 @@
         cparams[:Kvwf] *= 0
 
         controls = Dict{Symbol, Any}()
-        @pack! controls = QRFvw, Tsh, QRFf, p_ch
+        @pack! controls = QRFvw, Tsh, QRFf, pch
 
         config = Dict{Symbol, Any}()
         @pack! config = cparams, init_prof, Tf0, controls, vialsize, fillvol

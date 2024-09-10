@@ -1,27 +1,27 @@
 include(scriptsdir("petr_exp_config.jl"))
 
 initconfig = deepcopy(config)
-function match_Tw(dat, initconfig)
+function match_Tvw(dat, initconfig)
     init_x = [6000, 450, .05]
     function opt_f(x)
-        return err_Tw(x[1], x[2], x[3], dat, initconfig)
+        return err_Tvw(x[1], x[2], x[3], dat, initconfig)
     end
     optimize(opt_f, init_x)
 end
-function match_Tw_Tf(fdat, gldat, initconfig)
+function match_Tvw_Tf(fdat, gldat, initconfig)
     init_x = [400, .02, 0.3]
     function opt_f(x)
-        return err_Tw_Tf(x..., fdat, gldat, initconfig)
+        return err_Tvw_Tf(x..., fdat, gldat, initconfig)
     end
     optimize(opt_f, init_x)
 end
 
-function err_Tw_Tf(Kvwf, QRFvw, QRFf ,fdat, gldat, config)
+function err_Tvw_Tf(Kvwf, QRFvw, QRFf ,fdat, gldat, config)
     tdatf = fdat["t"].*u"hr"   
     tdatgl = gldat["t"].*u"hr"   
-    Tw_dat = gldat["Tw"].*u"°C"
+    Tvw_dat = gldat["Tvw"].*u"°C"
     Tf_dat = fdat["Tf"].*u"°C"
-    Tw_dat = uconvert.(u"K", Tw_dat)
+    Tvw_dat = uconvert.(u"K", Tvw_dat)
     Tf_dat = uconvert.(u"K", Tf_dat)
 
     QRFvw = abs(QRFvw)
@@ -40,20 +40,20 @@ function err_Tw_Tf(Kvwf, QRFvw, QRFf ,fdat, gldat, config)
 
     tf = sol.t[end]*u"s"
     Tf_sim = sol(ustrip.(u"s", tdatf))[dom.ntot+1,:] .* u"K"
-    Tw_sim = sol(ustrip.(u"s", tdatgl))[dom.ntot+2,:] .* u"K"
+    Tvw_sim = sol(ustrip.(u"s", tdatgl))[dom.ntot+2,:] .* u"K"
 
     ds_gl = tdatgl .< tf
     ds_f = tdatf .< tf
 
     # display(summaryplot(res, config))
-    pl = scatter(tdatgl, Tw_dat, label="Tw dat") 
-    plot!(tdatgl[ds_gl], Tw_sim[ds_gl], label="Tw sim")
+    pl = scatter(tdatgl, Tvw_dat, label="Tvw dat") 
+    plot!(tdatgl[ds_gl], Tvw_sim[ds_gl], label="Tvw sim")
     scatter!(tdatf, Tf_dat, label = "Tf dat")
     plot!(tdatf[ds_f], Tf_sim[ds_f], label="Tf sim")
     vline!([tf])
     display(pl)
 
-    err_gl = sum(ustrip.(u"K", Tw_sim[ds_gl] - Tw_dat[ds_gl]).^2)  / sum(ds_gl) # Average per data point
+    err_gl = sum(ustrip.(u"K", Tvw_sim[ds_gl] - Tvw_dat[ds_gl]).^2)  / sum(ds_gl) # Average per data point
     err_f = sum(ustrip.(u"K", Tf_sim[ds_f] - Tf_dat[ds_f]).^2)  / sum(ds_f) # Average per data point
     err_t = (ustrip(u"hr", tf) - 11)^2 
 
@@ -62,10 +62,10 @@ function err_Tw_Tf(Kvwf, QRFvw, QRFf ,fdat, gldat, config)
     return err_gl + err_f + 50err_t
 end
 
-# function err_Tw(m_cp_gl, Kvwf, QRFvw,dat,  config)
+# function err_Tvw(m_cp_gl, Kvwf, QRFvw,dat,  config)
 #     tdat = dat["t"].*u"hr"   
-#     Tw_dat = dat["Tw"].*u"°C"
-#     Tw_dat = uconvert.(u"K", Tw_dat)
+#     Tvw_dat = dat["Tvw"].*u"°C"
+#     Tvw_dat = uconvert.(u"K", Tvw_dat)
 
 #     @info "Optimization eval, with QRFvw clamped to nonnegative:" m_cp_gl Kvwf QRFvw
 #     QRFvw = max(QRFvw, 0.0)
@@ -79,16 +79,16 @@ end
 #     @unpack sol, dom = res
 
 #     tf = sol.t[end]*u"s"
-#     Tw_sim = sol(ustrip.(u"s", tdat))[dom.ntot+2,:] .* u"K"
+#     Tvw_sim = sol(ustrip.(u"s", tdat))[dom.ntot+2,:] .* u"K"
 
 #     # display(summaryplot(res, config))
-#     pl = plot(tdat, Tw_dat) 
-#     plot!(tdat, Tw_sim)
+#     pl = plot(tdat, Tvw_dat) 
+#     plot!(tdat, Tvw_sim)
 #     vline!([tf])
 #     display(pl)
 
 #     downsamp = tdat .< tf
 #     t_downsamp = tdat[downsamp]
-#     err = sum(ustrip.(u"K", Tw_sim[downsamp] - Tw_dat[downsamp]).^2)  / sum(downsamp)^2 # Encourage the use of more data points
+#     err = sum(ustrip.(u"K", Tvw_sim[downsamp] - Tvw_dat[downsamp]).^2)  / sum(downsamp)^2 # Encourage the use of more data points
 
 # end

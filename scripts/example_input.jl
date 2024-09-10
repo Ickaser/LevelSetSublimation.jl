@@ -2,7 +2,7 @@
 # This function generates a complete dictionary of parameters
 # Many of them are physical constants that don't need tinkering,
 # so I have not set their values here. But you can list those and
-# change them if you want; a handful (Tsh, p_ch, QRFf, Q_ck) 
+# change them if you want; a handful (Tsh, pch, QRFf, Q_ck) 
 # are controlled by the "controls" dict, for controlled variables.
 cparams = make_default_params()
 
@@ -41,7 +41,7 @@ cparams[:Kvwf] = 50.0u"W/m^2/K"
 # Shelf ramp: [setpoints], [ramprate between setpoints], [hold time between ramps]
 # Same syntax holds for other variables; if constant, just pass the constant value 
 Tsh = RampedVariable([233.15u"K", 283.15u"K"], [1u"K/minute"], [])
-p_ch = RampedVariable(100u"mTorr")
+pch = RampedVariable(100u"mTorr")
 QRFf = RampedVariable(0.12u"W/cm^3")
 QRFvw = RampedVariable(0.06u"W") # = volumetric * relevant vial volume
 
@@ -54,10 +54,10 @@ Kc = 3.58e-4u"cal/s/K/cm^2"
 Kd = 11.6e-4u"cal/s/K/cm^2/Torr"
 Kp = 0.46u"1/Torr"
 # TODO: actually compute Kshf as a function of chamber pressure internally
-cparams[:Kshf] = Kc + Kd*p_ch(0)/(1+Kp*p_ch(0))
+cparams[:Kshf] = Kc + Kd*pch(0)/(1+Kp*pch(0))
 
 controls = Dict{Symbol, Any}()
-@pack! controls = QRFvw, Tsh, QRFf, p_ch
+@pack! controls = QRFvw, Tsh, QRFf, pch
 
 config = Dict{Symbol, Any}()
 @pack! config = cparams, init_prof, Tf0, controls, vialsize, fillvol

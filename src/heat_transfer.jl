@@ -25,8 +25,8 @@ function solve_T(u, Tf, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
     @unpack Kvwf, Kshf, Q_ck, kd, Tsh = params
-    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
-    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
+    # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
+    ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
 
     # To prevent blowup, artificially add some  corner ice if none is present
     # This is by tampering with level set field, hopefully memory safe
@@ -100,12 +100,12 @@ function solve_T(u, Tf, dom::Domain, params)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_THRESH
                     pc += -2k*dr2/θr - Kvwf*(r1 + 2dr1)
-                    rhs[imx] -= 2Tf_loc*kd*dr2/θr + Kvwf*Tw*(r1 + 2dr1)
+                    rhs[imx] -= 2Tf_loc*kd*dr2/θr + Kvwf*Tvw*(r1 + 2dr1)
                 else 
                     # First, use Robin BC to define an east ghost cell
                     # THen, extrapolate across Stefan boundary using east ghost & Stefan
                     pc += (Kvwf*(-r1 -2dr1*θr) + kd*(r1*dr1 - 2dr2))/(θr+1)
-                    rhs[imx] -= (Tf_loc*kd*(2dr2-r1*dr1) + Tw*Kvwf*(r1+2dr1*θr))/(θr+1)
+                    rhs[imx] -= (Tf_loc*kd*(2dr2-r1*dr1) + Tvw*Kvwf*(r1+2dr1*θr))/(θr+1)
                 end
 
             else
@@ -114,7 +114,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 # p. 65, 66 of project notes
                 pc += -2k*dr2 - Kvwf*(r1 + 2dr1)
                 wc +=  2k*dr2
-                rhs[imx] -= Kvwf*Tw*(2dr1 + r1)
+                rhs[imx] -= Kvwf*Tvw*(2dr1 + r1)
             end
 
         else # r direction bulk
@@ -358,7 +358,7 @@ function pseudosteady_Tf(u, dom, params)
     pseudosteady_Tf(u, dom, params, Tfg)
 end
 function pseudosteady_Tf(u, dom, params, Tf_g)
-    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
     @unpack ρf, Cpf, kf, QRFf = params
     @unpack kf, ρf, Cpf = params
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
@@ -517,10 +517,10 @@ end
 
 function compute_Qvwf(u, T, dom::Domain, params)
     @unpack Kvwf = params
-    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
+    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
     # Heat flux from glass, at outer radius
     # zweights = compute_icegl_area_weights(ϕ, dom) # area for ice-glass
     zweights = fill(dom.dz, dom.nz)
     zweights[begin] = zweights[end] = dom.dz/2 # area for ice-glass + ice-cake
-    Q_vwf = 2π*dom.rmax * Kvwf * sum(zweights .* ( Tw .- T[end,:]))
+    Q_vwf = 2π*dom.rmax * Kvwf * sum(zweights .* ( Tvw .- T[end,:]))
 end

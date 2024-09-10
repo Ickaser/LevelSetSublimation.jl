@@ -20,8 +20,8 @@ The `ODESolution` type comes from [`DifferentialEquations`](https://docs.sciml.a
 ```
 
 At a particular timestep, `u` is used to describe the system's state. 
-With the current implementation, `u` is a vector, with `nr*nz` values of the level set function throughout the domain, followed by 1 value for frozen temperature `Tf` and one value for glass temperature `Tw`.
-`ϕ_T_from_u` will return a tuple `(ϕ, Tf, Tw)` ; this is just so you don't have to hard-code which indices are which variables.
+With the current implementation, `u` is a vector, with `nr*nz` values of the level set function throughout the domain, followed by 1 value for frozen temperature `Tf` and one value for glass temperature `Tvw`.
+`ϕ_T_from_u` will return a tuple `(ϕ, Tf, Tvw)` ; this is just so you don't have to hard-code which indices are which variables.
 
 
 ## Fine-grained plotting functions, used internally 

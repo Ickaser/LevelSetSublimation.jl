@@ -13,7 +13,7 @@ init_prof = :flat
 
 
 Tsh = RampedVariable([238.15u"K", 293.15u"K"], [1u"K/minute"], [10u"hr"])
-p_ch = RampedVariable(150u"mTorr")
+pch = RampedVariable(150u"mTorr")
 QRFvw = RampedVariable(0u"W")
 QRFf = RampedVariable(0u"W/cm^3")
 
@@ -21,7 +21,7 @@ QRFf = RampedVariable(0u"W/cm^3")
 KC = 2.75e-4*u"cal/s/K/cm^2" # Original
 KP = 8.93e-4*u"cal/s/K/cm^2/Torr"
 KD = 0.46*u"1/Torr"
-cparams[:Kshf] = (KC + KP*p_ch(0u"s")/(1+KD*p_ch(0u"s"))) 
+cparams[:Kshf] = (KC + KP*pch(0u"s")/(1+KD*pch(0u"s"))) 
 cparams[:Kshf] *= 3.8/3.14 # Correct for Av/Ap factor
 cparams[:Kshf] *= .95 # Correct for ice thickness resistance
 
@@ -42,7 +42,7 @@ cparams[:Kvwf] *= 0
 # Assemble parameters into objects -------------------------
 
 controls = Dict{Symbol, Any}()
-@pack! controls = QRFvw, Tsh, QRFf, p_ch
+@pack! controls = QRFvw, Tsh, QRFf, pch
 
 config = Dict{Symbol, Any}()
 @pack! config = cparams, Tf0, init_prof, controls, vialsize, fillvol

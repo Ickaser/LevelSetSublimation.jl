@@ -168,8 +168,8 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
         end
         u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
         # T = solve_T(u, dom, params)
-        ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
-        Tw -= 273.15
+        ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
+        Tvw -= 273.15
         heatvar_vals = T .- 273.15
         clab = "Temperature [°C]"
         # cmap = :plasma
@@ -180,7 +180,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
             cont_c = :white
         end
         Tsh = ustrip(u"°C", simconfig[:controls][:Tsh](t*u"s"))
-        maxT = max(Tw, Tsh, maximum(heatvar_vals))
+        maxT = max(Tvw, Tsh, maximum(heatvar_vals))
         if isnothing(clims)
             clims = extrema(heatvar_vals)
         end
@@ -217,8 +217,8 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     if heatvar == :T
         plot!(xlim=(-1, 1) .* (dom.rmax+1.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
         heatmap!(vcat(dom.rgrid .- dom.rmax, dom.rgrid), [-dom.dz], fill(Tsh, 1, 2dom.nr), cmap=cmap, clims=clims)
-        heatmap!([-dom.rmax-dom.dr], dom.zgrid, fill(Tw, 1, dom.nz)', cmap=cmap, clims=clims)
-        heatmap!([ dom.rmax+dom.dr], dom.zgrid, fill(Tw, 1, dom.nz)', cmap=cmap, clims=clims)
+        heatmap!([-dom.rmax-dom.dr], dom.zgrid, fill(Tvw, 1, dom.nz)', cmap=cmap, clims=clims)
+        heatmap!([ dom.rmax+dom.dr], dom.zgrid, fill(Tvw, 1, dom.nz)', cmap=cmap, clims=clims)
         plot!([-1, -1, 1, 1] .* (dom.rmax+0.5dom.dr), [dom.zmax, -0.5dom.dz, -0.5dom.dz, dom.zmax], c=:black, label=:none)
     end
     heatmap!(dom.rgrid, dom.zgrid, heatvar_vals', c=cmap, clims=clims)
@@ -250,7 +250,7 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
     ϕs = map(frames) do f
         reshape(simresults["sol"](f, idxs = 1:dom.nr*dom.nz), dom.nr, dom.nz)
     end
-    Tws = map(frames) do f
+    Tvws = map(frames) do f
         simresults["sol"](f, idxs = dom.nr*(dom.nz+1)+1) - 273.15
     end
     Tshs = map(frames) do f
@@ -258,8 +258,8 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
     end
 
     if clims === nothing
-        cmax = max(maximum(maximum.(Ts)), maximum(Tws), maximum(Tshs))
-        cmin = min(minimum(minimum.(Ts)), minimum(Tws), minimum(Tshs))
+        cmax = max(maximum(maximum.(Ts)), maximum(Tvws), maximum(Tshs))
+        cmin = min(minimum(minimum.(Ts)), minimum(Tvws), minimum(Tshs))
         clims = (cmin, cmax)
     end
 
@@ -281,13 +281,13 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
              (-dom.rmax-1.5dom.dr, -1.5dom.dz),
              ( dom.rmax+1.5dom.dr, -1.5dom.dz)])
 
-    plots = map(zip(frames, ϕs, Ts, Tws, Tshs)) do (t, ϕ, T, Tw, Tsh)
+    plots = map(zip(frames, ϕs, Ts, Tvws, Tshs)) do (t, ϕ, T, Tvw, Tsh)
         if (T[1] - clims[1])/(clims[2]-clims[1]) > 0.65 # Tf relatively high
             cont_c = :black
         else
             cont_c = :white
         end
-        cpick(Tw)
+        cpick(Tvw)
         tr = round(t/3600, digits=2)
 
         # Set up plot
@@ -299,8 +299,8 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
         # plot ice surface
         plot!(LevelSet(ϕ, dom), c=cont_c)
         # Plot shelf and wall Ts
-        plot!(lwall, c=cpick(Tw) , lw=0, linealpha=0, label="")
-        plot!(rwall, c=cpick(Tw) , lw=0, linealpha=0, label="")
+        plot!(lwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
+        plot!(rwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
         plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
         # Vial outline
         plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)

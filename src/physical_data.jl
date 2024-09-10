@@ -115,7 +115,15 @@ const ϵ_typical = 0.92
 const l_guess = 1e-5 * u"m" # 10 micron pore size
 const κ_guess = 1e-10 * u"m^2" # 100 Darcys
 
-# Typical value at around p_ch = 20 Pa
+# Typical value at around pch = 20 Pa
 const Kshf_guess = 15.0u"W/m^2/K"
-const p_ch_guess = 20.0u"Pa"
+const pch_guess = 20.0u"Pa"
 
+# Dielectric loss coefficient of water ice
+εpp_f = 8e-4
+
+# Dielectric loss coefficient of borosilicate glass, per Schott's testing
+εpp_vw = 2.4e-2
+
+# Permittivity of free space: universal
+ε0 = 8.854187e-12u"F/m"
