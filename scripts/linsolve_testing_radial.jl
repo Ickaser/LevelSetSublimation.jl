@@ -89,12 +89,12 @@ b = ustrip(u"s", l_bulk*sqrt(Mw/Rg/T0)) #Mw/R/T * (l*NaNMath.sqrt(R*T/Mw)
 
 # -------------------
 
-cparams = make_default_params()
-cparams[:l] = upreferred(l_bulk)
-cparams[:κ] = 0.0u"m^2"
-cparams[:Rp0] = Rp0*u"m/s"
-cparams[:Kshf] *= 0
-cparams[:Kvwf] = 10u"W/m^2/K"
+paramsd = make_M1_params()
+@reset paramsd[2].l= upreferred(l_bulk)
+@reset paramsd[2].κ = 0.0u"m^2"
+@reset paramsd[2].Rp0 = Rp0*u"m/s"
+@reset paramsd[2].Kvwf = 10u"W/m^2/K"
+@reset paramsd[3].Kshf = p->0u"W/m^2/K"
 
 simgridsize = (101, 101)
 Tfm = fill(ustrip(u"K", T0), simgridsize[1])
@@ -102,22 +102,18 @@ Tdm = fill(ustrip(u"K", T0), simgridsize)
 Tf0 = T0
 Tvw0 = T0 + 20u"K"
 
-controls = Dict{Symbol, Any}()
-# @pack! controls = t_samp, QRFvw, Tsh, QRFf, pch
-QRFvw = RampedVariable(0.0u"W")
-Tsh = RampedVariable(0.0u"K")
-QRFf = RampedVariable(0.0u"W/cm^3")
-pch = RampedVariable(60u"Pa")
-@pack! controls = QRFvw, Tsh, QRFf, pch
+@reset paramsd[3].Tsh = RampedVariable(0.0u"K")
+@reset paramsd[3].P_per_vial = RampedVariable(0.0u"W")
+@reset paramsd[3].pch = RampedVariable(60u"Pa")
 
 init_prof = :rad
 vialsize = "6R"
 fillvol = 5u"mL"
 config = Dict{Symbol, Any}()
-@pack! config = simgridsize, cparams, init_prof, Tf0, Tvw0, controls, vialsize, fillvol
+@pack! config = simgridsize, paramsd, init_prof, Tf0, Tvw0, controls, vialsize, fillvol
 
 dom = Domain(config)
-params, ncontrols = params_nondim_setup(cparams, controls)
+params = params_nondim_setup(paramsd)
 um = LSS.make_u0_ndim(config)
 ϕm = ϕ_T_from_u_view(um, dom)[1]
 ϕm .+= .4*dom.rmax - 1e-6 + 1e-8
@@ -236,7 +232,7 @@ tot_flow2 = sum(z_fluxes .*r_nodes .*r_wts ) *2π
 
 # ---------------------- Temperature
 
-Bi = cparams[:Kvwf]*R*u"m"/cparams[:kd]
+Bi = paramsd[:Kvwf]*R*u"m"/paramsd[:kd]
 ΔT = Tvw0 - Tf0
 # C1 = Bi*ΔT/(1 + Bi*log(R/Ri))
 T_sol(r, Ri) = Bi*ΔT/(1 + Bi*log(R/Ri))*log(r/Ri) + Tf0

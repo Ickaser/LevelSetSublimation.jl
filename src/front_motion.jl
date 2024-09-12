@@ -11,7 +11,8 @@ Quadratic ghost cell extrapolation (into frozen domain), second order finite dif
 """
 function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack kd, Kshf, Kvwf, Tsh = params
+    @unpack kd, Kvwf = params[2]
+    @unpack Kshf, Tsh = params[3]
 
     ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
     pT = T[ir, iz]
@@ -134,7 +135,8 @@ The distinction in discretization between this and `compute_Tderiv` is essential
 """
 function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
-    @unpack pch, Rp0 = params
+    @unpack Rp0 = params[2]
+    @unpack pch = params[3]
     ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
@@ -278,7 +280,8 @@ Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on 
 """
 function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
 
-    @unpack kd, ΔH, ρf, ϵ = params
+    @unpack ΔH, ρf = params[1]
+    @unpack kd, ϵ = params[2]
     ϕ = ϕ_T_from_u(u, dom)[1]
 
     Γf = identify_Γ(ϕ, dom)

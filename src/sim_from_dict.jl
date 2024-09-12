@@ -60,16 +60,10 @@ Employ Unitful to do unit conversions after simulation if necessary.
 - `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
 - `Tf0`, an initial ice temperature with Unitful units 
 - `Tvw0`, an initial glass temperature (if the same as Tf0, can leave this out)
-- `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
-    - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
-    - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
-    - `QRFvw`, glass RF heating. Scalar or array, like Tsh
-    - `QRFf`, ice RF heating. 
-    - `pch` : pressure at top of cake
 - `cparams`, which in turn has fields with Unitful units
     - `Kvwf`, 
     - `Kshf` : heat transfer coefficients shelf
-    - `Q_ck` : volumetric heating in cake 
+    # - `QRFd` : volumetric heating in cake 
     - `kd`: thermal conductivity of cake
     - `m_cp_gl` total thermal mass of glass, relevant to heating/cooling of glass wall
     - `kf`: thermal conductivity of ice
@@ -83,10 +77,6 @@ Employ Unitful to do unit conversions after simulation if necessary.
     - `μ` : dynamic viscosity of species (water), with appropriate units
 - `dudt_func`: defaults to `dudt_heatmass!`, but for other cases (e.g. ignoring mass transfer) can replace this
 
-During simulation, at each value of `t_samp`, the values of any `controls` which are arrays will be added to an internal dict called `params`.
-
-If you pass in an array of values for multiple of `Tsh`, `QRFvw`, or others, they must all have the same length as `t_samp`.
-
 If you are getting a warning about instability, it can sometimes be fixed by tinkering with the reinitialization behavior.
 
 
@@ -95,8 +85,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = fullconfig
-
+    @unpack init_prof, Tf0, = fullconfig
     # Default values for non-essential parameters
     Tvw0 = get(fullconfig, :Tvw0, Tf0) # Default to same ice & glass temperature if glass initial not given
 
@@ -104,9 +93,6 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     dom = Domain(fullconfig)
     # If no vial thickness defined, get it from vial size
-
-
-
     u0 = make_u0_ndim(init_prof, Tf0, Tvw0, dom)
 
     ϕ0 = ϕ_T_from_u_view(u0, dom)[1]
@@ -127,18 +113,23 @@ Wrapped by [`sim_from_config`](@ref); useful on its own if you want to start fro
 """
 function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
 
+    @unpack paramsd = fullconfig
+    dom = Domain(fullconfig)
+
     # ----- Nondimensionalize everything
-    params, ncontrols = params_nondim_setup(cparams, controls) # Covers the various physical parameters 
+    params_vary = params_nondim_setup(paramsd) # Covers the various physical parameters 
 
     # Cached array for using last pressure and Tf states as guess
     # This gets ignored for heat-only simulation, but shouldn't cause any problems
-    p_sub = calc_psub(ustrip(u"K", Tf0))
+    Tf0 = ϕ_T_from_u(u0, dom)[2][1]
+    p_sub = calc_psub(Tf0)
     p_last = fill(p_sub, size(dom))
-    Tf_last = fill(ustrip(u"K", Tf0), dom.nr)
+    Tf_last = fill(Tf0, dom.nr)
 
 
+    dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to heat and mass transfer-based evolution
     # ---- Set up ODEProblem
-    prob_pars = (dom, params, p_last, Tf_last, ncontrols, verbose)
+    prob_pars = (dom, params_vary, p_last, Tf_last, verbose)
     tspan = (0, tf)
     prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
 
@@ -163,15 +154,16 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
         @info "Beginning solve"
     end
 
-    dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to heat and mass transfer-based evolution
     # --- Solve
     if dudt_func == dudt_heatmass!
         # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
         # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
         function store_Tf!(integrator)
             ϕ, Tf, Tvw = ϕ_T_from_u_view(integrator.u, integrator.p[1])
+            p_vary = integrator.p[2]
+            params = p_vary[1], p_vary[2], p_vary[3](integrator.t)
             verbose && @info "callback" integrator.t
-            @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], integrator.p[2], integrator.p[4])
+            @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], params, integrator.p[4])
             Tf .= Tf_sol
         end
 
@@ -181,7 +173,7 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
         sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Adaptive timestepping: default
     elseif dudt_func == dudt_heatmass_dae!
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
-        massmat = Diagonal(vcat(ones(length(ϕ0)), zeros(dom.nr), [1]))
+        massmat = Diagonal(vcat(ones(dom.nr*dom.nz), zeros(dom.nr), [1]))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
         sol = solve(prob, FBDF(); callback=cbs)

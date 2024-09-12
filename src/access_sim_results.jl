@@ -83,12 +83,13 @@ function gen_anim(config, var=:T, casename="test")
 end
 
 function calc_params_at_t(t::Float64, simconfig::Dict)
-    @unpack cparams, controls = simconfig
+    @unpack paramsd = simconfig
     
-    params, ncontrols = params_nondim_setup(cparams, controls)
+    params = params_nondim_setup(paramsd)
+    # params, ncontrols = params_nondim_setup(cparams, controls)
 
-    input_measurements!(params, t, ncontrols)
-    return params
+    # input_measurements!(params, t, ncontrols)
+    return (params[1], params[2], params[3](t))
 end
 
 function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)

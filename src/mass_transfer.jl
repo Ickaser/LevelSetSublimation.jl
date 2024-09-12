@@ -20,10 +20,10 @@ function solve_p(u, Tf, T, dom::Domain, params; kwargs...)
     # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
     ϕ = ϕ_T_from_u(u, dom)[1]
     # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
-    b = eval_b(T, params[:pch], params)
+    b = eval_b(T, params[3].pch, params)
     p0 = similar(Tf, size(dom)) 
     p0 .= solve_p_given_b(ϕ, b, Tf, dom, params)
-    if params[:κ] == 0
+    if params[2].κ == 0
         return p0
     else
         solve_p(u, Tf, T, dom::Domain, params, p0; kwargs...)
@@ -41,7 +41,7 @@ function solve_p(u, Tf, T, dom::Domain, params, p0; maxit=20, reltol=1e-6)
         b = eval_b(T, p0, params)
         p⁺ .= solve_p_given_b(ϕ, b, Tf, dom, params)
         relerr = norm((p⁺ .- p0) ./ p⁺, Inf)
-        if relerr < reltol || params[:κ] == 0
+        if relerr < reltol || params[2].κ == 0
             # @info "Number of p iterations: $i"
             return p⁺
         end
@@ -65,7 +65,8 @@ so in practice there are no units to track.
 If `κ=0`, no spatial variation due to pressure occurs.
 """
 function eval_b(T, p, params)
-    @unpack l, κ, R, Mw, μ = params
+    @unpack R, Mw, μ = params[1]
+    @unpack l, κ = params[2]
     b = @. Mw/R/T * (l*NaNMath.sqrt(R*T/Mw) + κ/μ*p)
 end
 
@@ -75,7 +76,8 @@ end
 Locally evaluate transport coefficient (indexes into spatially varying `l` and `κ` if necessary).
 """
 function eval_b_loc(T, p, ir, iz, params)
-    @unpack l, κ, R, Mw, μ = params
+    @unpack R, Mw, μ = params[1]
+    @unpack l, κ = params[2]
     lloc = (length(l) > 1) ? l[ir,iz] : l
     κloc = (length(κ) > 1) ? κ[ir,iz] : κ
     b = Mw/R/T[ir,iz] * (lloc*NaNMath.sqrt(R*T[ir,iz]/Mw) + κloc/μ*p[ir,iz])
@@ -101,7 +103,8 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 function solve_p_given_b(ϕ, b, Tf, dom::Domain, params) 
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Rp0, pch = params
+    @unpack Rp0 = params[2]
+    @unpack pch = params[3]
 
 
     rows = Vector{Int}(undef, 0)

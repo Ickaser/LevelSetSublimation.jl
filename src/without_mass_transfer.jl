@@ -44,7 +44,7 @@ function dudt_heatonly!(du, u, integ_pars, t)
         dϕ[ind] = -rcomp - zcomp
     end
     # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[:Tsh] Tvw extrema(vr) extrema(vz)
+    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[3].Tsh Tvw extrema(vr) extrema(vz)
     return nothing
 end
 
@@ -81,7 +81,8 @@ Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on 
 """
 function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
 
-    @unpack kd, ΔH, ρf, ϵ = params
+    @unpack ΔH, ρf = params[1]
+    @unpack kd, ϵ = params[2]
     ϕ = ϕ_T_from_u(u, dom)[1]
 
     Γf = identify_Γ(ϕ, dom)
@@ -126,7 +127,7 @@ In addition, the sublimation flux is simply evaluated at the top cake surface.
 """
 function compute_Qice(u, T, p, dom::Domain, params)
 
-    @unpack ΔH= params
+    @unpack ΔH = params[1]
     # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)[1]
 
     Q_glshvol, Q_vwf = compute_Qice_noflow(u, T, dom, params)
@@ -146,7 +147,11 @@ Compute the total heat input into frozen & dried domains, assuming mass flow is 
 """
 function compute_Qice_noflow(u, T, dom::Domain, params)
 
-    @unpack Kshf, Kvwf, QRFf, Q_ck, Tsh= params
+    @unpack Kvwf = params[2]
+    @unpack Kshf, Tsh = params[3]
+    QRFd = calc_QpppRFd(params)
+    QRFf = calc_QpppRFd(params)
+
     ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
@@ -162,7 +167,7 @@ function compute_Qice_noflow(u, T, dom::Domain, params)
     # Volumetric heat in cake and ice
     icevol = compute_icevol(ϕ, dom)
     dryvol = π*dom.rmax^2*dom.zmax - icevol
-    Qvol = icevol * QRFf + dryvol * Q_ck
+    Qvol = icevol * QRFf + dryvol * QRFd
     
     # @info "Q" Tsh Tf Qsh Q_vwf Qvol icevol
 
@@ -176,7 +181,10 @@ Compute the total heat input into frozen domain from volumetric, shelf, and glas
 Contrast with `compute_Qice_noflow` and `compute_Qice`, which include heat to dried domain.
 """
 function compute_Qice_nodry(u, T, dom::Domain, params)
-    @unpack Kshf, Kvwf, QRFf, Q_ck, Tsh = params
+    @unpack Kvwf = params[2]
+    @unpack Kshf, Tsh = params[3]
+    QRFf = calc_QpppRFd(params)
+
     ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
 
     # Heat flux from shelf, at bottom of vial
@@ -220,7 +228,6 @@ Maximum simulation time is specified by `tf`.
 - `cparams`, which in turn has fields with Unitful units
     - `Kvwf`, 
     - `Kshf` : heat transfer coefficients shelf
-    - `Q_ck` : volumetric heating in cake 
     - `kd`: thermal conductivity of cake
     - `ρf`: density of ice
     - `ΔH` : heat of sublimation of ice

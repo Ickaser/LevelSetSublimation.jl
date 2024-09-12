@@ -1,5 +1,18 @@
 export solve_T
 
+function calc_QpppRFd(params)
+    base, tcp, tvps = params
+    return 2π*tvps.f_RF*base.ε0*base.εpp_d*tcp.B_d*tvps.P_per_vial
+end
+function calc_QpppRFf(params)
+    base, tcp, tvps = params
+    return 2π*tvps.f_RF*base.ε0*base.εpp_f*tcp.B_f*tvps.P_per_vial
+end
+function calc_QpppRFvw(params)
+    base, tcp, tvps = params
+    return 2π*tvps.f_RF*base.ε0*base.εpp_vw*tcp.B_vw*tvps.P_per_vial
+end
+
 """
     solve_T(u, Tf, dom::Domain, params)
 
@@ -8,12 +21,7 @@ Compute 2D axisymmetric T profile, returning ghost cell values, for given state 
 `u` contains ϕ and Tf; unpacked with `ϕ_T_from_u`.
 
 Neumann boundary conditions on all rectangular boundaries; Dirichlet on zero-level set.
-`params` should have fields: 
-- `Q_gl` 
-- `Q_sh` 
-- `Q_ck`
-- `kd` 
-- `Tf`  
+
 This implementation uses second-order finite differences, with linear extrapolation into Ω⁻.  
 Coefficients are all hard-coded here, unfortunately.
 (For more on extrapolation, see Gibou et al., 2002, "Second-Order-Accurate ... Poisson ... ")  
@@ -24,7 +32,9 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 function solve_T(u, Tf, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Kvwf, Kshf, Q_ck, kd, Tsh = params
+    @unpack Kvwf, kd = params[2]
+    @unpack Kshf, Tsh = params[3]
+    QRFd = calc_QpppRFd(params)
     # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
     ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
 
@@ -78,18 +88,18 @@ function solve_T(u, Tf, dom::Domain, params)
                 θr = pϕ/(pϕ-eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 if θr >= θ_THRESH
-                    pc += -2k*dr2/θr
-                    rhs[imx] -= 2k*Tf_loc*dr2/θr #+ BC1*(r1 - 2dr1)
+                    pc += -2kd*dr2/θr
+                    rhs[imx] -= 2kd*Tf_loc*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within .05 cells of boundary
-                    pc += -2k*dr2/(θr+1)
+                    pc += -2kd*dr2/(θr+1)
                     rhs[imx] -= 2Tf_loc*kd*dr2/(θr+1) 
                 end
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2k*dr2
-                ec +=  2k*dr2
+                pc += -2kd*dr2
+                ec +=  2kd*dr2
                 rhs[imx] += 0 # r=0, so 1/r = NaN
             end
         elseif ir == nr
@@ -99,7 +109,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 θr = pϕ/(pϕ-wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 if θr >= θ_THRESH
-                    pc += -2k*dr2/θr - Kvwf*(r1 + 2dr1)
+                    pc += -2kd*dr2/θr - Kvwf*(r1 + 2dr1)
                     rhs[imx] -= 2Tf_loc*kd*dr2/θr + Kvwf*Tvw*(r1 + 2dr1)
                 else 
                     # First, use Robin BC to define an east ghost cell
@@ -112,8 +122,8 @@ function solve_T(u, Tf, dom::Domain, params)
                 # Using Robin boundary to define ghost point: east T= west T + 2BC1*dr
                 # Also, the first derivative term is given exactly by BC1/r
                 # p. 65, 66 of project notes
-                pc += -2k*dr2 - Kvwf*(r1 + 2dr1)
-                wc +=  2k*dr2
+                pc += -2kd*dr2 - Kvwf*(r1 + 2dr1)
+                wc +=  2kd*dr2
                 rhs[imx] -= Kvwf*Tvw*(2dr1 + r1)
             end
 
@@ -136,13 +146,13 @@ function solve_T(u, Tf, dom::Domain, params)
                     wc += kd*(-dr1*r1*θr + 2dr2)/(θr+1)# Regular + b gradient
                     rhs[imx] -= Tf_loc*kd*(2dr2 + dr1*r1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                     # Linear
-                    # pc += -2k*dr2 # Regular 
+                    # pc += -2kd*dr2 # Regular 
                     # pc += kd*(0.5dr1*r1+ dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     # wc += kd*(-0.5dr1*r1 + dr2) # Regular
                     # rhs[imx] -= Tf_loc*kd*(0.5*dr+r) *dr2 *r1/θr # Dirichlet BC in ghost cell extrap
                 else
                     # Linear extrapolation, a cell out
-                    pc += -2k*dr2 # Regular
+                    pc += -2kd*dr2 # Regular
                     wc += kd*(-dr1*r1 + 2θr*dr2)/(θr+1)  
                     rhs[imx] -= Tf_loc*kd*( dr1*r1 + 2dr2) /(θr+1) # Dirichlet BC in ghost cell extrap
                     # Constant
@@ -161,7 +171,7 @@ function solve_T(u, Tf, dom::Domain, params)
                     ec += (kd*( dr1*r1*θr + 2dr2))/(θr+1)# Regular + b gradient
                     rhs[imx] -= Tf_loc*(kd*(2dr2 - dr1*r1))/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                     # Linear extrapolation for ghost cell
-                    # pc += -2k*dr2 # Regular 
+                    # pc += -2kd*dr2 # Regular 
                     # pc += kd*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     # ec += kd*( 0.5dr1*r1 + dr2) # Regular
                     # rhs[imx] -= Tf_loc*kd*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
@@ -172,7 +182,7 @@ function solve_T(u, Tf, dom::Domain, params)
                     #     rhs[imx] -= Tf_loc*kd*(0.5dr1*r1*log(rm*r1) + log(r/rm)*dr2)/log(r/rΓ)
                     # else 
                     #     # Linear extrapolation for ghost cell
-                    #     pc += -2k*dr2 # Regular 
+                    #     pc += -2kd*dr2 # Regular 
                     #     pc += kd*(-0.5dr1*r1 + dr2)*(θr-1)/θr # Due to ghost cell extrapolation
                     #     ec += kd*( 0.5dr1*r1 + dr2) # Regular
                     #     rhs[imx] -= Tf_loc*kd*(-0.5dr1*r1+dr2)/θr # Dirichlet BC in ghost cell extrap
@@ -181,17 +191,17 @@ function solve_T(u, Tf, dom::Domain, params)
                     # if ir > 2
                     #     # Logarithmic extrapolation
                     #     rp = rgrid[ir+1]
-                    #     pc += -2k*dr2 # Regular
+                    #     pc += -2kd*dr2 # Regular
                     #     ec += kd*(0.5dr1*r1*log(rm/rp) + log(rΓ*rΓ/rp/rm)*dr2)/log(rΓ/rp)
                     #     rhs[imx] -= Tf_loc*kd*(0.5dr1*r1*log(rp/rm) + log(rm/rp)*dr2)/log(rΓ/rp)
                     # else
                     #     # Linear extrapolation
-                    #     pc += -2k*dr2 # Regular
+                    #     pc += -2kd*dr2 # Regular
                     #     ec += kd*(dr1*r1 + 2θr*dr2)/(θr+1)  
                     #     rhs[imx] -= Tf_loc*kd*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
                     # end
                     # Linear extrapolation
-                    pc += -2k*dr2 # Regular
+                    pc += -2kd*dr2 # Regular
                     ec += kd*(dr1*r1 + 2θr*dr2)/(θr+1)  
                     rhs[imx] -= Tf_loc*kd*(-dr1*r1 + 2dr2)/(θr+1) # Dirichlet BC in ghost cell extrap
                     # Treat as constant
@@ -220,12 +230,12 @@ function solve_T(u, Tf, dom::Domain, params)
                 # p. 65 of project notes
                 θz = pϕ/(pϕ-nϕ)
                 if θz > θ_THRESH
-                    pc += -2k*dz2/θz - 2Kshf*dz1
+                    pc += -2kd*dz2/θz - 2Kshf*dz1
                     rhs[imx] -= 2*Tf[ir]*kd*dz2/θz + 2Kshf*Tsh*dz1
                 else
                     # First Robin ghost defined, then Stefan ghost extrap
-                    pc += -2k*dz2 - 2Kshf*dz1
-                    nc +=  2k*dz2
+                    pc += -2kd*dz2 - 2Kshf*dz1
+                    nc +=  2kd*dz2
                     rhs[imx] -= 2Kshf*Tsh*dz1
                 end
             else
@@ -246,15 +256,15 @@ function solve_T(u, Tf, dom::Domain, params)
                     pc += -2*kd*dz2/θz
                     rhs[imx] -= 2*Tf[ir]*kd*dz2/θz + BC4*2*dz1
                 else
-                    pc += -2k*dz2/(θz+1)
+                    pc += -2kd*dz2/(θz+1)
                     rhs[imx] -= 2Tf[ir]*kd*dz2/(θz+1) 
                 end
             else
                 # Using Neumann boundary to define ghost point: east T= west T + 2BC1*dr
                 # p. 65, 66 of project notes
-                pc += -2k*dr2
-                sc +=  2k*dr2
-                rhs[imx] += -2k*BC4*dz1
+                pc += -2kd*dr2
+                sc +=  2kd*dr2
+                rhs[imx] += -2kd*BC4*dz1
             end
 
         else # Bulk in z, still need to check for Stefan front
@@ -281,7 +291,7 @@ function solve_T(u, Tf, dom::Domain, params)
                     # rhs[imx] -= Tf[ir]*kd*dz2/θz
                 else
                     # Linear
-                    pc += -2k*dz2
+                    pc += -2kd*dz2
                     sc += 2*kd*θz*dz2/(θz+1)
                     rhs[imx] -= 2Tf[ir]*kd*dz2/(θz+1)
                     # Constant
@@ -304,7 +314,7 @@ function solve_T(u, Tf, dom::Domain, params)
                     # rhs[imx] -= Tf[ir]*kd*dz2/θz
                 else
                     # Linear
-                    pc += -2k*dz2
+                    pc += -2kd*dz2
                     nc += 2*kd*θz*dz2/(θz+1)
                     rhs[imx] -= 2Tf[ir]*kd*dz2/(θz+1)
                     # Constant
@@ -328,7 +338,7 @@ function solve_T(u, Tf, dom::Domain, params)
         wc != 0 && add_to_vcr!(vcr, dom, imx, (-1, 0), wc)
         nc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 1), nc)
         sc != 0 && add_to_vcr!(vcr, dom, imx, ( 0,-1), sc)
-        rhs[imx] += - Q_ck 
+        rhs[imx] += - QRFd 
 
 
     end
@@ -359,8 +369,8 @@ function pseudosteady_Tf(u, dom, params)
 end
 function pseudosteady_Tf(u, dom, params, Tf_g)
     ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
-    @unpack ρf, Cpf, kf, QRFf = params
-    @unpack kf, ρf, Cpf = params
+    @unpack kf, ρf, Cpf = params[1]
+    QRFf = calc_QpppRFf(params)
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
     # Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
@@ -516,7 +526,7 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
 end
 
 function compute_Qvwf(u, T, dom::Domain, params)
-    @unpack Kvwf = params
+    @unpack Kvwf = params[2]
     ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
     # Heat flux from glass, at outer radius
     # zweights = compute_icegl_area_weights(ϕ, dom) # area for ice-glass
