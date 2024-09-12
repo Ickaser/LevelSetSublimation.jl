@@ -103,7 +103,7 @@ const k_gl = 1.0u"W/m/K"
 
 # Glass heat capacity
 # Rough estimate from Bansal and Doremus 1986, "Handbook of Glass Properties"
-const cp_gl = 8.0u"J/kg/K"
+const cp_gl = 840.0u"J/kg/K"
 
 # Glass density
 const ρ_gl = 2.2u"g/cm^3"
