@@ -179,7 +179,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
         else
             cont_c = :white
         end
-        Tsh = ustrip(u"°C", simconfig[:controls][:Tsh](t*u"s"))
+        Tsh = ustrip(u"°C", simconfig[:paramsd][3].Tsh(t*u"s"))
         maxT = max(Tvw, Tsh, maximum(heatvar_vals))
         if isnothing(clims)
             clims = extrema(heatvar_vals)
@@ -215,11 +215,25 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     local pl = plot(aspect_ratio=:equal, xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
     # plot_cylheat(heatvar_vals, dom; clims=clims)
     if heatvar == :T
-        plot!(xlim=(-1, 1) .* (dom.rmax+1.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
-        heatmap!(vcat(dom.rgrid .- dom.rmax, dom.rgrid), [-dom.dz], fill(Tsh, 1, 2dom.nr), cmap=cmap, clims=clims)
-        heatmap!([-dom.rmax-dom.dr], dom.zgrid, fill(Tvw, 1, dom.nz)', cmap=cmap, clims=clims)
-        heatmap!([ dom.rmax+dom.dr], dom.zgrid, fill(Tvw, 1, dom.nz)', cmap=cmap, clims=clims)
-        plot!([-1, -1, 1, 1] .* (dom.rmax+0.5dom.dr), [dom.zmax, -0.5dom.dz, -0.5dom.dz, dom.zmax], c=:black, label=:none)
+        cg = cgrad(cmap)
+        cpick = x->cg[(x-clims[1])/(clims[2]-clims[1])]
+        lwall = Plots.Shape([(-dom.rmax-2.5dom.dr, dom.zmax), 
+                (-dom.rmax-2.5dom.dr, 0),
+                (-dom.rmax, 0),
+                (-dom.rmax, dom.zmax)])
+        rwall = Plots.Shape([( dom.rmax+2.5dom.dr, dom.zmax), 
+                ( dom.rmax+2.5dom.dr, 0),
+                ( dom.rmax, 0),
+                ( dom.rmax, dom.zmax)])
+        shelf = Plots.Shape([( dom.rmax+2.5dom.dr, 0), 
+                (-dom.rmax-2.5dom.dr, 0),
+                (-dom.rmax-2.5dom.dr, -2.5dom.dz),
+                ( dom.rmax+2.5dom.dr, -2.5dom.dz)])
+        plot!(xlim=(-1, 1) .* (dom.rmax+2.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
+        plot!(lwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
+        plot!(rwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
+        plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
+        plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
     end
     heatmap!(dom.rgrid, dom.zgrid, heatvar_vals', c=cmap, clims=clims)
     heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, heatvar_vals[end:-1:begin, :]', c=cmap, clims=clims) # plot reflected
@@ -254,7 +268,7 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
         simresults["sol"](f, idxs = dom.nr*(dom.nz+1)+1) - 273.15
     end
     Tshs = map(frames) do f
-        Tsh = ustrip(u"°C", simconfig[:controls][:Tsh](f*u"s"))
+        Tsh = ustrip(u"°C", simconfig[:paramsd][3].Tsh(f*u"s"))
     end
 
     if clims === nothing
@@ -268,18 +282,18 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
     cg = cgrad(cmap)
     cpick = x->cg[(x-clims[1])/(clims[2]-clims[1])]
 
-    lwall = Plots.Shape([(-dom.rmax-1.5dom.dr, dom.zmax), 
-             (-dom.rmax-1.5dom.dr, 0),
+    lwall = Plots.Shape([(-dom.rmax-2.5dom.dr, dom.zmax), 
+             (-dom.rmax-2.5dom.dr, 0),
              (-dom.rmax, 0),
              (-dom.rmax, dom.zmax)])
-    rwall = Plots.Shape([( dom.rmax+1.5dom.dr, dom.zmax), 
-             ( dom.rmax+1.5dom.dr, 0),
+    rwall = Plots.Shape([( dom.rmax+2.5dom.dr, dom.zmax), 
+             ( dom.rmax+2.5dom.dr, 0),
              ( dom.rmax, 0),
              ( dom.rmax, dom.zmax)])
-    shelf = Plots.Shape([( dom.rmax+1.5dom.dr, 0), 
-             (-dom.rmax-1.5dom.dr, 0),
-             (-dom.rmax-1.5dom.dr, -1.5dom.dz),
-             ( dom.rmax+1.5dom.dr, -1.5dom.dz)])
+    shelf = Plots.Shape([( dom.rmax+2.5dom.dr, 0), 
+             (-dom.rmax-2.5dom.dr, 0),
+             (-dom.rmax-2.5dom.dr, -2.5dom.dz),
+             ( dom.rmax+2.5dom.dr, -2.5dom.dz)])
 
     plots = map(zip(frames, ϕs, Ts, Tvws, Tshs)) do (t, ϕ, T, Tvw, Tsh)
         if (T[1] - clims[1])/(clims[2]-clims[1]) > 0.65 # Tf relatively high
@@ -292,7 +306,7 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
 
         # Set up plot
         pl = plot(aspect_ratio = :equal, showaxis=false,
-             xlim=(-1, 1) .* (dom.rmax+1.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
+             xlim=(-1, 1) .* (dom.rmax+2.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
         # plot temperatures
         heatmap!(dom.rgrid, dom.zgrid, T', c=cmap, clims=clims, cbar=nothing)
         heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, T[end:-1:begin, :]', c=cmap, clims=clims, cbar=nothing) # plot reflected
@@ -412,7 +426,6 @@ end
     
     for i in axes(Ts, 2)
         T = Ts[:,i]
-        @info "check" i T
         @series begin
             seriestype := :samplemarkers
             step := step
