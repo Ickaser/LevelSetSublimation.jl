@@ -130,13 +130,13 @@ function compute_Qice(u, T, p, dom::Domain, params)
     @unpack ΔH = params[1]
     # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)[1]
 
-    Q_glshvol, Q_vwf = compute_Qice_noflow(u, T, dom, params)
+    Q_vwshvol, Q_vwf = compute_Qice_noflow(u, T, dom, params)
 
     # Sublimation rate
     md = compute_topmassflux(u, T, p, dom, params)
     Qsub = - md * ΔH
 
-    return Q_glshvol + Qsub, Q_vwf
+    return Q_vwshvol + Qsub, Q_vwf
 end
 
 
@@ -305,7 +305,8 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     # --- Set up reinitialization callback
 
-    cb_reinit = IterativeCallback(x->next_reinit_time_heatonly(x, verbose=verbose), reinit_wrap,  initial_affect = true)
+    # After each time step, check if reinit is needed and carry out if necessary
+    cb_reinit = DiscreteCallback(needs_reinit, x->reinit_wrap(x, verbose=verbose))
 
     # --- Set up simulation end callback
 

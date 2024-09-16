@@ -65,7 +65,7 @@ Employ Unitful to do unit conversions after simulation if necessary.
     - `Kshf` : heat transfer coefficients shelf
     # - `QRFd` : volumetric heating in cake 
     - `kd`: thermal conductivity of cake
-    - `m_cp_gl` total thermal mass of glass, relevant to heating/cooling of glass wall
+    - `m_cp_vw` total thermal mass of glass, relevant to heating/cooling of glass wall
     - `kf`: thermal conductivity of ice
     - `ρf`: density of ice
     - `Cpf`: heat capacity of ice

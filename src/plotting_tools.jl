@@ -18,6 +18,18 @@ function heat(field, dom::Domain; kwargs...)
                      aspect_ratio=:equal, kwargs...)
 end
 
+"""
+    LevelSet(phi, dom::Domain)
+
+A small struct, used in dispatch for plotting.
+
+The plot recipe can be variously called as:
+
+    plot(LevelSet(phi, dom), reflect=true)
+    plot(LevelSet(phi, dom), reflect=false)
+    plot!(LevelSet(phi, dom), reflect=true)
+    plot!(LevelSet(phi, dom), reflect=false)
+"""
 struct LevelSet
     phi
     dom::Domain
@@ -34,9 +46,9 @@ end
         end
         if reflect
             @series begin
+                primary := false # no legend entry
                 seriestype := :path
                 color --> :black
-                label := ""
                 (-xs, ys)
             end
         end

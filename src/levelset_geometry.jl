@@ -56,11 +56,20 @@ end
 function compute_icesurf_δ(ϕ, dom)
     δ = compute_discrete_δ(ϕ, dom)
     SA = 2π*sum(δ .* dom.rgrid)*dom.dr*dom.dz
+    return SA
 end
 
+"""
+    compute_icevol_H(ϕ, dom)
+
+Compute the volume of the ice, using a discrete Heaviside function.
+Calls [`compute_discrete_H`](@ref), which is implemented according
+to [Min and Gibou 2008](@cite min_robust_2008).
+"""
 function compute_icevol_H(ϕ, dom)
     H = compute_discrete_H(ϕ, dom)
-    SA = 2π*sum(H .* dom.rgrid)*dom.dr*dom.dz
+    vol = 2π*sum(H .* dom.rgrid)*dom.dr*dom.dz
+    return vol
 end
 
 function compute_icegl_area_weights(ϕ, dom)
@@ -132,7 +141,7 @@ end
 """
     function compute_iceht_bottopcont(ϕ, dom)
 
-Compute the height of ice at each point radially, as well as identify whether at system boundary or not.
+Compute the height of ice at each point radially, as well as identify whether it touches system boundary or not.
 
 Returns (`heights`, `bottom_contact`, `top_contact`), where 
 - `heights` is a vector of floats
@@ -179,6 +188,7 @@ end
 
 
 # --------------- Min & Gibou 2008 on surface integrals
+# These functions are used only internally by calc_δ0 and calc_H0.
 
 Pij(Pi, Pj, ϕi, ϕj) = Pi*ϕj/(ϕj-ϕi) + Pj*ϕi/(ϕi-ϕj)
 Pi(i, j, dom) = [dom.rgrid[i], dom.zgrid[j]]
@@ -189,7 +199,7 @@ area(Pi, Pj, Pk) = abs(Pi[1]*(Pj[2]-Pk[2]) + Pj[1]*(Pk[2]-Pi[2]) + Pk[1]*(Pi[2]-
 """
     calc_δ0(ϕ0, ϕ1, ϕ2, P0, P1, P2)
 
-Implementation of Table 1 from Min & Gibou, 2008.
+Implementation of [Min & Gibou 2008, Table 1](@cite min_robust_2008).
 """
 function calc_δ0(ϕ0, ϕ1, ϕ2, P0, P1, P2)
     s0, s1, s2 = sign.([ϕ0, ϕ1, ϕ2])
@@ -218,7 +228,7 @@ end
 
 Return the discrete delta for level set `ϕ` at location `ij`.
 
-Implementation of the final expression for a discrete delta in Min & Gibou, 2008.
+Implementation of the final expression for a discrete delta in [Min and Gibou 2008](@cite min_robust_2008).
 """
 function compute_local_δ(ij::CartesianIndex, ϕ, dom)
     δij = 0
@@ -246,7 +256,8 @@ end
 """
     compute_discrete_δ(ϕ, dom)
 
-Compute the discrete Dirac δ across the domain, for use in surface integrals. 
+Compute the discrete Dirac δ throughout the domain, for use in surface integrals. 
+Implements the discrete delta of [Min and Gibou 2008](@cite min_robust_2008).
 """
 function compute_discrete_δ(ϕ, dom)
     compute_local_δ.(CartesianIndices(ϕ), [ϕ], [dom])
@@ -255,7 +266,7 @@ end
 """
     calc_H0(ϕ0, ϕ1, ϕ2, P0, P1, P2)
 
-Implementation of Table 1 from Min & Gibou, 2008.
+Implementation of [Min & Gibou 2008, Table 1](@cite min_robust_2008).
 """
 function calc_H0(ϕ0, ϕ1, ϕ2, P0, P1, P2)
     s0, s1, s2 = sign.([ϕ0, ϕ1, ϕ2])
@@ -287,7 +298,7 @@ end
 
 Return the discrete Heaviside for level set `ϕ` at location `ij`.
 
-Implementation of the final expression for a discrete delta in Min & Gibou, 2008.
+Implementation of the final expression for a discrete Heaviside in [Min & Gibou, 2008](@cite min_robust_2008).
 """
 function compute_local_H(ij::CartesianIndex, ϕ, dom)
     Hij = 0
@@ -317,6 +328,8 @@ end
     compute_discrete_H(ϕ, dom)
 
 Compute the discrete Heaviside H across the domain, for use in volume integrals. 
+
+Implements the discrete Heaviside of [Min & Gibou, 2008](@cite min_robust_2008).
 """
 function compute_discrete_H(ϕ, dom)
     compute_local_H.(CartesianIndices(ϕ), [ϕ], [dom])

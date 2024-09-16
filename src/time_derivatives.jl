@@ -28,9 +28,9 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
 
     ϕ, Tvw = ϕ_T_from_u_view(u, dom)[[true, false, true]]
 
-    @unpack ρf, Cpf, ρ_gl, cp_gl = params[1]
+    @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
     @unpack A_rad, m_v = params[2]
-    QRFvw = calc_QpppRFvw(params) * m_v/ρ_gl
+    QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if minimum(ϕ) > 0 # No ice left
         l_ave = 1/sum(1.0 ./params[2].l)/length(params[2].l)
@@ -66,7 +66,7 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
     # Compute time derivative for Tvw
     Q_vwf = compute_Qvwf(u, T, dom, params)
     Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw[1]^4 )
-    dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_gl
+    dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
     if verbose && eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
@@ -98,9 +98,9 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
 
     ϕ, Tf, Tvw = ϕ_T_from_u_view(u, dom)
-    @unpack ρf, Cpf, ρ_gl, cp_gl = params[1]
+    @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
     @unpack A_rad, m_v = params[2]
-    QRFvw = calc_QpppRFvw(params) * m_v/ρ_gl
+    QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(Tf .< 0)
         @info "Negative temperatures passed"
@@ -150,7 +150,7 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    dTvw .= (QRFvw - Q_vwf) / m_v/cp_gl
+    dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
 
 
 
@@ -175,9 +175,9 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
 
     ϕ, Tf, Tvw = ϕ_T_from_u_view(u, dom)
-    @unpack ρf, Cpf, ρ_gl, cp_gl = params[1]
+    @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
     @unpack A_rad, m_v = params[2]
-    QRFvw = calc_QpppRFvw(params) * m_v/ρ_gl
+    QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(Tf .< 0)
         @info "Negative temperatures passed"
@@ -215,7 +215,7 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    dTvw .= (QRFvw - Q_vwf) / m_v/cp_gl
+    dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
 
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)

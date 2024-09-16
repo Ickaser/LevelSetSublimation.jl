@@ -123,7 +123,7 @@ const pch_guess = 20.0u"Pa"
 εpp_f = 8e-4
 
 # Dielectric loss coefficient of borosilicate glass, per Schott's testing
-εpp_vw = 2.4e-2
+εpp_gl = 2.4e-2
 
 # Permittivity of free space: universal
-ε0 = 8.854187e-12u"F/m"
+const ε0 = 8.854187e-12u"F/m"

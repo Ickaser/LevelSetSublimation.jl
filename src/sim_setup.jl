@@ -1,4 +1,7 @@
-export make_base_properties, make_M1_properties
+export make_M1_properties
+export PhysicalProperties
+export TimeConstantProperties
+export TimeVaryingProperties, TimeVaryingPropertiesSnapshot
 export make_ϕ0, make_ramp
 export params_nondim_setup, make_u0_ndim
 export ϕ_T_from_u, ϕ_T_from_u_view
@@ -61,77 +64,105 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     end
     return ϕ0
 end
-struct PhysicalProperties
-    cp_gl 
-    ρ_gl
-    R 
-    Mw 
-    μ
-    ΔH 
-    ρf 
-    Cpf 
-    kf
-    ε0 
-    εpp_d
-    εpp_f 
-    εpp_vw 
-end
 
 
 """
-    make_base_properties()
+An immutable type for representing a slate of physical properties and constants needed.
 
-Return a dictionary of base physical properties in SI units.
+A default constructor is provided which uses all defaults (borosilicate glass, water, ice), but thanks to [`Parameters.jl`](https://mauro3.github.io/Parameters.jl/stable/)
+you can call with just values that need to be changed, e.g.
 
-These should not generally need to change from simulation to simulation, although worth checking periodically.
+    PhysicalProperties() # all defaults
+    PhysicalProperties(ρ_vw = 1u"kg/m^3", cp_vw = 1u"J/kg/K", εpp_vw = 1e-1) # adjust vial wall properties
+
+All properties stored here are:
+$(FIELDS)
 """
-function make_base_properties()
-            
-    
-    cp_gl = LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
-    ρ_gl = LevelSetSublimation.ρ_gl
-
+@with_kw struct PhysicalProperties
+    "Universal gas constant."
     R = 8.3145u"J/mol/K"
-    Mw = .018u"kg/mol" #mol/kg
-    μ = LevelSetSublimation.μ
-
-    # Sublimation
-    ΔH = LevelSetSublimation.ΔH
-    ρf = ρ_ice 
-    Cpf = Cp_ice
-    kf = LevelSetSublimation.kf
-
+    "Vacuum permittivity (universal constant)."
     ε0 = LevelSetSublimation.ε0
-    εpp_d = 0.0
+    "Density of vial wall (defaults to borosilicate glass)."
+    ρ_vw = LevelSetSublimation.ρ_gl
+    "Heat capacity of vial wall (defaults to borosilicate glass)."
+    cp_vw = LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
+    "Dielectric loss coefficient of vial wall (defaults to borosilicate glass)."
+    εpp_vw = LevelSetSublimation.εpp_gl
+    "Density of frozen material (taken as water ice)."
+    ρf = ρ_ice 
+    "Heat capacity of frozen material (taken as water ice)."
+    Cpf = Cp_ice
+    "Thermal conductivity of frozen material."
+    kf = LevelSetSublimation.kf
+    "Molecular weight of sublimating species (defaults to water)."
+    Mw = .018u"kg/mol" 
+    "Gas phase viscosity (in rarefied regime) of sublimating species (defaults to water)."
+    μ = LevelSetSublimation.μ
+    "Heat of sublimation of sublimating species (defaults to water); give as positive number."
+    ΔH = LevelSetSublimation.ΔH
+    "Dielectric loss coefficient of frozen layer (defaults to water ice)."
     εpp_f = LevelSetSublimation.εpp_f
-    εpp_vw = LevelSetSublimation.εpp_vw
-
-    props = PhysicalProperties(cp_gl, ρ_gl, R, Mw, μ, ΔH, ρf, Cpf, kf, ε0, εpp_d, εpp_f, εpp_vw)
-    return props
+    "Dielectric loss coefficient of dry layer (defaults to 0)."
+    εpp_d = 0.0
 end
 
-const base_props = make_base_properties()
 
 """
+An instance of [`PhysicalProperties`](@ref) with default values.
+"""
+const base_props = PhysicalProperties()
+
+"""
+    TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_rad, B_d, B_f, B_vw)
+
+A struct for holding physical properties which are likely to change from case to case.
+
+No default constructor is provided by intention--all of these parameters should be at least considered before running a simulation.
+
+$(FIELDS)
 """
 struct TimeConstantProperties
     # Mass transfer
-    ϵ # 90% porosity
-    l # ~size of a pore
-    κ # ~size^2 of a pore
-    Rp0 # R0 from Rp: guess from thin-film thickness & pore size?
+    "dimensionless, the porosity or fraction of solid space taken up by ice."
+    ϵ 
+    "length, a dusty gas model parameter (roughly the pore size)"
+    l 
+    "area, a dusty gas model parameter (roughly the area of a pore neck)"
+    κ 
+    "length/time, empirical mass transfer resistance at zero dry layer height"
+    Rp0 
     # Heat transfer
-    kd # dry layer thermal conductivity
-    Kvwf # vial wall to frozen layer heat transfer coeff
-    m_v # vial mass
-    A_rad # radiative area for vial wall-shelf heat transfer
+    "dry layer thermal conductivity"
+    kd 
+    "vial wall to frozen layer heat transfer coeff"
+    Kvwf 
+    "vial mass"
+    m_v 
+    "radiative area for vial wall-shelf heat transfer"
+    A_rad 
     # Microwave
-    B_d # dry layer field strength
-    B_f # frozen layer field strength coefficient
-    B_vw # vial wall field strength coefficient
+    "Ω/m^2, dry layer field strength coefficient"
+    B_d 
+    "Ω/m^2, frozen layer field strength coefficient"
+    B_f 
+    "Ω/m^2, vial wall field strength coefficient"
+    B_vw 
 end
 
 """
+    TimeVaryingProperties(f_RF, P_per_vial, Tsh, pch, Kshf)
+
+A struct for holding controlled parameters that may change over time.
+To get the value of all those parameters at a given time, call the struct 
+with a time, and it will evaluate each field and provide a [`TimeVaryingPropertiesSnapshot`](@ref). 
+
+No default constructor is provided by intention--all of these parameters should be at least considered before running a simulation.
+
+Each should be passed as a callable, which returns the value of the parameter as a function of time, with the exception of `Kshf` which is a function of pressure.
+See the `RampedVariable` and `RpFormFit` types from `LyoPronto`, which are intended to make this more convenient.
+
+$(FIELDS)
 """
 struct TimeVaryingProperties
     f_RF # RF frequency
@@ -141,6 +172,15 @@ struct TimeVaryingProperties
     Kshf # Heat transfer coefficient as function of pressure
 end
 
+"""
+    TimeVaryingPropertiesSnapshot(f_RF, P_per_vial, Tsh, pch, Kshf)
+
+A struct for holding a snapshot of the controlled parameters that may change over time.
+
+This is meant to be constructed by calling an instance of the [`TimeVaryingProperties`](@ref) type.
+
+$(FIELDS)
+"""
 struct TimeVaryingPropertiesSnapshot
     f_RF # RF frequency
     P_per_vial # RF power per vial
@@ -216,8 +256,8 @@ end
 
 const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     # Base properties
-    :cp_gl => u"J/kg/K",
-    :ρ_gl=> u"kg/m^3",
+    :cp_vw => u"J/kg/K",
+    :ρ_vw=> u"kg/m^3",
     :R => u"J/mol/K",
     :Mw => u"kg/mol",
     :μ => u"Pa*s",
@@ -282,7 +322,7 @@ function make_M1_properties()
     B_f = 2.8e8u"Ω/m^2"
     B_vw = 4.6e6u"Ω/m^2"
 
-    tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_rad, B_f, B_vw)
+    tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_rad, B_d, B_f, B_vw)
 
     # ----- Properties which may change in time
     f_RF = RampedVariable(8.0u"GHz")

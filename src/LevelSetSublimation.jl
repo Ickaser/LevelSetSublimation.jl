@@ -19,6 +19,8 @@ using NonlinearSolve
 using LinearSolve
 using NaNMath
 using PrecompileTools
+using DocStringExtensions
+using Parameters
 
 @reexport using LyoPronto
 const calc_psub = LyoPronto.calc_psub

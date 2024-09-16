@@ -25,9 +25,9 @@ Fo_m = uconvert(NoUnits, t_sub/t_m)
 ΔT = 40u"K"
 
 m_p = 3u"g"
-m_gl = 8u"g"
+m_vw = 8u"g"
 
-H_sens = (m_p*LSS.Cp_ice + m_gl*LSS.cp_gl) *ΔT
+H_sens = (m_p*LSS.Cp_ice + m_vw*LSS.cp_vw) *ΔT
 H_sub = LSS.ΔH * m_p
 
 cakemass = (1-LSS.ϵ_typical)*LSS.ρ_sucrose*LSS.Cp_sucrose

@@ -11,7 +11,10 @@ sim_from_dict
 
 ## Setting Up for Simulation
 ```@docs
-make_default_params
+PhysicalProperties
+TimeConstantProperties
+TimeVaryingProperties
+TimeVaryingPropertiesSnapshot
 ```
 
 Here is a sample simulation setup, in a case where nothing complicated is happening.
@@ -43,7 +46,6 @@ config = Dict{Symbol, Any}()
 dudt_heatmass
 dudt_heatmass!
 reinit_wrap
-next_reinit_time
 ```
 
 ## Heat-transfer-only simulation
