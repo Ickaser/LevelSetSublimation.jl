@@ -112,6 +112,8 @@ end
 
 const base_props = make_base_properties()
 
+"""
+"""
 struct TimeConstantProperties
     # Mass transfer
     ϵ # 90% porosity
@@ -129,6 +131,8 @@ struct TimeConstantProperties
     B_vw # vial wall field strength coefficient
 end
 
+"""
+"""
 struct TimeVaryingProperties
     f_RF # RF frequency
     P_per_vial # RF power per vial
@@ -154,6 +158,9 @@ function (tvp::TimeVaryingProperties)(t)
         tvp.Kshf(tvp.pch(t)),
     )
     return snap
+end
+function (tup::Tuple{PhysicalProperties, TimeConstantProperties, TimeVaryingProperties})(t)
+    return (tup[1], tup[2], tup[3](t))
 end
 
 

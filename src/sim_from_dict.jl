@@ -160,8 +160,7 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
         # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
         function store_Tf!(integrator)
             ϕ, Tf, Tvw = ϕ_T_from_u_view(integrator.u, integrator.p[1])
-            p_vary = integrator.p[2]
-            params = p_vary[1], p_vary[2], p_vary[3](integrator.t)
+            params = integrator.p[2](integrator.t)
             verbose && @info "callback" integrator.t
             @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], params, integrator.p[4])
             Tf .= Tf_sol

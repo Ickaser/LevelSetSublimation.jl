@@ -20,7 +20,7 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
     verbose = integ_pars[5]
 
     # input_measurements!(params, t, controls)
-    params = (params_vary[1], params_vary[2], params_vary[3](t))
+    params = params_vary(t)
 
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
 
@@ -93,7 +93,7 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     verbose = integ_pars[5]
 
     # input_measurements!(params, t, controls)
-    params = (params_vary[1], params_vary[2], params_vary[3](t))
+    params = params_vary(t)
 
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
 
@@ -170,7 +170,7 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     verbose = integ_pars[5]
 
     # input_measurements!(params, t, controls)
-    params = (params_vary[1], params_vary[2], params_vary[3](t))
+    params = params_vary(t)
 
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
 
@@ -282,8 +282,8 @@ end
 function dudt_heatmass(u, config, t=0)
     # Set up simulation domain & parameters
     dom = Domain(config)
-    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
-    input_measurements!(params, t, ncontrols)
+    params_vary = params_nondim_setup(config[:cparams], config[:controls])
+    params = params_vary(t)
     dudt_heatmass(u, dom, params, ncontrols)
 end
 
