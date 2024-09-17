@@ -367,7 +367,7 @@ iϕ(dom::Domain) = 1:dom.ntot
 This is the source of truth for what indices in the system state are used for `Tf`.
 See also [`iϕ`](@ref) and [`iTvw`](@ref).
 """
-iTf(dom::Domain) = dom.ntot+1:dom.ntot+nr
+iTf(dom::Domain) = dom.ntot+1:dom.ntot+dom.nr
 """
     iTvw(dom::Domain) = dom.ntot+dom.nr+1 # returns a single index
     iTvw(dom::Domain, dummyarg) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1 # returns a 1-length UnitRange
@@ -375,7 +375,7 @@ iTf(dom::Domain) = dom.ntot+1:dom.ntot+nr
 This is the source of truth for what indices in the system state are used for `Tvw`.
 See also [`iϕ`](@ref) and [`iTf`](@ref).
 """
-iTvw(dom::Domain) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1
+iTvw(dom::Domain) = dom.ntot+dom.nr+1
 iTvw(dom::Domain, dummyarg) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1
 """
     ulen(dom::Domain) = iTvw(dom)

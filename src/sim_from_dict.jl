@@ -35,9 +35,13 @@ function needs_reinit(u, t, integ)
 end
 
 function store_Tf!(integ)
-    Tf = @view integ.u[iTf(dom)]
-    integ.p[3] && @info "callback" integ.t
-    @time Tf_sol = pseudosteady_Tf(integ.u, integ.p[1], integ.p[2](integ.t), integ.p[4])
+    Tf = @view integ.u[iTf(integ.p[1])]
+    if integ.p[3]
+        @info "callback" integ.t
+        @time Tf_sol = pseudosteady_Tf(integ.u, integ.p[1], integ.p[2](integ.t), integ.p[4])
+    else
+        Tf_sol = pseudosteady_Tf(integ.u, integ.p[1], integ.p[2](integ.t), integ.p[4])
+    end
     Tf .= Tf_sol
 end
 

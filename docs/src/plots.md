@@ -16,7 +16,7 @@ The return from `sim_from_dict` is a dictionary, with a field `"dom"` containing
 The `ODESolution` type comes from [`DifferentialEquations`](https://docs.sciml.ai/DiffEqDocs/stable/), and comes with lots of convenience functions documented [here](https://docs.sciml.ai/DiffEqDocs/stable/basics/solution/#solution).
 
 ```@docs
-ϕ_T_from_u
+
 ```
 
 At a particular timestep, `u` is used to describe the system's state. 

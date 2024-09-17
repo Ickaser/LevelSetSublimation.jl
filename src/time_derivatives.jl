@@ -25,6 +25,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     dTf .= 0 # Just in case some weird stuff got left there
 
     ϕ = @views reshape(u[iϕ(dom)], size(dom))
+    Tvw = u[iTvw(dom)]
 
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
     @unpack A_rad, m_v = params[2]
@@ -41,11 +42,13 @@ function dudt_heatmass!(du, u, integ_pars, t)
         return nothing
     end
 
-    Tf = pseudosteady_Tf(u, dom, params, Tf_last)
+    Tf_g = Tf_last
+    # Tf_g = u[iTf(dom)]
+    Tf = pseudosteady_Tf(u, dom, params, Tf_g)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
-
     integ_pars[4] .= Tf
+
     vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:, :, 1]
@@ -111,8 +114,6 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
 
-
-
     vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:, :, 1]
@@ -129,16 +130,21 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
         # dϕ[ind] = -rcomp - zcomp
     end
 
-    dTf .= 0 # zero out in case there was junk there before
+    # dTf .= 0 # zero out in case there was junk there before
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
+    # dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
+    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
 
 
     if verbose &&  eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        # if dryfrac < 0.00034 && dryfrac > 0.00033
+            @info "check" p[1,:] p[:,end-2:end]
+        # end
         Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tvw[1] params[3].Tsh extrema(Δξ) extrema(dTf)
     end
@@ -195,7 +201,9 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
+    # dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
+    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
@@ -293,8 +301,8 @@ function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
     dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, dpdr<0, dpdz<0, dϕdx_all, dom)
 
     qflux = kd*(dϕdr*dTdr + dϕdz*dTdz)
-    mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
-
+    # mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
+    mflux = min(0.0, b*(dϕdr*dpdr + dϕdz*dpdz)) # Prevent desublimation in energy balance
     return qflux + ΔH*mflux, dϕdr, dϕdz
 end
 

@@ -151,7 +151,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     rhs[imx] -= 2bp*psub_l*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within .05 cells of boundary
                     pc += -2bp*dr2/(θr+1)
-                    rhs[imx] -= 2psub_l*bp*dr2/(θr+1) 
+                    rhs[imx] -= 2bp*psub_l*dr2/(θr+1) 
                 end
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
@@ -357,11 +357,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             end
         end
 
-        # if ec == 0 && nc == 0
-        #     @info "doubleghost" ir iz pc wc sc rhs[imx]
-        # elseif ec == 0
-        #     @info "eastghost" ir iz pc wc nc sc rhs[imx]
-        # end
 
         # Assign all computed stencil values into matrix
         pc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 0), pc)
