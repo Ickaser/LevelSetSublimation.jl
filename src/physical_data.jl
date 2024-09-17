@@ -120,10 +120,10 @@ const Kshf_guess = 15.0u"W/m^2/K"
 const pch_guess = 20.0u"Pa"
 
 # Dielectric loss coefficient of water ice
-εpp_f = 8e-4
+const εpp_f = 8e-4
 
 # Dielectric loss coefficient of borosilicate glass, per Schott's testing
-εpp_gl = 2.4e-2
+const εpp_gl = 2.4e-2
 
 # Permittivity of free space: universal
 const ε0 = 8.854187e-12u"F/m"

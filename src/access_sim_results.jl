@@ -18,7 +18,7 @@ function get_t_Tf_subflux(simresults::Dict, simconfig::Dict)
         params = calc_params_at_t(ti, simconfig)
         uTfTp = calc_uTfTp_res(ti, simresults, simconfig, Tf0=Tf_g)
         Tf_g = uTfTp[2]
-        Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
+        Tfi = uTfTp[1][iTf(dom)]
         md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(md) == -1
             @info "md=$md" ti Tfi calc_psub(Tfi)
@@ -47,7 +47,7 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
         params = calc_params_at_t(ti, simconfig)
         uTfTp = calc_uTfTp_res(ti, simresults, simconfig, Tf0=Tf_g)
         Tf_g = uTfTp[2]
-        # Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
+        # Tfi = uTfTp[1][iTf(dom)]
         Tf[i] = uTfTp[3][1,1]
         mdi = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(mdi) == -1
@@ -86,9 +86,7 @@ function calc_params_at_t(t::Float64, simconfig::Dict)
     @unpack paramsd = simconfig
     
     params = params_nondim_setup(paramsd)
-    # params, ncontrols = params_nondim_setup(cparams, controls)
 
-    # input_measurements!(params, t, ncontrols)
     return (params[1], params[2], params[3](t))
 end
 

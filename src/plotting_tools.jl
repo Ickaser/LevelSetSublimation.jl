@@ -186,7 +186,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
         clab = "Temperature [°C]"
         # cmap = :plasma
         cmap = :linear_bmy_10_95_c78_n256
-        if maximum(ϕ_T_from_u(u, dom)[2]) > maximum(T) # Tf > T
+        if maximum(u[iTf(dom)]) > maximum(T) # Tf > T
             cont_c = :black
         else
             cont_c = :white

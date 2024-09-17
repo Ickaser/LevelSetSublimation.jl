@@ -19,7 +19,6 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
     Tf_last = integ_pars[4]
     verbose = integ_pars[5]
 
-    # input_measurements!(params, t, controls)
     params = params_vary(t)
 
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
@@ -38,8 +37,7 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
         b_ave = l_ave * sqrt(params[1].Mw/params[1].R/minT)
         flux = (calc_psub(minT) - params[3].pch)/dom.zmax*b_ave
         dϕ .= flux/params[1].ρf
-        # dϕ .= 0
-        # dTvw .= 0
+        dTvw .= flux*params[1].ΔH*dom.rmax^2*π
         verbose && @info "no ice, t=$t" extrema(dϕ)
         return nothing
     end
@@ -71,20 +69,13 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
     if verbose && eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tvw[1] params[3].Tsh
-        if minimum(dϕ) < 0
-            # @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
-            # pl1 = heat(vr, dom)
-            # pl2 = heat(vz, dom)
-            # display(plot(pl1, pl2))
-        end
     end
-    if get_Tf
-        return Tf
-    else
-        return nothing
-    end
+    return nothing
 end
 
+"""
+doc
+"""
 function dudt_heatmass_dae!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params_vary = integ_pars[2]
@@ -92,7 +83,6 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     # Tf_last = integ_pars[4]
     verbose = integ_pars[5]
 
-    # input_measurements!(params, t, controls)
     params = params_vary(t)
 
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
@@ -162,6 +152,9 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     return nothing
 end
 
+"""
+doc
+"""
 function dudt_heatmass_implicit!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params_vary = integ_pars[2]
@@ -169,7 +162,6 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     # Tf_last = integ_pars[4]
     verbose = integ_pars[5]
 
-    # input_measurements!(params, t, controls)
     params = params_vary(t)
 
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)

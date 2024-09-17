@@ -364,7 +364,7 @@ function add_to_vcr!(vcr, dom, p_imx, shift, val)
 end
 
 function pseudosteady_Tf(u, dom, params)
-    Tfg = ϕ_T_from_u(u, dom)[2]
+    Tfg = u[iTf(dom)]
     pseudosteady_Tf(u, dom, params, Tfg)
 end
 function pseudosteady_Tf(u, dom, params, Tf_g)

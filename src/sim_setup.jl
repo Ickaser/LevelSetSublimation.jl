@@ -1,12 +1,11 @@
 export make_M1_properties
 export PhysicalProperties
 export TimeConstantProperties
-export TimeVaryingProperties, TimeVaryingPropertiesSnapshot
+export TimeVaryingProperties
 export make_ϕ0, make_ramp
 export params_nondim_setup, make_u0_ndim
 export ϕ_T_from_u, ϕ_T_from_u_view
 
-export TimeConstantProperties, TimeVaryingProperties
 
 """
     make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
@@ -154,8 +153,9 @@ end
     TimeVaryingProperties(f_RF, P_per_vial, Tsh, pch, Kshf)
 
 A struct for holding controlled parameters that may change over time.
+
 To get the value of all those parameters at a given time, call the struct 
-with a time, and it will evaluate each field and provide a [`TimeVaryingPropertiesSnapshot`](@ref). 
+with a time, and it will evaluate each field at that time and provide a [`TimeVaryingPropertiesSnapshot`](@ref). 
 
 No default constructor is provided by intention--all of these parameters should be at least considered before running a simulation.
 
@@ -165,11 +165,16 @@ See the `RampedVariable` and `RpFormFit` types from `LyoPronto`, which are inten
 $(FIELDS)
 """
 struct TimeVaryingProperties
-    f_RF # RF frequency
-    P_per_vial # RF power per vial
-    Tsh # Shelf temperature
-    pch # Chamber pressure
-    Kshf # Heat transfer coefficient as function of pressure
+    "Microwave frequency"
+    f_RF 
+    "Microwave power per vial"
+    P_per_vial 
+    "Shelf temperature"
+    Tsh 
+    "Chamber pressure"
+    pch 
+    "Heat transfer coefficient as function of pressure"
+    Kshf 
 end
 
 """
@@ -182,11 +187,16 @@ This is meant to be constructed by calling an instance of the [`TimeVaryingPrope
 $(FIELDS)
 """
 struct TimeVaryingPropertiesSnapshot
-    f_RF # RF frequency
-    P_per_vial # RF power per vial
-    Tsh # Shelf temperature
-    pch # Chamber pressure
-    Kshf # Heat transfer coefficient as function of pressure
+    "Microwave frequency"
+    f_RF 
+    "Microwave power per vial"
+    P_per_vial 
+    "Shelf temperature"
+    Tsh 
+    "Chamber pressure"
+    pch 
+    "Heat transfer coefficient as function of pressure"
+    Kshf 
 end
 
 function (tvp::TimeVaryingProperties)(t)
@@ -343,6 +353,40 @@ end
 
 # --------- Functions mapping state `u` to level set and temperatures
 
+# The source of truth for what indices are used for what variables!!!
+"""
+    iϕ(dom::Domain) = 1:dom.ntot
+
+This is the source of truth for what indices in the system state are used for `ϕ`.
+See also [`iTf`](@ref) and [`iTvw`](@ref).
+"""
+iϕ(dom::Domain) = 1:dom.ntot
+"""
+    iTf(dom::Domain) = dom.ntot+1:dom.not+nr
+
+This is the source of truth for what indices in the system state are used for `Tf`.
+See also [`iϕ`](@ref) and [`iTvw`](@ref).
+"""
+iTf(dom::Domain) = dom.ntot+1:dom.ntot+nr
+"""
+    iTvw(dom::Domain) = dom.ntot+dom.nr+1 # returns a single index
+    iTvw(dom::Domain, dummyarg) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1 # returns a 1-length UnitRange
+
+This is the source of truth for what indices in the system state are used for `Tvw`.
+See also [`iϕ`](@ref) and [`iTf`](@ref).
+"""
+iTvw(dom::Domain) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1
+iTvw(dom::Domain, dummyarg) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1
+"""
+    ulen(dom::Domain) = iTvw(dom)
+
+Returns the total length of the system state vector, which currently is the same as the index of `Tvw`.
+"""
+ulen(dom::Domain) = iTvw(dom)
+
+ϕ_from_u(u, dom) = reshape(u[iϕ(dom)], size(dom))
+# reshape(a::AbstractArray, dom::Domain) = reshape(a, size(dom))
+
 """
     ϕ_T_from_u_view(u, dom)
 
@@ -350,9 +394,9 @@ Take the current system state `u` and return views corresponding to `ϕ`, `Tf`, 
 Nothing too fancy--just to avoid rewriting the same logic everywhere
 """
 function ϕ_T_from_u_view(u, dom)
-    ϕ = @views reshape(u[1:dom.ntot], size(dom))
-    Tf = @view u[dom.ntot+1:dom.ntot+dom.nr]
-    Tvw = @view u[end]
+    ϕ = @views reshape(u[iϕ(dom)], size(dom))
+    Tf = @view u[iTf(dom)]
+    Tvw = @view u[iTvw(dom)]
     return ϕ, Tf, Tvw
 end
 
@@ -363,9 +407,9 @@ Take the current system state `u` and break it into `ϕ`, `Tf`, and `Tvw`.
 Nothing too fancy--just to avoid rewriting the same logic everywhere
 """
 function ϕ_T_from_u(u, dom)
-    ϕ = reshape(u[1:dom.ntot], size(dom))
-    Tf = u[dom.ntot+1:dom.ntot+dom.nr]
-    Tvw = u[end]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    Tf = u[iTf(dom)]
+    Tvw = u[iTvw(dom)]
     return ϕ, Tf, Tvw
 end
 
@@ -374,53 +418,23 @@ end
 
 Set up a vector of dynamic variables as initial state for simulation.
 
-Structure of vector `u`:
-- `dom.ntot` entries for level set function `ϕ`; initialized with profile using `make_ϕ0`.
-- `dom.nr` entries for frozen (ice) temperature `Tf`
-- 1 entry for glass (outer wall) temperature `Tvw`
+Structure of vector `u`: set by [`iϕ`](@ref), [`iTf`](@ref), and [`iTvw`](@ref).
 """
 function make_u0_ndim(init_prof, Tf0, Tvw0, dom)
     Tf0_nd = ustrip.(u"K", Tf0)
     Tvw0_nd = ustrip(u"K", Tvw0)
-    # ϕ0 = make_ϕ0(init_prof, dom)
-    # ϕ0_flat = reshape(ϕ0, :)
 
     ϕ0_flat = reshape(make_ϕ0(init_prof, dom), :)
-    u0 = similar(ϕ0_flat, dom.ntot+dom.nr+1) # Add 2 to length: Tf, Tvw
-    u0[1:dom.ntot] .= ϕ0_flat
-    u0[dom.ntot+1:dom.ntot+dom.nr] .= Tf0_nd 
-    u0[end] = Tvw0_nd
+    u0 = similar(ϕ0_flat, ulen(dom)) 
+    u0[iϕ(dom)] .= ϕ0_flat
+    u0[iTf(dom)] .= Tf0_nd 
+    u0[iTvw(dom)] = Tvw0_nd
     return u0
 end
 
 function make_u0_ndim(config::Dict)
     # dom = Domain(config)
-    # Tf0_nd = ustrip.(u"K", config[:Tf0])
-    # Tvw0_nd = ustrip(u"K", get(config, :Tvw0, config[:Tf0]))
-    make_u0_ndim(config[:init_prof], config[:Tf0], 
-                get(config, :Tvw0, config[:Tf0]), Domain(config))
+    Tf0_nd = ustrip.(u"K", get(config,:Tf0, config[:paramsd].Tsh(0u"s")))
+    Tvw0_nd = ustrip(u"K", get(config, :Tvw0, Tf0_nd*u"K"))
+    make_u0_ndim(config[:init_prof], Tf0_nd, Tvw0_nd, Domain(config))
 end
-
-# """
-#     ϕ_T_into_u!(u, ϕ, Tf, Tvw, dom)
-
-# Take `ϕ`, `Tf`, and `Tvw`, and stuff them into `u` with appropriate indices.
-# Nothing too fancy--just to keep indexing abstract
-# """
-# function ϕ_T_into_u!(u, ϕ, Tf, Tvw, dom)
-#     u[1:dom.ntot] = reshape(ϕ, :)
-#     u[dom.ntot+dom.nr] = Tf
-#     u[end] = Tvw
-#     return nothing
-# end
-# """
-#     T_into_u!(u, Tf, Tvw, dom)
-
-# Take `Tf` and `Tvw` and stuff them into `u` with appropriate indices.
-# Nothing too fancy--just to keep indexing abstract
-# """
-# function T_into_u!(u, Tf, Tvw, dom)
-#     u[dom.ntot+1] = Tf
-#     u[dom.ntot+2] = Tvw
-#     return nothing
-# end

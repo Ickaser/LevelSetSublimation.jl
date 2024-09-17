@@ -33,16 +33,9 @@ function needs_reinit(u, t, integ)
     return err > tol
 end
 
-function input_measurements!(params, t::Number, controls)
-    for key in keys(controls)
-        params[key] = controls[key](t)
-    end
-end
-
 """
     sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
-*TODO out of date!!!!*
 Given a simulation configuration `fullconfig`, run a simulation.
 
 Maximum simulation time (not CPU time, but simulation time) is specified by `tf`, which is in seconds; 1e5 is 270 hours. (No matter how much ice is left at that point, simulation will end.)
@@ -53,40 +46,32 @@ inside this function, they will be converted to SI marks then have units strippe
 The results will be in SI units, so times in seconds, temperature in Kelvin, pressure in Pa, etc.
 Employ Unitful to do unit conversions after simulation if necessary.
 
-`fullconfig` should have the following fields:
-- `init_prof`, types listed for [`make_ϕ0`](@ref)
+`fullconfig` must have the following fields:
 - `fillvol`, fill volume with Unitful units (e.g. `3u"mL"`)
 - `vialsize`, a string (e.g. `"2R"`) giving vial size
-- `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
-- `Tf0`, an initial ice temperature with Unitful units 
-- `Tvw0`, an initial glass temperature (if the same as Tf0, can leave this out)
-- `cparams`, which in turn has fields with Unitful units
-    - `Kvwf`, 
-    - `Kshf` : heat transfer coefficients shelf
-    # - `QRFd` : volumetric heating in cake 
-    - `kd`: thermal conductivity of cake
-    - `m_cp_vw` total thermal mass of glass, relevant to heating/cooling of glass wall
-    - `kf`: thermal conductivity of ice
-    - `ρf`: density of ice
-    - `Cpf`: heat capacity of ice
-    - `ΔH` : heat of sublimation of ice
-    - `ϵ` : porosity of porous medium
-    - `l` : dusty gas model constant: characteristic length for Knudsen diffusion
-    - `κ` : dusty gas model constant: length^2 corresponding loosely to Darcy's Law permeability
-    - `Mw`: molecular weight of species (water), with appropriate units
-    - `μ` : dynamic viscosity of species (water), with appropriate units
-- `dudt_func`: defaults to `dudt_heatmass!`, but for other cases (e.g. ignoring mass transfer) can replace this
+- `paramsd`, a `Tuple{PhysicalProperties, TimeConstantProperties, TimeVaryingProperties}` 
+    (i.e. a tuple of the three objects). See [`PhysicalProperties`](@ref), [`TimeConstantProperties`](@ref), [`TimeVaryingProperties`](@ref).
+The following fields have default values and are therefore optional:
+- `simgridsize`, a tuple giving number of grid points to use for simulation. Defaults to `(51, 51)`.
+- `Tf0`, an initial ice temperature. Defaults to `Tsh(0)` if not provided  
+- `Tvw0`, an initial glass temperature. Defaults to `Tf0`.
+- `dudt_func`: defaults to [`dudt_heatmass!`](@ref); other options are [`dudt_heatmass_dae!`](@ref) and [`dudt_heatmass_implicit!`](@ref).
+    Among these three, different problem formulations are used (explicit ODE with internal Newton solve, DAE, and implicit ODE).
+- `init_prof`, a `Symbol` indicating a starting profile (from [`make_ϕ0`](@ref)
 
-If you are getting a warning about instability, it can sometimes be fixed by tinkering with the reinitialization behavior.
-
-
+The three problem formulations have different advantages; in my testing, the DAE formulation and implicit formulation
+tend to run faster and more closely reflect the problem structure,
+but they run into instabilities when the sublimation front peels away from the wall,
+whereas the explicit ODE formulation can jump over that point.
 """
 function sim_from_dict(fullconfig; tf=1e5, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack init_prof, Tf0, = fullconfig
+    @unpack paramsd = fullconfig
     # Default values for non-essential parameters
+    init_prof = get(fullconfig, :init_prof, :flat) # Default to same ice & glass temperature if glass initial not given
+    Tf0 = get(fullconfig, :Tf0, paramsd[3].Tsh(0u"s")) # Default to same ice & glass temperature if glass initial not given
     Tvw0 = get(fullconfig, :Tvw0, Tf0) # Default to same ice & glass temperature if glass initial not given
 
     # --------- Set up simulation domain, including grid size (defaults to 51x51)
@@ -109,7 +94,7 @@ end
 """
     sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
 
-Wrapped by [`sim_from_config`](@ref); useful on its own if you want to start from partway through a simulation.
+Wrapped by [`sim_from_dict`](@ref LevelSetSublimation.sim_from_dict); useful on its own if you want to start from partway through a simulation.
 """
 function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
 
@@ -120,8 +105,7 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
     params_vary = params_nondim_setup(paramsd) # Covers the various physical parameters 
 
     # Cached array for using last pressure and Tf states as guess
-    # This gets ignored for heat-only simulation, but shouldn't cause any problems
-    Tf0 = ϕ_T_from_u(u0, dom)[2][1]
+    Tf0 = u0[iTf(dom)][1]
     p_sub = calc_psub(Tf0)
     p_last = fill(p_sub, size(dom))
     Tf_last = fill(Tf0, dom.nr)
@@ -130,7 +114,7 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
     dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to heat and mass transfer-based evolution
     # ---- Set up ODEProblem
     prob_pars = (dom, params_vary, p_last, Tf_last, verbose)
-    tspan = (0, tf)
+    tspan = (t0, tf)
     prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
 
     # --- Set up reinitialization callback

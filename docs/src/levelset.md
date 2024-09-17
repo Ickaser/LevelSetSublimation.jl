@@ -33,4 +33,19 @@ sdf_err_L1
 sdf_err_L∞
 ```
 
+## Volume and surface integrals and evaluations
 
+```@docs
+compute_icevol_H
+compute_discrete_H
+compute_local_H
+compute_icesurf_δ
+compute_discrete_δ
+compute_local_δ
+```
+
+## Initial sublimation front shapes, for numerical testing
+
+```@docs
+make_ϕ0
+```

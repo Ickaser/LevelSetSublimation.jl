@@ -53,6 +53,13 @@ function compute_icegl_area(ϕ, dom::Domain)
     return outsurf
 end
 
+"""
+    compute_icesurf_δ(ϕ, dom)
+
+Compute the surface area of the ice, using a discrete Dirac delta function.
+Calls [`compute_discrete_δ`](@ref), which is implemented according
+to [Min and Gibou 2008](@cite min_robust_2008).
+"""
 function compute_icesurf_δ(ϕ, dom)
     δ = compute_discrete_δ(ϕ, dom)
     SA = 2π*sum(δ .* dom.rgrid)*dom.dr*dom.dz

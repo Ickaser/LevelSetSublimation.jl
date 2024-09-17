@@ -214,33 +214,7 @@ This simulation is stripped-down: no mass transfer, no variation in ice & glass 
 Maximum simulation time is specified by `tf`.
 `verbose=true` will put out some info messages about simulation progress, i.e. at each reinitialization.
 
-`fullconfig` should have the following fields:
-- `init_prof`, types listed for [`make_ϕ0`](@ref)
-- `fillvol`, fill volume with Unitful units (e.g. `3u"mL"`)
-- `vialsize`, a string (e.g. `"2R"`) giving vial size
-- `simgridsize`, a tuple/arraylike giving number of grid points to use for simulation. Defaults to `(51, 51)`.
-- `Tf0`, an ice temperature with Unitful units 
-- `Tvw0`, a glass temperature (if the same as Tf0, can leave this out)
-- `controls`, which has following fields (either scalar or array, with same length as `t_samp`:
-    - `t_samp`, sampled measurement times. Needed only if other measurements are given during time
-    - `Tsh`, shelf temperature: either a scalar (constant for full time span) or an array at specified time, in which case implemented via callback
-    - `QRFf`, ice RF heating. 
-- `cparams`, which in turn has fields with Unitful units
-    - `Kvwf`, 
-    - `Kshf` : heat transfer coefficients shelf
-    - `kd`: thermal conductivity of cake
-    - `ρf`: density of ice
-    - `ΔH` : heat of sublimation of ice
-    - `ϵ` : porosity of porous medium
-
-Other parameters will be ignored.
-
-During simulation, at each value of `t_samp`, the values of any `controls` which are arrays will be added to an internal dict called `params`.
-
-If you pass in an array of values for multiple of `Tsh`, `QRFvw`, or others, they must all have the same length as `t_samp`.
-
-If you are getting a warning about instability, it can sometimes be fixed by tinkering with the reinitialization behavior.
-
+**CURRENTLY OUT OF DATE** with parameter input structures.
 
 """
 function sim_heatonly(fullconfig; tf=1e5, verbose=false)
@@ -293,10 +267,6 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     # Cached array for using last pressure state as guess
     p_last = fill(0.0, size(dom))
-
-    # ----- Set up parameters dictionary and measurement callback
-    meas_affect!(integ) = input_measurements!(integ, meas_keys, ncontrols)
-    cb_meas = PresetTimeCallback(ncontrols[:t_samp], meas_affect!, filter_tstops=true)
 
     # ---- Set up ODEProblem
     prob_pars = (dom, params, p_last)
