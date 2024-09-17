@@ -39,8 +39,8 @@ function err_Tvw_Tf(Kvwf, QRFvw, QRFf ,fdat, gldat, config)
     @unpack sol, dom = res
 
     tf = sol.t[end]*u"s"
-    Tf_sim = sol(ustrip.(u"s", tdatf))[dom.ntot+1,:] .* u"K"
-    Tvw_sim = sol(ustrip.(u"s", tdatgl))[dom.ntot+2,:] .* u"K"
+    Tf_sim = sol(ustrip.(u"s", tdatf), idxs=iTf(dom)) .* u"K"
+    Tvw_sim = sol(ustrip.(u"s", tdatgl), idxs=iTvw(dom)) .* u"K"
 
     ds_gl = tdatgl .< tf
     ds_f = tdatf .< tf
@@ -61,34 +61,3 @@ function err_Tvw_Tf(Kvwf, QRFvw, QRFf ,fdat, gldat, config)
     # K^2, K^2, hr^2: weight accordingly
     return err_gl + err_f + 50err_t
 end
-
-# function err_Tvw(m_cp_gl, Kvwf, QRFvw,dat,  config)
-#     tdat = dat["t"].*u"hr"   
-#     Tvw_dat = dat["Tvw"].*u"°C"
-#     Tvw_dat = uconvert.(u"K", Tvw_dat)
-
-#     @info "Optimization eval, with QRFvw clamped to nonnegative:" m_cp_gl Kvwf QRFvw
-#     QRFvw = max(QRFvw, 0.0)
-
-#     m_cp_gl *= u"g/kg*J/K"
-#     QRFvw *= u"W"
-#     Kvwf *= u"W/K/m^2"
-#     @pack! config[:cparams] = m_cp_gl, Kvwf  
-#     @pack! config[:controls] = QRFvw  
-#     @time res = sim_from_dict(config, verbose=false, tf=1e4)
-#     @unpack sol, dom = res
-
-#     tf = sol.t[end]*u"s"
-#     Tvw_sim = sol(ustrip.(u"s", tdat))[dom.ntot+2,:] .* u"K"
-
-#     # display(summaryplot(res, config))
-#     pl = plot(tdat, Tvw_dat) 
-#     plot!(tdat, Tvw_sim)
-#     vline!([tf])
-#     display(pl)
-
-#     downsamp = tdat .< tf
-#     t_downsamp = tdat[downsamp]
-#     err = sum(ustrip.(u"K", Tvw_sim[downsamp] - Tvw_dat[downsamp]).^2)  / sum(downsamp)^2 # Encourage the use of more data points
-
-# end

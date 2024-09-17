@@ -16,9 +16,7 @@ end
 """
     solve_T(u, Tf, dom::Domain, params)
 
-Compute 2D axisymmetric T profile, returning ghost cell values, for given state `u`.
-
-`u` contains ϕ and Tf; unpacked with `ϕ_T_from_u`.
+Compute 2D axisymmetric T profile, returning ghost cell values, for given state `u` and `Tf`.
 
 Neumann boundary conditions on all rectangular boundaries; Dirichlet on zero-level set.
 
@@ -35,17 +33,8 @@ function solve_T(u, Tf, dom::Domain, params)
     @unpack Kvwf, kd = params[2]
     @unpack Kshf, Tsh = params[3]
     QRFd = calc_QpppRFd(params)
-    # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
-    ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
-
-    # To prevent blowup, artificially add some  corner ice if none is present
-    # This is by tampering with level set field, hopefully memory safe
-    # if minimum(ϕ) > 0
-    #     # @info "Solving heat equation without any ice, artificially introducing some"
-    #     ϕ = copy(ϕ)
-    #     ϕ[argmin(ϕ)] = - max(dr, dz)
-    # end
-
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    Tvw = u[iTvw(dom)]
 
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
@@ -368,9 +357,8 @@ function pseudosteady_Tf(u, dom, params)
     pseudosteady_Tf(u, dom, params, Tfg)
 end
 function pseudosteady_Tf(u, dom, params, Tf_g)
-    ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
     @unpack kf, ρf, Cpf = params[1]
-    QRFf = calc_QpppRFf(params)
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
     # Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
@@ -527,7 +515,7 @@ end
 
 function compute_Qvwf(u, T, dom::Domain, params)
     @unpack Kvwf = params[2]
-    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
+    Tvw = u[iTvw(dom)]
     # Heat flux from glass, at outer radius
     # zweights = compute_icegl_area_weights(ϕ, dom) # area for ice-glass
     zweights = fill(dom.dz, dom.nz)

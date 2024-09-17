@@ -10,18 +10,18 @@ Evaluate local time rate of change for `u` and put results in `du`.
 
 This function leaves `Tf` and `Tvw` untouched, since there isn't a way to govern their dynamics without mass transfer.
 
-`u` and `du` are both structured as follows:
-First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`, `dom.ntot+2` index is glass temperature `Tvw`
+`u` and `du` are both structured according to 
 
-Parameters `p` assumed to be `(dom::Domain, params)`
 This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
 using `compute_frontvel_mass`.
 """
 function dudt_heatonly!(du, u, integ_pars, t)
     dom = integ_pars[1]
-    params = integ_pars[2]
+    params = integ_pars[2](t)
+    verbose = integ_pars[3]
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
-    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    Tf = u[ifw(dom)]
 
     T = solve_T(u, Tf, dom, params)
 
@@ -43,8 +43,10 @@ function dudt_heatonly!(du, u, integ_pars, t)
         # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
         dϕ[ind] = -rcomp - zcomp
     end
-    # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[3].Tsh Tvw extrema(vr) extrema(vz)
+    if verbose
+        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[3].Tsh Tvw extrema(vr) extrema(vz)
+    end
     return nothing
 end
 
@@ -57,20 +59,19 @@ Compute the time derivative of `u` with given parameters.
 
 Wraps a call on `dudt_heatonly!`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function dudt_heatonly(u, dom::Domain, params)
-    integ_pars = (dom, params, zeros(Float64, size(dom)))
+function dudt_heatonly(u, dom::Domain, params, t)
+    integ_pars = (dom, params, true)
     du = similar(u)
-    du[dom.ntot+1:end] .= 0
-    dudt_heatonly!(du, u, integ_pars, 0.0)
+    du[iTf(dom)] .= 0
+    du[iTvw(dom)] .= 0
+    dudt_heatonly!(du, u, integ_pars, t)
     return du
 end
-function dudt_heatonly(u, config)
-    @unpack vialsize, fillvol = config
-
+function dudt_heatonly(u, config, t)
     dom = Domain(config)
-    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
+    params = params_nondim_setup(config[:paramsd])
 
-    dudt_heatonly(u, dom, params)
+    dudt_heatonly(u, dom, params, t)
 end
 
 
@@ -83,14 +84,14 @@ function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
 
     @unpack ΔH, ρf = params[1]
     @unpack kd, ϵ = params[2]
-    ϕ = ϕ_T_from_u(u, dom)[1]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
 
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
     Γ⁺ = [c for c in Γ if ϕ[c]>0]
      
     vf = zeros(eltype(ϕ), dom.nr, dom.nz, 2)
-    dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+    dϕdx_all = dϕdx_all_WENO(ϕ, dom)
 
     Qice = compute_Qice_nodry(u, T, dom, params)
     Q_ice_per_surf = Qice / compute_icesurf_δ(ϕ, dom)
@@ -128,7 +129,7 @@ In addition, the sublimation flux is simply evaluated at the top cake surface.
 function compute_Qice(u, T, p, dom::Domain, params)
 
     @unpack ΔH = params[1]
-    # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)[1]
+    # ϕ, Tf, Tvw = reshape(u[iϕ(dom)], size(dom))
 
     Q_vwshvol, Q_vwf = compute_Qice_noflow(u, T, dom, params)
 
@@ -152,7 +153,8 @@ function compute_Qice_noflow(u, T, dom::Domain, params)
     QRFd = calc_QpppRFd(params)
     QRFf = calc_QpppRFd(params)
 
-    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    Tvw = u[iTvw(dom)]
 
     # Heat flux from shelf, at bottom of vial
     rweights = ones(Float64, dom.nr) 
@@ -185,7 +187,8 @@ function compute_Qice_nodry(u, T, dom::Domain, params)
     @unpack Kshf, Tsh = params[3]
     QRFf = calc_QpppRFd(params)
 
-    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    Tvw = u[iTvw(dom)]
 
     # Heat flux from shelf, at bottom of vial
     rweights = compute_icesh_area_weights(ϕ, dom)
@@ -257,12 +260,6 @@ function sim_heatonly(fullconfig; tf=1e5, verbose=false)
 
     ϕ0_flat = reshape(ϕ0, :)
 
-    
-    # Full array of starting state variables ------------
-    # u0 = similar(ϕ0_flat, dom.ntot+2) # Add 2 to length: Tf, Tvw
-    # u0[1:dom.ntot] .= ϕ0_flat
-    # u0[dom.ntot+1] = Tf0 
-    # u0[dom.ntot+2] = Tvw0 
     u0 = make_u0_ndim(init_prof, Tf0, Tvw0, dom)
 
     # Cached array for using last pressure state as guess

@@ -9,7 +9,7 @@ function case1_analyt_compare(simres, config)
     vz = ustrip(u"m/s", -Q_sh/ ρf/ΔH / ϵ)
 
     ts = sol.t
-    zs = [get_subf_z(ϕ_T_from_u(sol(ti), dom)[1], dom) for ti in ts]
+    zs = [get_subf_z(reshape(sol(ti, idxs=iϕ(dom)), size(dom)), dom) for ti in ts]
     zs_analyt = dom.zmax*(1-1e-4) .+ vz.*ts
 
     return ts, zs, zs_analyt
@@ -21,7 +21,7 @@ function case2_analyt_compare(simres, config)
     QRFf = config[:controls][:QRFf]
 
     ts = sol.t
-    rs = [get_subf_r(ϕ_T_from_u(sol(ti), dom)[1],dom) for ti in ts]
+    rs = [get_subf_r(reshape(sol(ti, idxs=iϕ(dom)), size(dom)),dom) for ti in ts]
     rs_analyt = dom.rmax*(1-1e-4) * exp.(ustrip.(NoUnits, (-QRFf(0)/ρf/ΔH/ϵ/2 * ts*u"s") ))
 
     return ts, rs, rs_analyt
@@ -34,7 +34,7 @@ function case3_analyt_compare(simres, config)
     Tf = config[:Tf0]
 
     ts = sol.t *u"s"
-    rs = [get_subf_r(ϕ_T_from_u(sol(ustrip(u"s", ti)), dom)[1],dom) for ti in ts] *u"m"
+    rs = [get_subf_r(reshape(sol(ustrip(u"s", ti), idxs=iϕ(dom)), size(dom)),dom) for ti in ts] *u"m"
 
     # analytical easier in terms of ξ, not t
     R = dom.rmax*u"m"

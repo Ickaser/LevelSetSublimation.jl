@@ -388,7 +388,7 @@ ulen(dom::Domain) = iTvw(dom)
 # reshape(a::AbstractArray, dom::Domain) = reshape(a, size(dom))
 
 """
-    ϕ_T_from_u_view(u, dom)
+    ϕ_from_u_view(u, dom)
 
 Take the current system state `u` and return views corresponding to `ϕ`, `Tf`, and `Tvw`.
 Nothing too fancy--just to avoid rewriting the same logic everywhere

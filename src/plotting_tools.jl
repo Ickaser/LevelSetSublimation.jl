@@ -167,7 +167,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     @unpack sol, dom = simresults
 
     if heatvar == :ϕ 
-        ϕ = ϕ_T_from_u(sol(t), dom)[1]
+        ϕ = reshape(sol(t, idxs=iϕ(dom)), size(dom))
         heatvar_vals = ϕ
         clab = "ϕ, m"
         # cmap = :algae
@@ -179,8 +179,8 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
             Tf0 = fill(245.0, dom.nr)
         end
         u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
-        # T = solve_T(u, dom, params)
-        ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
+        ϕ = reshape(u[iϕ(dom)], size(dom))
+        Tvw = u[iTvw(dom)]
         Tvw -= 273.15
         heatvar_vals = T .- 273.15
         clab = "Temperature [°C]"
@@ -204,7 +204,7 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
             Tf0 = fill(245.0, dom.nr)
         end
         u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
-        ϕ = ϕ_T_from_u(u, dom)[1]
+        ϕ = reshape(u[iϕ(dom)], size(dom))
         # T = solve_T(u, dom, params)
         # p = solve_p(u, T, dom, params, p0)
         heatvar_vals = ustrip.(u"mTorr", p.*u"Pa")

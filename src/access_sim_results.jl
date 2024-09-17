@@ -5,7 +5,7 @@ export virtual_thermocouple
 function get_t_Tf(simresults::Dict)
     @unpack sol, dom = simresults
     t = sol.t .* u"s"
-    Tf = sol[dom.ntot+1,:] .* u"K"
+    Tf = sol[iTf(dom)[1],:] .* u"K"
     return t, Tf
 end
 
@@ -13,7 +13,7 @@ function get_t_Tf_subflux(simresults::Dict, simconfig::Dict)
     @unpack sol, dom = simresults
     t = sol.t .* u"s"
     Tf_g = fill(245.0, dom.nr)
-    Tf = sol[dom.ntot+1,:] .* u"K"
+    Tf = sol[iTf(dom)[1],:] .* u"K"
     md = map(sol.t) do ti
         params = calc_params_at_t(ti, simconfig)
         uTfTp = calc_uTfTp_res(ti, simresults, simconfig, Tf0=Tf_g)
@@ -59,7 +59,7 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
     mfd = uconvert.(u"kg/hr", md) / (π*(dom.rmax*u"m")^2)
     totvol = π*dom.rmax^2 * dom.zmax
     dryfrac = map(ts_ndim) do ti
-        ϕ = ϕ_T_from_u(sol(ti), dom)[1]
+        ϕ = reshape(sol(ti)[iϕ(dom)], size(dom))
         1 - compute_icevol_H(ϕ, dom) / totvol
     end
 
@@ -93,7 +93,7 @@ end
 function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
     @unpack sol, dom = simresults
     u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)    
-    ϕ = ϕ_T_from_u(u, dom)[1]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
     return u, ϕ, T, p
 end
 
@@ -188,7 +188,7 @@ function get_SA(ts, res)
     @unpack sol, dom = res
     SA_t = map(ts) do ti
         u = sol(ti)
-        ϕ = ϕ_T_from_u(u, dom)[1]
+        ϕ = reshape(u[iϕ(dom)], size(dom))
         SA = compute_icesurf_δ(ϕ, dom)
     end
     return ts, SA_t

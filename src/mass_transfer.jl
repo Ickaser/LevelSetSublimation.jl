@@ -5,7 +5,7 @@ export solve_p, eval_b
 """
     solve_p(u, T, dom::Domain, params[, p0]; maxit=20, reltol=1e-6) where G<:AbstractArray
 
-Iteratively compute the pressure profile for system state `u` and `T`.
+Iteratively compute the pressure profile for system state `u`, `Tf`, and `T`.
 
 There is a weak nonlinearity in the system, since the mass transfer coefficient `b` depends partially on pressure.
 To treat this, use a guessed pressure `p0` (which, if not provided, is set everywhere to chamber pressure) to compute `b`,
@@ -17,9 +17,7 @@ Usually if it doesn't converge, it is because temperatures are outside the expec
 
 """
 function solve_p(u, Tf, T, dom::Domain, params; kwargs...) 
-    # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
-    ϕ = ϕ_T_from_u(u, dom)[1]
-    # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
+    ϕ = reshape(u[iϕ(dom)], size(dom))
     b = eval_b(T, params[3].pch, params)
     p0 = similar(Tf, size(dom)) 
     p0 .= solve_p_given_b(ϕ, b, Tf, dom, params)
@@ -30,11 +28,9 @@ function solve_p(u, Tf, T, dom::Domain, params; kwargs...)
     end
 end
 function solve_p(u, Tf, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
-    # ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
-    ϕ = ϕ_T_from_u(u, dom)[1]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
 
     relerr::eltype(Tf) = 0.0
-    # p⁺ = copy(p0)
     p⁺ = similar(Tf, size(dom))
     # Iterate up to maxit times
     for i in 1:maxit

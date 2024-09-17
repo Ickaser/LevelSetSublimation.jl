@@ -14,10 +14,10 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack kd, Kvwf = params[2]
     @unpack Kshf, Tsh = params[3]
 
-    ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    Tvw = u[iTvw(dom)]
     pT = T[ir, iz]
     ϕp = ϕ[ir, iz]
-    r = dom.rgrid[ir]
     
     if ϕp > 2dr || ϕp > 2dz || ϕp < -2dr || ϕp < -2dz
         @debug "Computing heat flux for cell which may not be at front." ir iz ϕp
@@ -137,7 +137,7 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack Rp0 = params[2]
     @unpack pch = params[3]
-    ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
     
@@ -282,7 +282,7 @@ function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
 
     @unpack ΔH, ρf = params[1]
     @unpack kd, ϵ = params[2]
-    ϕ = ϕ_T_from_u(u, dom)[1]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
 
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)

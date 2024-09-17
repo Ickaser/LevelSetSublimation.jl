@@ -1,16 +1,13 @@
-cparams = make_default_params()
 
 Tf0 = -35.857u"°C"
 vialsize = "6R"
 fillvol = 2u"mL"
 
-simgridsize = (51, 51)
-init_prof = :flat 
+simgridsize = (41, 31)
 
 
 # ---- Variables which can be controlled during a run
 # Set points
-
 
 Tsh = RampedVariable([238.15u"K", 293.15u"K"], [1u"K/minute"], [10u"hr"])
 pch = RampedVariable(150u"mTorr")
@@ -46,28 +43,6 @@ controls = Dict{Symbol, Any}()
 
 config = Dict{Symbol, Any}()
 @pack! config = cparams, Tf0, init_prof, controls, vialsize, fillvol
-
-
-# --------------------------------------
-# # Set up stuff to make debugging easier
-# params, meas_keys, ncontrols = params_nondim_setup(cparams, controls)
-
-# r_vial = get_vial_radii(vialsize)[1]
-# z_fill = fillvol / π / r_vial^2
-
-# rmax = ustrip(u"m", r_vial)
-# zmax = ustrip(u"m", z_fill)
-
-# dom = Domain(51, 51, rmax, zmax)
-
-# ϕ0 = make_ϕ0(init_prof, dom)   
-# u0 = zeros(dom.ntot+2)
-# u0[1:dom.ntot] = reshape(ϕ0, :)
-# u0[dom.ntot+1] = ustrip(u"K", Tf0)
-# u0[dom.ntot+2] = ustrip(u"K", Tf0)
-# reinitialize_ϕ_HCR!(ϕ0, dom)
-# T0 = solve_T(u0, dom, params)
-# p0 = solve_p(u0, T0, dom, params)
 
 
 # -----------------------------

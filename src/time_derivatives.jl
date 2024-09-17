@@ -12,12 +12,11 @@ Parameters `p` assumed to be `(dom::Domain, params)`
 This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
 using `compute_frontvel_mass`.
 """
-function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
+function dudt_heatmass!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params_vary = integ_pars[2]
-    p_last = integ_pars[3]
+    verbose = integ_pars[3]
     Tf_last = integ_pars[4]
-    verbose = integ_pars[5]
 
     params = params_vary(t)
 
@@ -25,7 +24,7 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
 
     dTf .= 0 # Just in case some weird stuff got left there
 
-    ϕ, Tvw = ϕ_T_from_u_view(u, dom)[[true, false, true]]
+    ϕ = @views reshape(u[iϕ(dom)], size(dom))
 
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
     @unpack A_rad, m_v = params[2]
@@ -46,7 +45,6 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
 
-    integ_pars[3] .= p # Cache current state of p as a guess for next timestep
     integ_pars[4] .= Tf
     vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
@@ -63,10 +61,11 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
 
     # Compute time derivative for Tvw
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw[1]^4 )
+    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
     dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
     if verbose && eltype(u) <: Float64
+        Tvw = u[iTvw(dom)]
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tvw[1] params[3].Tsh
     end
@@ -79,15 +78,13 @@ doc
 function dudt_heatmass_dae!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params_vary = integ_pars[2]
-    # p_last = integ_pars[3]
-    # Tf_last = integ_pars[4]
-    verbose = integ_pars[5]
+    verbose = integ_pars[3]
 
     params = params_vary(t)
 
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
 
-    ϕ, Tf, Tvw = ϕ_T_from_u_view(u, dom)
+    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
     @unpack A_rad, m_v = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
@@ -111,20 +108,16 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     end
 
 
-    # Tf = pseudosteady_Tf(u, dom, params, Tf_last)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
 
 
 
-    # integ_pars[3] .= p # Cache current state of p as a guess for next timestep
-    # integ_pars[4] .= Tf
     vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:, :, 1]
     vz = @view vf[:, :, 2]
 
-    # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
 
@@ -158,9 +151,7 @@ doc
 function dudt_heatmass_implicit!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params_vary = integ_pars[2]
-    # p_last = integ_pars[3]
-    # Tf_last = integ_pars[4]
-    verbose = integ_pars[5]
+    verbose = integ_pars[3]
 
     params = params_vary(t)
 
@@ -190,14 +181,11 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     end
 
 
-    # Tf = pseudosteady_Tf(u, dom, params, Tf_last)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
 
 
 
-    # integ_pars[3] .= p # Cache current state of p as a guess for next timestep
-    # integ_pars[4] .= Tf
     vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:, :, 1]
@@ -256,27 +244,25 @@ end
 
 
 """
-    dudt_heatmass(u, dom::Domain, params)
-    dudt_heatmass(u, config)
+    dudt_heatmass(u, dom::Domain, params, t)
+    dudt_heatmass(u, config::Dict, t=0.0)
     
-Compute the time derivative of `u` with given parameters.
-
-`u` has `dom.ntot` entries for `ϕ`, `dom.nr` for `Tf`, and 1 for `Tvw`.
+Compute the time derivative of `u` with given (nondimensional) parameters.
 
 Wraps a call on `dudt_heatmass!`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function dudt_heatmass(u, dom::Domain, params, ncontrols)
-    integ_pars = (dom, params, fill(100.0, size(dom)), fill(233.15, dom.nr), ncontrols)
+function dudt_heatmass(u, dom::Domain, params_n, t)
+    integ_pars = (dom, params_n, true, similar(u, dom.nr))
     du = similar(u)
-    dudt_heatmass!(du, u, integ_pars, 0.0)
+    dudt_heatmass!(du, u, integ_pars, t)
     return du
 end
-function dudt_heatmass(u, config, t=0)
+function dudt_heatmass(u, config::Dict, t=0.0)
     # Set up simulation domain & parameters
     dom = Domain(config)
     params_vary = params_nondim_setup(config[:cparams], config[:controls])
     params = params_vary(t)
-    dudt_heatmass(u, dom, params, ncontrols)
+    dudt_heatmass(u, dom, params)
 end
 
 """
@@ -286,17 +272,13 @@ Compute the time derivative of `u` with given parameters, and also return `dom` 
 
 Wraps a call on `dudt_heatmass`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function dudt_heatmass_params(u, config)
+function dudt_heatmass_params(u, config, t)
     # Set up simulation domain & parameters
     dom = Domain(config)
-    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
+    paramsn = params_nondim_setup(config[:cparams], config[:controls])
 
-    dudt_heatmass(u, dom, params), dom, params
+    dudt_heatmass(u, dom, paramsn, t), dom, paramsn
 end
-
-function set_params_at_t!(params, controls)
-end
-
 
 # ---------------------------
 # For pseudosteady radial temperature
@@ -370,14 +352,15 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
     return Q_surf_pp, surf_area, vol
 end
 
-function dTfdt_radial(u, T, p, dϕdx_all, dom::Domain, params)
+function dTfdt_radial(u, Tf, T, p, dϕdx_all, dom::Domain, params)
     dTfdt = similar(u, dom.nr)
     dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
     return dTfdt
 end
 
 function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
-    ϕ, Tvw = ϕ_T_from_u(u, dom)[[true, false, true]]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    Tvw = u[iTvw(dom)]
     @unpack ρf, Cpf, kf, ΔH = params[1]
     @unpack Rp0, Kvwf = params[2]
     @unpack Tsh, pch, Kshf = params[3]

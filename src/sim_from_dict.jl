@@ -1,5 +1,6 @@
 export sim_from_dict, sim_heatonly, sim_and_postprocess
 
+# Callback functions ---------------
 """
     reinit_wrap(integ; verbose=false)
 
@@ -11,7 +12,7 @@ If `verbose=true`, logs the error in signed distance function before and after r
 """
 function reinit_wrap(integ; verbose=false)
     dom = integ.p[1]
-    ϕ = ϕ_T_from_u_view(integ.u, dom)[1]
+    ϕ = @views reshape(integ.u[iϕ(dom)], size(dom))
     verbose && (pre_err = sdf_err_L∞(ϕ, dom, region=:B))
     reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=50, tol=0.02, err_reg=:B) 
     if verbose
@@ -24,7 +25,7 @@ end
 
 function needs_reinit(u, t, integ)
     dom = integ.p[1]
-    ϕ = ϕ_T_from_u(u, dom)[1]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
     # err = sdf_err_L1(ϕ, dom)
     B = identify_B(ϕ, dom)
     err = norm(𝒢_weno_all(ϕ, dom)[B].-1, Inf)
@@ -32,6 +33,15 @@ function needs_reinit(u, t, integ)
     # @info "error from sdf" err-tol
     return err > tol
 end
+
+function store_Tf!(integ)
+    Tf = @view integ.u[iTf(dom)]
+    integ.p[3] && @info "callback" integ.t
+    @time Tf_sol = pseudosteady_Tf(integ.u, integ.p[1], integ.p[2](integ.t), integ.p[4])
+    Tf .= Tf_sol
+end
+
+# Simulation functions -----------
 
 """
     sim_from_dict(fullconfig; tf=1e5, verbose=false)
@@ -80,7 +90,7 @@ function sim_from_dict(fullconfig; tf=1e5, verbose=false)
     # If no vial thickness defined, get it from vial size
     u0 = make_u0_ndim(init_prof, Tf0, Tvw0, dom)
 
-    ϕ0 = ϕ_T_from_u_view(u0, dom)[1]
+    ϕ0 = @views reshape(u0[iϕ(dom)], size(dom))
     if verbose
         @info "Initializing ϕ"
     end
@@ -106,14 +116,12 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
 
     # Cached array for using last pressure and Tf states as guess
     Tf0 = u0[iTf(dom)][1]
-    p_sub = calc_psub(Tf0)
-    p_last = fill(p_sub, size(dom))
     Tf_last = fill(Tf0, dom.nr)
 
 
     dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to heat and mass transfer-based evolution
     # ---- Set up ODEProblem
-    prob_pars = (dom, params_vary, p_last, Tf_last, verbose)
+    prob_pars = (dom, params_vary, verbose, Tf_last)
     tspan = (t0, tf)
     prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
 
@@ -142,13 +150,6 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
     if dudt_func == dudt_heatmass!
         # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
         # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
-        function store_Tf!(integrator)
-            ϕ, Tf, Tvw = ϕ_T_from_u_view(integrator.u, integrator.p[1])
-            params = integrator.p[2](integrator.t)
-            verbose && @info "callback" integrator.t
-            @time Tf_sol = pseudosteady_Tf(integrator.u, integrator.p[1], params, integrator.p[4])
-            Tf .= Tf_sol
-        end
 
         cb_store = DiscreteCallback((a,b,c)->true, store_Tf!, save_positions=(false,true))
         # @info "fixed"
