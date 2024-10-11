@@ -163,7 +163,7 @@ Unpack simulation results and plot the state at time `t`.
 `heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
-function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, Tf0=nothing, clims=nothing)
+function plotframe(t::Float64, simresults::Dict, simconfig::Dict; heatvar=:T, Tf0=nothing, clims=nothing)
     @unpack sol, dom = simresults
 
     if heatvar == :ϕ 
@@ -180,25 +180,11 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
         end
         u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
         ϕ = reshape(u[iϕ(dom)], size(dom))
-        Tvw = u[iTvw(dom)]
-        Tvw -= 273.15
-        heatvar_vals = T .- 273.15
-        clab = "Temperature [°C]"
-        # cmap = :plasma
-        cmap = :linear_bmy_10_95_c78_n256
-        if maximum(u[iTf(dom)]) > maximum(T) # Tf > T
-            cont_c = :black
-        else
-            cont_c = :white
-        end
+        T .-= 273.15
+        Tvw = u[iTvw(dom)] - 273.15
         Tsh = ustrip(u"°C", simconfig[:paramsd][3].Tsh(t*u"s"))
-        maxT = max(Tvw, Tsh, maximum(heatvar_vals))
-        if isnothing(clims)
-            clims = extrema(heatvar_vals)
-        end
-        if maximum(clims) < maxT
-            clims = (clims[1], maxT)
-        end
+        pl = plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=clims)
+        return pl, T, Tf
     elseif heatvar == :p
         if isnothing(Tf0)
             Tf0 = fill(245.0, dom.nr)
@@ -226,30 +212,8 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     tr = round(t/3600, digits=2)
     local pl = plot(aspect_ratio=:equal, xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
     # plot_cylheat(heatvar_vals, dom; clims=clims)
-    if heatvar == :T
-        cg = cgrad(cmap)
-        cpick = x->cg[(x-clims[1])/(clims[2]-clims[1])]
-        lwall = Plots.Shape([(-dom.rmax-2.5dom.dr, dom.zmax), 
-                (-dom.rmax-2.5dom.dr, 0),
-                (-dom.rmax, 0),
-                (-dom.rmax, dom.zmax)])
-        rwall = Plots.Shape([( dom.rmax+2.5dom.dr, dom.zmax), 
-                ( dom.rmax+2.5dom.dr, 0),
-                ( dom.rmax, 0),
-                ( dom.rmax, dom.zmax)])
-        shelf = Plots.Shape([( dom.rmax+2.5dom.dr, 0), 
-                (-dom.rmax-2.5dom.dr, 0),
-                (-dom.rmax-2.5dom.dr, -2.5dom.dz),
-                ( dom.rmax+2.5dom.dr, -2.5dom.dz)])
-        plot!(xlim=(-1, 1) .* (dom.rmax+2.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
-        plot!(lwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
-        plot!(rwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
-        plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
-        plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
-    end
     heatmap!(dom.rgrid, dom.zgrid, heatvar_vals', c=cmap, clims=clims)
     heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, heatvar_vals[end:-1:begin, :]', c=cmap, clims=clims) # plot reflected
-    heatvar == :T && plot!([-1, -1, 1, 1] .* (dom.rmax+0.5dom.dr), [dom.zmax, -0.5dom.dz, -0.5dom.dz, dom.zmax], c=:black, label=:none)
     plot!(LevelSet(ϕ, dom), c=cont_c)
     if heatvar == :ϕ
         Plots.contour!(dom.rgrid, dom.zgrid, ϕ', color=:black)
@@ -260,6 +224,62 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
     # plot!(x_ticks=[-dom.rmax, 0, dom.rmax], xlabel="radius")
     return pl, heatvar_vals, Tf
+end
+
+function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
+    cmap = :linear_bmy_10_95_c78_n256
+    cg = cgrad(cmap)
+    if isnothing(clims)
+        clims = extrema(T)
+        if clims[2] - clims[1] < 1e-4
+            clims = clims .+ (0, 0.10)
+        end
+    end
+    cpick = x->cg[(x-clims[1])/(clims[2]-clims[1])]
+
+    hextend = 1.05
+    vextend = 1.05
+    lwall = Plots.Shape([(-dom.rmax*hextend, dom.zmax), 
+             (-dom.rmax*hextend, 0),
+             (-dom.rmax, 0),
+             (-dom.rmax, dom.zmax)])
+    rwall = Plots.Shape([( dom.rmax*hextend, dom.zmax), 
+             ( dom.rmax*hextend, 0),
+             ( dom.rmax, 0),
+             ( dom.rmax, dom.zmax)])
+    shelf = Plots.Shape([( dom.rmax*hextend, 0), 
+             (-dom.rmax*hextend, 0),
+             (-dom.rmax*hextend, -(vextend-1)*dom.zmax),
+             ( dom.rmax*hextend, -(vextend-1)*dom.zmax)])
+
+    # plots = map(zip(frames, ϕs, Ts, Tvws, Tshs)) do (t, ϕ, T, Tvw, Tsh)
+    if (T[1] - clims[1])/(clims[2]-clims[1]) > 0.65 # Tf relatively high
+        cont_c = :black
+    else
+        cont_c = :white
+    end
+    tr = round(t/3600, digits=2)
+
+    # Set up plot
+    pl = plot(aspect_ratio = :equal, showaxis=false,
+            xlim=(-1, 1) .* (dom.rmax*hextend) , ylim=(dom.zmin-(vextend-1)*dom.zmax, dom.zmax))
+    # plot temperatures
+    heatmap!(dom.rgrid, dom.zgrid, T', c=cmap, clims=clims, )
+    heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, T[end:-1:begin, :]', c=cmap, clims=clims) # plot reflected
+    # plot ice surface
+    plot!(LevelSet(ϕ, dom), c=cont_c)
+    # Plot shelf and wall Ts
+    plot!(lwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
+    plot!(rwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
+    plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
+    # Vial outline
+    plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
+    plot!(xlabel="t = $tr hr")
+#     plot!(colorbar_title=clab)
+    plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
+    plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
+    # end
+    return pl
 end
 
 function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
@@ -313,7 +333,6 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
         else
             cont_c = :white
         end
-        cpick(Tvw)
         tr = round(t/3600, digits=2)
 
         # Set up plot
@@ -402,7 +421,6 @@ Pass either `:p` or `:T` as `heatvar`. Passing `ϕ` will probably cause filename
 """
 function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T, clims=nothing)
     @unpack sol, dom = simresults
-    @unpack cparams= simconfig
 
     tf = sol.t[end]
 
@@ -420,8 +438,8 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=
     end
 
     # fps = ceil(Int, nt/2)  # nt/x makes x-second long animation
-    fname = "$(casename)_$(heatvar)_$(hash(simconfig))_evol.gif"
-    gif(anim, plotsdir(fname), fps=fps)
+    fname = "$(casename)_$(heatvar)_$(hash(simconfig))_evol.mp4"
+    mp4(anim, plotsdir(fname), fps=fps)
 end
 
 
