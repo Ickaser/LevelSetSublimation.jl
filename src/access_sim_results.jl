@@ -82,7 +82,7 @@ function gen_anim(config, var=:T, casename="test")
     return simres
 end
 
-function calc_params_at_t(t::Float64, simconfig::Dict)
+function calc_params_at_t(t::TT, simconfig::Dict) where TT<:Number
     @unpack paramsd = simconfig
     
     params = params_nondim_setup(paramsd)
@@ -98,7 +98,10 @@ function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothi
 end
 
 
-function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
+"""
+    calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
+"""
+function calc_uTfTp_res(t::TT, simresults::Dict, simconfig::Dict; Tf0=nothing) where TT<:Number
     @unpack sol, dom = simresults
     params = calc_params_at_t(t, simconfig)
     

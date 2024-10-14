@@ -28,7 +28,7 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     if ϕtype == :top || ϕtype == :flat
         ϕ0 = [z - dom.zmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :midflat
-        ϕ0 = [z - dom.zmax*0.5 for r in dom.rgrid, z in dom.zgrid]
+        ϕ0 = [z - dom.zmax*0.5+ϵ for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :rad || ϕtype == :cyl
         ϕ0 = [r - dom.rmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :box
