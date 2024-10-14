@@ -280,8 +280,9 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             dbz = (b[ir, iz]-b[ir, iz-1])*dz1
             # Check for Stefan front
             if sϕ < 0 # Front is within a cell of boundary
-                # stefan_debug = true
-                # p. 65 of project notes
+                # If close to front, ignore dbz because it's not even exposed yet
+                # If it's included, produces unphysical pressures 
+                dbz = 0
                 θz = pϕ/(pϕ-sϕ)
                 if θz > θ_THRESH
                     pc += -2bp*dz2/θz -2/Rp0*dz1 - dbz/bp/Rp0
