@@ -372,7 +372,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     @unpack ρf, Cpf, kf, ΔH = params[1]
     @unpack Rp0, Kvwf = params[2]
     @unpack Tsh, pch, Kshf = params[3]
-    QRFf = calc_QpppRFf(params)
+    QRFf = calc_QpppRFf.(Tf, [params])
 
     Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
 

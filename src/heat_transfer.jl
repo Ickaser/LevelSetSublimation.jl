@@ -8,6 +8,10 @@ function calc_QpppRFf(params)
     base, tcp, tvps = params
     return 2π*tvps.f_RF*base.ε0*base.εpp_f*tcp.B_f*tvps.P_per_vial
 end
+function calc_QpppRFf(T, params)
+    base, tcp, tvps = params
+    return 2π*tvps.f_RF*base.ε0*base.εpp_f(T, tvps.f_RF)*tcp.B_f*tvps.P_per_vial
+end
 function calc_QpppRFvw(params)
     base, tcp, tvps = params
     return 2π*tvps.f_RF*base.ε0*base.εpp_vw*tcp.B_vw*tvps.P_per_vial

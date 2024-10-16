@@ -230,6 +230,10 @@ end
 
 function nondim_param(tcp, pk)
     p = getfield(tcp, pk)
+    if varname == :ϵpp_f
+        var_ndim = (T,f)->ustrip(PBD[varname], tcp.ϵpp_f(T*PBD[:Tsh], f*PBD[:f_RF]))
+        return var_ndim
+    end
     if (length(p) > 1) 
         if any([dimension(PBD[pk])] .!= dimension(p))
             @error "Bad dimensions in passed parameter." pk getfield(tcp, pk) PBD[pk]   
@@ -277,8 +281,8 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     :kf => u"W/m/K",
     :ε0 => u"F/m",
     :εpp_d => NoUnits,
-    :εpp_f => NoUnits,
     :εpp_vw => NoUnits, 
+    :εpp_f => NoUnits,
 
     # Time constant properties
     :ϵ =>NoUnits, # 90% porosity
@@ -311,7 +315,7 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
 """
     make_M1_properties()
 
-Returns dicts of physical parameters for the mannitol experimental case which was used to originally develop and validate this model.
+Returns physical parameters for the mannitol experimental case which was used to originally develop and validate this model.
 
 Useful for testing.
 """
