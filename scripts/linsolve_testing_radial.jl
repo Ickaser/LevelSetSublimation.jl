@@ -19,7 +19,6 @@ function gen_psol(Ri, R, L, Rp0, b, Δp; Nr=150, Nz=1000)
     charfun_r(l) = besselj0(l*Ri)*bessely1(l*R) - bessely0(l*Ri)*besselj1(l*R)
     λj = [find_zero(charfun_r, (j-0.5)*π/(R-Ri)) for j in 1:Nr]
     charfun_z(m) = cos(m*L) - Rp0*b*m*sin(m*L)
-    # μk = permutedims([find_zero(charfun_z, (k-0.5)*π/L) for k in 1:Nmax])
     μk = zeros(1, Nz)
     μk[1] = find_zero(charfun_z, 0.5*π/L)
     for i in 2:Nz
@@ -90,37 +89,33 @@ b = ustrip(u"s", l_bulk*sqrt(Mw/Rg/T0)) #Mw/R/T * (l*NaNMath.sqrt(R*T/Mw)
 
 # -------------------
 
-cparams = make_default_params()
-cparams[:l] = upreferred(l_bulk)
-cparams[:κ] = 0.0u"m^2"
-cparams[:Rp0] = Rp0*u"m/s"
-cparams[:Kv] *= 0
-cparams[:Kw] = 10u"W/m^2/K"
+paramsd = make_M1_params()
+@reset paramsd[2].l= upreferred(l_bulk)
+@reset paramsd[2].κ = 0.0u"m^2"
+@reset paramsd[2].Rp0 = Rp0*u"m/s"
+@reset paramsd[2].Kvwf = 10u"W/m^2/K"
+@reset paramsd[3].Kshf = p->0u"W/m^2/K"
 
 simgridsize = (101, 101)
 Tfm = fill(ustrip(u"K", T0), simgridsize[1])
 Tdm = fill(ustrip(u"K", T0), simgridsize)
 Tf0 = T0
-Tw0 = T0 + 20u"K"
+Tvw0 = T0 + 20u"K"
 
-controls = Dict{Symbol, Any}()
-# @pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
-Q_gl_RF = RampedVariable(0.0u"W")
-Tsh = RampedVariable(0.0u"K")
-Q_ic = RampedVariable(0.0u"W/cm^3")
-p_ch = RampedVariable(60u"Pa")
-@pack! controls = Q_gl_RF, Tsh, Q_ic, p_ch
+@reset paramsd[3].Tsh = RampedVariable(0.0u"K")
+@reset paramsd[3].P_per_vial = RampedVariable(0.0u"W")
+@reset paramsd[3].pch = RampedVariable(60u"Pa")
 
 init_prof = :rad
 vialsize = "6R"
 fillvol = 5u"mL"
 config = Dict{Symbol, Any}()
-@pack! config = simgridsize, cparams, init_prof, Tf0, Tw0, controls, vialsize, fillvol
+@pack! config = simgridsize, paramsd, init_prof, Tf0, Tvw0, controls, vialsize, fillvol
 
 dom = Domain(config)
-params, ncontrols = params_nondim_setup(cparams, controls)
+params = params_nondim_setup(paramsd)
 um = LSS.make_u0_ndim(config)
-ϕm = ϕ_T_from_u_view(um, dom)[1]
+ϕm = @views reshape(um[iϕ(dom)], size(dom))
 ϕm .+= .4*dom.rmax - 1e-6 + 1e-8
 
 R = dom.rmax
@@ -142,7 +137,7 @@ perturbs = perturbs .- step(perturbs)
 @time anl_sols = [gen_psol(Ri .- ei, R, L, Rp0, b, Δp) for ei in perturbs]
 num_sols = map(perturbs) do ei
     um = LSS.make_u0_ndim(config)
-    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm = @views reshape(um[iϕ(dom)], size(dom))
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     solve_p(um, Tfm, Tdm, dom, params)
 end
@@ -165,7 +160,7 @@ scatter(perturbs./dom.dr, [abs(ri[2][62].-ri[1][62])/ri[2][62] for ri in resp], 
 geomean(arr) = exp(sum(log.(arr))/length(arr))
 err_ddr = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
     um = LSS.make_u0_ndim(config)
-    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm = @views reshape(um[iϕ(dom)], size(dom))
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     ir = findfirst(ϕm[:,end] .> 0)
     # anl = a[2].(Ri-ei, dom.zgrid)
@@ -177,7 +172,7 @@ end
 
 anl_ddr = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
     um = LSS.make_u0_ndim(config)
-    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm = @views reshape(um[iϕ(dom)], size(dom))
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     ir = findfirst(ϕm[:,end] .> 0)
     anl = a[2].(dom.rgrid[ir], dom.zgrid)
@@ -189,7 +184,7 @@ end
 
 num_ddr = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
     um = LSS.make_u0_ndim(config)
-    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm = @views reshape(um[iϕ(dom)], size(dom))
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     ir = findfirst(ϕm[:,end] .> 0)
     num = [LSS.compute_pderiv(um, Tfm, Tdm, n, ir, iz, dom, params)[1] for iz in 1:dom.nz]
@@ -237,8 +232,8 @@ tot_flow2 = sum(z_fluxes .*r_nodes .*r_wts ) *2π
 
 # ---------------------- Temperature
 
-Bi = cparams[:Kw]*R*u"m"/cparams[:k]
-ΔT = Tw0 - Tf0
+Bi = paramsd[:Kvwf]*R*u"m"/paramsd[:kd]
+ΔT = Tvw0 - Tf0
 # C1 = Bi*ΔT/(1 + Bi*log(R/Ri))
 T_sol(r, Ri) = Bi*ΔT/(1 + Bi*log(R/Ri))*log(r/Ri) + Tf0
 
@@ -273,7 +268,7 @@ anl_dTdr = map(perturbs) do ei
 end
 num_dTdr = map(perturbs) do ei
     um = LSS.make_u0_ndim(config)
-    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm = @views reshape(um[iϕ(dom)], size(dom))
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     T = solve_T(um, Tfm, dom, params)
     ir = findfirst(ϕm[:,end] .> 0)
@@ -301,7 +296,7 @@ end
 
 function gen_topprof(er)
     um = LSS.make_u0_ndim(config)
-    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm = @views reshape(um[iϕ(dom)], size(dom))
     ϕm .+= .8dom.rmax + er - 0.99e-6#-2e-6
 
     R = dom.rmax
@@ -317,7 +312,7 @@ end
 
 function gen_topprof_T(er)
     um = LSS.make_u0_ndim(config)
-    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm = @views reshape(um[iϕ(dom)], size(dom))
     ϕm .+= .8dom.rmax + er - 0.99e-6#-2e-6
 
     Ri = LSS.get_subf_r(ϕm, dom)

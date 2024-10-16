@@ -34,33 +34,33 @@ cparams[:l] = upreferred(l_bulk)
 cparams[:κ] = 0.0u"m^2"
 cparams[:Rp0] = Rp0*u"m/s"
 
-cparams[:Kv] *= 0
-cparams[:Kw] = 10.0u"W/m^2/K"
+cparams[:Kshf] *= 0
+cparams[:Kvwf] = 10.0u"W/m^2/K"
 
 simgridsize = (101, 101)
 Tfm = fill(ustrip(u"K", T0), simgridsize[1])
 Tdm = fill(ustrip(u"K", T0), simgridsize)
 Tf0 = T0
-Tw0 = T0 + 20u"K"
+Tvw0 = T0 + 20u"K"
 
 controls = Dict{Symbol, Any}()
-# @pack! controls = t_samp, Q_gl_RF, Tsh, Q_ic, p_ch
-Q_gl_RF = RampedVariable(0.0u"W")
+# @pack! controls = t_samp, QRFvw, Tsh, QRFf, pch
+QRFvw = RampedVariable(0.0u"W")
 Tsh = RampedVariable(0.0u"K")
-Q_ic = RampedVariable(0.0u"W/cm^3")
-p_ch = RampedVariable(100u"mTorr")
-@pack! controls = Q_gl_RF, Tsh, Q_ic, p_ch
+QRFf = RampedVariable(0.0u"W/cm^3")
+pch = RampedVariable(100u"mTorr")
+@pack! controls = QRFvw, Tsh, QRFf, pch
 
 init_prof = :flat
 vialsize = "6R"
 fillvol = 5u"mL"
 config = Dict{Symbol, Any}()
-@pack! config = simgridsize, cparams, init_prof, Tf0, Tw0, controls, vialsize, fillvol
+@pack! config = simgridsize, cparams, init_prof, Tf0, Tvw0, controls, vialsize, fillvol
 
 dom = Domain(config)
 params, ncontrols = params_nondim_setup(cparams, controls)
 um = LSS.make_u0_ndim(config)
-ϕm = ϕ_T_from_u_view(um, dom)[1]
+ϕm = @views reshape(um[iϕ(dom)], size(dom))
 ϕm .+= .8*dom.zmax - 1e-6 + 1e-8
 
 R = dom.rmax
@@ -81,7 +81,7 @@ pl1 = heat(abs.(p_num .- p_anl)./p_anl, dom)
 
 function gen_vertprof(er)
     um = LSS.make_u0_ndim(config)
-    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm = @views reshape(um[iϕ(dom)], size(dom))
     ϕm .+= .8dom.zmax + er - 0.99e-6#-2e-6
 
     R = dom.rmax

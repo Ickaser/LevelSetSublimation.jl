@@ -2,14 +2,14 @@
 
 function case1_analyt_compare(simres, config)
     @unpack sol, dom = simres
-    @unpack Kv, ρf, ΔH, ϵ = config[:cparams]
+    @unpack Kshf, ρf, ΔH, ϵ = config[:cparams]
     @unpack Tsh = config[:controls]
     @unpack Tf0 = config
-    Q_sh = Kv*(Tsh(0)-Tf0)
+    Q_sh = Kshf*(Tsh(0)-Tf0)
     vz = ustrip(u"m/s", -Q_sh/ ρf/ΔH / ϵ)
 
     ts = sol.t
-    zs = [get_subf_z(ϕ_T_from_u(sol(ti), dom)[1], dom) for ti in ts]
+    zs = [get_subf_z(reshape(sol(ti, idxs=iϕ(dom)), size(dom)), dom) for ti in ts]
     zs_analyt = dom.zmax*(1-1e-4) .+ vz.*ts
 
     return ts, zs, zs_analyt
@@ -17,37 +17,37 @@ end
 
 function case2_analyt_compare(simres, config)
     @unpack sol, dom = simres
-    @unpack Kv, ρf, ΔH, ϵ = config[:cparams]
-    Q_ic = config[:controls][:Q_ic]
+    @unpack Kshf, ρf, ΔH, ϵ = config[:cparams]
+    QRFf = config[:controls][:QRFf]
 
     ts = sol.t
-    rs = [get_subf_r(ϕ_T_from_u(sol(ti), dom)[1],dom) for ti in ts]
-    rs_analyt = dom.rmax*(1-1e-4) * exp.(ustrip.(NoUnits, (-Q_ic(0)/ρf/ΔH/ϵ/2 * ts*u"s") ))
+    rs = [get_subf_r(reshape(sol(ti, idxs=iϕ(dom)), size(dom)),dom) for ti in ts]
+    rs_analyt = dom.rmax*(1-1e-4) * exp.(ustrip.(NoUnits, (-QRFf(0)/ρf/ΔH/ϵ/2 * ts*u"s") ))
 
     return ts, rs, rs_analyt
 end
 
 function case3_analyt_compare(simres, config)
     @unpack sol, dom = simres
-    @unpack Kw, k, ϵ, ρf, ΔH = config[:cparams]
-    Tw = config[:Tw0]
+    @unpack Kvwf, kd, ϵ, ρf, ΔH = config[:cparams]
+    Tvw = config[:Tvw0]
     Tf = config[:Tf0]
 
     ts = sol.t *u"s"
-    rs = [get_subf_r(ϕ_T_from_u(sol(ustrip(u"s", ti)), dom)[1],dom) for ti in ts] *u"m"
+    rs = [get_subf_r(reshape(sol(ustrip(u"s", ti), idxs=iϕ(dom)), size(dom)),dom) for ti in ts] *u"m"
 
     # analytical easier in terms of ξ, not t
     R = dom.rmax*u"m"
     R0 = R*(1 - 1e-4)
-    rkk = R*Kw/k
-    A = rkk*(Tw-Tf)
+    rkk = R*Kvwf/kd
+    A = rkk*(Tvw-Tf)
     B = rkk
     rrs = rs
     B = uconvert(NoUnits, B)
 
     term1 =@. 1/4*rrs^2 * (B*(2log(R/rrs)+1) + 2)
     term2 =   1/4*R0^2  * (B*(2log(R/R0 )+1) + 2)
-    ts_analyt = @. ϵ*ρf*ΔH/A *(term2-term1)/k
+    ts_analyt = @. ϵ*ρf*ΔH/A *(term2-term1)/kd
 
     return ts, rs, ts_analyt
 end
@@ -60,10 +60,10 @@ pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
 
 # Base parameter set
 params_base = make_default_params()
-params_base[:Q_ic] *= 0
+params_base[:QRFf] *= 0
 params_base[:Q_ck] *= 0
-params_base[:Kw] *= 0
-params_base[:Kv] *= 0
+params_base[:Kvwf] *= 0
+params_base[:Kshf] *= 0
 
 dudt_func = LSS.dudt_heatonly!
 init_prof = :flat
@@ -72,12 +72,12 @@ vialsize = "10R"
 fillvol = 2u"mL"
 simgridsize = simgrid_coarse
 
-Q_gl_RF = 0.0u"W" # = volumetric * relevant vial volume
+QRFvw = 0.0u"W" # = volumetric * relevant vial volume
 Tsh = 233.15u"K"
-Q_ic = 0.0u"W/cm^3"
-p_ch = 100u"mTorr"
+QRFf = 0.0u"W/cm^3"
+pch = 100u"mTorr"
 controls = Dict{Symbol, Any}()
-@pack! controls = Q_gl_RF, Tsh, Q_ic, p_ch
+@pack! controls = QRFvw, Tsh, QRFf, pch
 
 cparams = deepcopy(params_base)
 config_base = Dict{Symbol, Any}()
@@ -90,7 +90,7 @@ config_base = Dict{Symbol, Any}()
     config_1a = deepcopy(config_base)
     config_1a[:init_prof] = :flat
     config_1a[:controls][:Tsh] = RampedVariable(243.15u"K")
-    config_1a[:cparams][:Kv] = 10u"W/m^2/K"
+    config_1a[:cparams][:Kshf] = 10u"W/m^2/K"
 
     config_1b = deepcopy(config_1a)
     config_1b[:simgridsize] = simgrid_fine
@@ -116,7 +116,7 @@ end
 
     config_2a = deepcopy(config_base)
     config_2a[:init_prof] = :cyl
-    config_2a[:controls][:Q_ic] = RampedVariable(.1u"W/cm^3")
+    config_2a[:controls][:QRFf] = RampedVariable(.1u"W/cm^3")
 
     config_2b = deepcopy(config_2a)
     config_2b[:simgridsize] = simgrid_fine
@@ -137,14 +137,14 @@ end
     @test err2b < dom.dz
 end
 
-@testset "Case 3: Radial motion, constant Tw" begin
+@testset "Case 3: Radial motion, constant Tvw" begin
     
     casename = "sim_1D_r_glass"
 
     config_3a = deepcopy(config_base)
     config_3a[:init_prof] = :cyl
-    config_3a[:Tw0] = 243.15u"K"
-    config_3a[:cparams][:Kw] = 50u"W/m^2/K"
+    config_3a[:Tvw0] = 243.15u"K"
+    config_3a[:cparams][:Kvwf] = 50u"W/m^2/K"
 
     config_3b = deepcopy(config_3a)
     config_3b[:simgridsize] = simgrid_fine

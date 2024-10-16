@@ -1,6 +1,5 @@
 
 # A listing of physical properties for use in simulation, with references to sources
-export calc_psub
 
 # -----------------------------------
 # Sublimation pressure, to more significant figures than necessary but hey
@@ -41,16 +40,6 @@ end
 # -----------------------------
 # Sublimation pressure, correlation used in LyoPRONTO: 
 # simple Arrhenius form is almost certainly less accurate but probably not significantly so
-"""
-    calc_psub(T)
-
-Compute pressure (in Pascals) of sublimation at temperature `T` in Kelvin.
-
-From...somewhere else. Used in LyoPRONTO
-"""
-calc_psub(T::F) where F<:Number = 359.7e10 * exp(-6144.96/T)
-calc_psub(T::Q) where Q<:Quantity = 359.7e10*u"Pa" * exp(-6144.96u"K"/uconvert(u"K",T))
-
 # --------------------
 
 
@@ -114,7 +103,10 @@ const k_gl = 1.0u"W/m/K"
 
 # Glass heat capacity
 # Rough estimate from Bansal and Doremus 1986, "Handbook of Glass Properties"
-const cp_gl = 8.0u"J/kg/K"
+const cp_gl = 840.0u"J/kg/K"
+
+# Glass density
+const ρ_gl = 2.2u"g/cm^3"
 
 # Typical value of porosity, heuristically
 const ϵ_typical = 0.92
@@ -123,7 +115,15 @@ const ϵ_typical = 0.92
 const l_guess = 1e-5 * u"m" # 10 micron pore size
 const κ_guess = 1e-10 * u"m^2" # 100 Darcys
 
-# Typical value at around p_ch = 20 Pa
-const Kv_guess = 15.0u"W/m^2/K"
-const p_ch_guess = 20.0u"Pa"
+# Typical value at around pch = 20 Pa
+const Kshf_guess = 15.0u"W/m^2/K"
+const pch_guess = 20.0u"Pa"
 
+# Dielectric loss coefficient of water ice
+const εpp_f = 8e-4
+
+# Dielectric loss coefficient of borosilicate glass, per Schott's testing
+const εpp_gl = 2.4e-2
+
+# Permittivity of free space: universal
+const ε0 = 8.854187e-12u"F/m"

@@ -6,75 +6,119 @@ export dudt_heatmass!, dudt_heatmass_dae!, dudt_heatmass_implicit!
 
 Evaluate local time rate of change for `u` and put results in `du`.
 
-Splitting `u` and `du` into `ϕ`, `Tf`, and `Tw` is handled by `ϕ_T_from_u` and `ϕ_T_from_u_view`.
+Splitting `u` and `du` into `ϕ`, `Tf`, and `Tvw` is handled by `ϕ_T_from_u` and `ϕ_T_from_u_view`.
 
 Parameters `p` assumed to be `(dom::Domain, params)`
 This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
 using `compute_frontvel_mass`.
 """
-function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
+function dudt_heatmass!(du, u, integ_pars, t)
     dom = integ_pars[1]
-    params = integ_pars[2]
-    p_last = integ_pars[3]
+    params_vary = integ_pars[2]
+    verbose = integ_pars[3]
     Tf_last = integ_pars[4]
-    controls = integ_pars[5]
-    verbose = integ_pars[6]
 
-    input_measurements!(params, t, controls)
+    params = params_vary(t)
 
-    dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
+    dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
 
     dTf .= 0 # Just in case some weird stuff got left there
 
-    ϕ, Tw = ϕ_T_from_u_view(u, dom)[[true, false, true]]
-    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF, vial_thick = params
+    ϕ = @views reshape(u[iϕ(dom)], size(dom))
+    Tvw = u[iTvw(dom)]
+
+    @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
+    @unpack A_rad, m_v = params[2]
+    QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if minimum(ϕ) > 0 # No ice left
-        l_ave = 1/sum(1.0 ./params[:l])/length(params[:l])
+        l_ave = 1/sum(1.0 ./params[2].l)/length(params[2].l)
         minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
-        b_ave = l_ave * sqrt(params[:Mw]/params[:R]/minT)
-        flux = (calc_psub(minT) - params[:p_ch])/dom.zmax*b_ave
-        dϕ .= flux/params[:ρf]
-        # dϕ .= 0
-        # dTw .= 0
+        b_ave = l_ave * sqrt(params[1].Mw/params[1].R/minT)
+        flux = (calc_psub(minT) - params[3].pch)/dom.zmax*b_ave
+        dϕ .= flux/params[1].ρf
+        dTvw .= flux*params[1].ΔH*dom.rmax^2*π
         verbose && @info "no ice, t=$t" extrema(dϕ)
         return nothing
     end
 
-    # p = solve_p(u, T, dom, params, p_last)
-
-    # Tf = pseudosteady_Tf_T_p(u, dom, params, Tf_last, p_last)
-    Tf = pseudosteady_Tf(u, dom, params, Tf_last)
+    Tf_g = Tf_last
+    # Tf_g = u[iTf(dom)]
+    Tf = pseudosteady_Tf(u, dom, params, Tf_g)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
-
-    # Store pseudosteady in u, for use in other functions
-    # Tf .= Tfs
-    # dTf = (Tf - Tfg)/60
-
-    integ_pars[3] .= p # Cache current state of p as a guess for next timestep
     integ_pars[4] .= Tf
+
     vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
     vr = @view vf[:, :, 1]
     vz = @view vf[:, :, 2]
 
-    # Compute time derivatives for 
-    # dTf .= Qice / ρf / Cpf / max(compute_icevol(ϕ, dom), 1e-6) # Prevent explosion during last time step by not letting volume go to 0
-    # dTfdt_radial!(dTf, u, T, p, dϕdx_all, dom, params)
-    Qgl = compute_Qgl(u, T, dom, params)
-    # A_vsh = π*((dom.rmax+vial_thick)^2 - dom.rmax^2)
-    # Q_vsh = params[:Kv]*(params[:Tsh]-Tw[1]) * A_vsh
-    A_v = π*((dom.rmax+vial_thick)^2)
-    Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 )
-    # Q_shvw = A_v * 0.9 * 5.670e-8 * (params[:Tsh]^4 - Tw[1]^4 ) + (A_v-π*dom.rmax^2)*params[:Kv]*(params[:Tsh]-Tw[1])
-    # @info "rad" Q_shvw Qgl params[:Tsh] Tw[1]
-    # dTw .= (Q_gl_RF + Q_vsh - Qgl) / m_cp_gl
-    dTw .= (Q_gl_RF - Qgl + Q_shvw) / m_cp_gl
-    # @info "glass" dTw Q_shvw Qgl
-    # dTw .= (Q_gl_RF - Qgl) / m_cp_gl
+    for ind in CartesianIndices(ϕ)
+        ir, iz = Tuple(ind)
+        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind] > 0, vz[ind] >0, dϕdx_all, dom)
+        rcomp = dϕdr * vr[ind]
+        zcomp = dϕdz * vz[ind]
+        dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
+    end
 
-    # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
+    # Compute time derivative for Tvw
+    Q_vwf = compute_Qvwf(u, T, dom, params)
+    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
+
+    if verbose && eltype(u) <: Float64
+        Tvw = u[iTvw(dom)]
+        dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tvw[1] params[3].Tsh
+    end
+    return nothing
+end
+
+"""
+doc
+"""
+function dudt_heatmass_dae!(du, u, integ_pars, t)
+    dom = integ_pars[1]
+    params_vary = integ_pars[2]
+    verbose = integ_pars[3]
+
+    params = params_vary(t)
+
+    dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
+
+    ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
+    @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
+    @unpack A_rad, m_v = params[2]
+    QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
+
+    if any(Tf .< 0)
+        @info "Negative temperatures passed"
+        du .= NaN
+        return
+    end
+
+    if minimum(ϕ) > 0 # No ice left
+        l_ave = 1/sum(1/params[2].l)/length(params[2].l)
+        minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
+        b_ave = l_ave * sqrt(params[1].Mw/params[1].R/minT)
+        flux = (calc_psub(minT) - params[3].pch)/dom.zmax*b_ave
+        dϕ .= flux/params[1].ρf
+        # dϕ .= 0
+        # dTvw .= 0
+        verbose && @info "no ice" extrema(dϕ)
+        return nothing
+    end
+
+
+    T = solve_T(u, Tf, dom, params)
+    p = solve_p(u, Tf, T, dom, params)
+
+    vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
+    extrap_v_fastmarch!(vf, u, dom)
+    vr = @view vf[:, :, 1]
+    vz = @view vf[:, :, 2]
+
     for ind in CartesianIndices(ϕ)
         ir, iz = Tuple(ind)
 
@@ -85,25 +129,99 @@ function dudt_heatmass!(du, u, integ_pars, t; get_Tf = false)
         dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
         # dϕ[ind] = -rcomp - zcomp
     end
-    if verbose && eltype(u) <: Float64
+
+    # dTf .= 0 # zero out in case there was junk there before
+    dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
+
+    Q_vwf = compute_Qvwf(u, T, dom, params)
+    # dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
+    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
+
+
+
+    if verbose &&  eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
-        if minimum(dϕ) < 0
-            # @info "negative dϕ" spy(ϕ .< 0) spy(dϕ .< 0) Tf[end]-Tf[1]
-            # pl1 = heat(vr, dom)
-            # pl2 = heat(vz, dom)
-            # display(plot(pl1, pl2))
-        end
+        # if dryfrac < 0.00034 && dryfrac > 0.00033
+            @info "check" p[1,:] p[:,end-2:end]
+        # end
+        Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
+        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tvw[1] params[3].Tsh extrema(Δξ) extrema(dTf)
     end
-    # if maximum(dϕ) > 1
-    #     @info extrema(vz) extrema(vr) extrema(T) extrema(p) extrema(Tf)
-    #     display(heat(T, dom))
-    # end
-    if get_Tf
-        return Tf
-    else
+    return nothing
+end
+
+"""
+doc
+"""
+function dudt_heatmass_implicit!(du, u, integ_pars, t)
+    dom = integ_pars[1]
+    params_vary = integ_pars[2]
+    verbose = integ_pars[3]
+
+    params = params_vary(t)
+
+    dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
+
+    ϕ, Tf, Tvw = ϕ_T_from_u_view(u, dom)
+    @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
+    @unpack A_rad, m_v = params[2]
+    QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
+
+    if any(Tf .< 0)
+        @info "Negative temperatures passed"
+        du .= NaN
+        return
+    end
+
+    if minimum(ϕ) > 0 # No ice left
+        l_ave = 1/sum(1/params[2].l)/length(params[2].l)
+        minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
+        b_ave = l_ave * sqrt(params[1].Mw/params[1].R/minT)
+        flux = (calc_psub(minT) - params[3].pch)/dom.zmax*b_ave
+        dϕ .= flux/params[1].ρf
+        # dϕ .= 0
+        # dTvw .= 0
+        verbose && @info "no ice" extrema(dϕ)
         return nothing
     end
+
+
+    T = solve_T(u, Tf, dom, params)
+    p = solve_p(u, Tf, T, dom, params)
+
+
+
+    vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
+    extrap_v_fastmarch!(vf, u, dom)
+    vr = @view vf[:, :, 1]
+    vz = @view vf[:, :, 2]
+
+    # Compute time derivatives for Tf
+    dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
+
+    Q_vwf = compute_Qvwf(u, T, dom, params)
+    # dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
+    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
+
+    for ind in CartesianIndices(ϕ)
+        ir, iz = Tuple(ind)
+
+        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind] > 0, vz[ind] >0, dϕdx_all, dom)
+
+        rcomp = dϕdr * vr[ind]
+        zcomp = dϕdz * vz[ind]
+        dϕ[ind] = max(0.0, -rcomp - zcomp)
+        # dϕ[ind] = -rcomp - zcomp
+    end
+
+
+    if verbose &&  eltype(u) <: Float64
+        dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
+        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tvw[1] params[3].Tsh
+    end
+    return nothing
 end
 
 function choose_dϕdx_boundary(ir, iz, west_true::Bool, south_true::Bool, dϕdx_all, dom::Domain)
@@ -134,27 +252,25 @@ end
 
 
 """
-    dudt_heatmass(u, dom::Domain, params)
-    dudt_heatmass(u, config)
+    dudt_heatmass(u, dom::Domain, params, t)
+    dudt_heatmass(u, config::Dict, t=0.0)
     
-Compute the time derivative of `u` with given parameters.
-
-`u` has `dom.ntot` entries for `ϕ`, `dom.nr` for `Tf`, and 1 for `Tw`.
+Compute the time derivative of `u` with given (nondimensional) parameters.
 
 Wraps a call on `dudt_heatmass!`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function dudt_heatmass(u, dom::Domain, params, ncontrols)
-    integ_pars = (dom, params, fill(100.0, size(dom)), fill(233.15, dom.nr), ncontrols)
+function dudt_heatmass(u, dom::Domain, params_n, t)
+    integ_pars = (dom, params_n, true, similar(u, dom.nr))
     du = similar(u)
-    dudt_heatmass!(du, u, integ_pars, 0.0)
+    dudt_heatmass!(du, u, integ_pars, t)
     return du
 end
-function dudt_heatmass(u, config, t=0)
+function dudt_heatmass(u, config::Dict, t=0.0)
     # Set up simulation domain & parameters
     dom = Domain(config)
-    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
-    input_measurements!(params, t, ncontrols)
-    dudt_heatmass(u, dom, params, ncontrols)
+    params_vary = params_nondim_setup(config[:cparams], config[:controls])
+    params = params_vary(t)
+    dudt_heatmass(u, dom, params)
 end
 
 """
@@ -164,32 +280,29 @@ Compute the time derivative of `u` with given parameters, and also return `dom` 
 
 Wraps a call on `dudt_heatmass`, for convenience in debugging and elsewhere that efficiency is less important
 """
-function dudt_heatmass_params(u, config)
+function dudt_heatmass_params(u, config, t)
     # Set up simulation domain & parameters
     dom = Domain(config)
-    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
+    paramsn = params_nondim_setup(config[:cparams], config[:controls])
 
-    dudt_heatmass(u, dom, params), dom, params
+    dudt_heatmass(u, dom, paramsn, t), dom, paramsn
 end
-
-function set_params_at_t!(params, controls)
-end
-
 
 # ---------------------------
 # For pseudosteady radial temperature
 
 function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-    @unpack k, ΔH = params
+    @unpack ΔH = params[1]
+    @unpack kd = params[2]
     b = eval_b_loc(T, p, ir, iz, params)
 
     dTdr, dTdz = compute_Tderiv(u, Tf, T, ir, iz, dom, params)
     dpdr, dpdz = compute_pderiv(u, Tf, T, p, ir, iz, dom, params)
     dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, dpdr<0, dpdz<0, dϕdx_all, dom)
 
-    qflux = k*(dϕdr*dTdr + dϕdz*dTdz)
-    mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
-
+    qflux = kd*(dϕdr*dTdr + dϕdz*dTdz)
+    # mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
+    mflux = min(0.0, b*(dϕdr*dpdr + dϕdz*dpdz)) # Prevent desublimation in energy balance
     return qflux + ΔH*mflux, dϕdr, dϕdz
 end
 
@@ -230,7 +343,7 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
                     ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
                     Tuple(nb)[2] == 0 ?  ql*dϕdr : ql*dϕdz
                 end
-            elseif length(nbs) == 3 # Two vertical neighbor
+            elseif length(nbs) == 3 # Tvwo vertical neighbor
                 qloc = mapreduce(+, nbs) do nb 
                     ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
                     Tuple(nb)[2] == 0 ? ql*dϕdr : ql*dϕdz/2
@@ -247,15 +360,19 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
     return Q_surf_pp, surf_area, vol
 end
 
-function dTfdt_radial(u, T, p, dϕdx_all, dom::Domain, params)
+function dTfdt_radial(u, Tf, T, p, dϕdx_all, dom::Domain, params)
     dTfdt = similar(u, dom.nr)
     dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom, params)
     return dTfdt
 end
 
 function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
-    ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
-    @unpack ρf, Cpf, kf, Q_ic, p_ch, ΔH, Rp0 = params
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    Tvw = u[iTvw(dom)]
+    @unpack ρf, Cpf, kf, ΔH = params[1]
+    @unpack Rp0, Kvwf = params[2]
+    @unpack Tsh, pch, Kshf = params[3]
+    QRFf = calc_QpppRFf(params)
 
     Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
 
@@ -286,7 +403,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     ro = dom.rgrid[ir] + θr*dom.dr
                     toparea = π*(ro^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
-                    sumfluxes += toparea * ΔH*(p_ch - calc_psub(Tf_loc))/Rp0 # Sublimation
+                    sumfluxes += toparea * ΔH*(pch - calc_psub(Tf_loc))/Rp0 # Sublimation
                 end
                 if bot_contact[ir]
                     θr = ϕ[ir,1] / (ϕ[ir,1] - ϕ[ir+1,1])
@@ -294,17 +411,17 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     botarea = π*(ro^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
 
-                    K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
-                    sumfluxes += botarea * K_eff*(params[:Tsh] - Tf_loc) # Shelf heat 
+                    K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
                 end
 
-                sumfluxes += Q_ic*vol # No A_l*kf*dTfdr becuase dTfdr=0
+                sumfluxes += QRFf*vol # No A_l*kf*dTfdr becuase dTfdr=0
                 # Write the energy balance differently for this case
                 dTfdt[ir] = sumfluxes/vol/ρf/Cpf
                 continue
             end
         elseif ir == dom.nr
-            dTfdr = params[:Kw]/kf*(Tw - Tf[ir])
+            dTfdr = Kvwf/kf*(Tvw - Tf[ir])
             if Δξ[ir] < dom.dz/2 # At small ice height, need a special case
                 iz = findlast(ϕ[ir,:] .<=0) + 1
                 q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
@@ -313,10 +430,10 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 qtop = q*sqrt(dξdr^2 + 1)
 
                 # We get terms that go to zero, and can therefore solve a linear equaiton for Tf, other than q_top
-                # den = (Δξ[ir]/dom.dr/2*params[:Kw] + params[:Kv])
-                # rhs = (Δξ[ir]/dom.dr/2*params[:Kw]*Tw + params[:Kv]*params[:Tsh] + qtop)/den
-                den = params[:Kv]
-                rhs = (params[:Kv]*params[:Tsh] + qtop)/den
+                # den = (Δξ[ir]/dom.dr/2*Kvwf + Kshf)
+                # rhs = (Δξ[ir]/dom.dr/2*Kvwf*Tvw + Kshf*Tsh + qtop)/den
+                den = Kshf
+                rhs = (Kshf*Tsh + qtop)/den
                 # dTfdt[ir] = rhs - Tf[ir]
                 # timescale = Δξ[ir]^2/kf*ρf*Cpf
                 timescale = dom.zmax^2/kf*ρf*Cpf
@@ -341,7 +458,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     ri = dom.rgrid[ir] - θr*dom.dr
                     toparea = π*(ro^2-ri^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                    sumfluxes += toparea * ΔH*(p_ch - calc_psub(Tf_loc))/Rp0 # Sublimation
+                    sumfluxes += toparea * ΔH*(pch - calc_psub(Tf_loc))/Rp0 # Sublimation
                 end
                 if bot_contact[ir]
                     θr = ϕ[ir,1] / (ϕ[ir,1] - ϕ[ir-1,1])
@@ -349,12 +466,12 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     ri = dom.rgrid[ir] - θr*dom.dr
                     botarea = π*(ro^2-ri^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                    K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
-                    sumfluxes += botarea * K_eff*(params[:Tsh] - Tf_loc) # Shelf heat 
+                    K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
                 end
 
                 A_l = dom.rgrid[ir] * Δξ[ir] *2π
-                sumfluxes += -A_l*kf*dTfdr + Q_ic*vol
+                sumfluxes += -A_l*kf*dTfdr + QRFf*vol
                 # Write the energy balance differently for this case
                 dTfdt[ir] = sumfluxes/vol/ρf/Cpf
                 continue
@@ -377,7 +494,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 ri = dom.rgrid[ir] - θr*dom.dr
                 toparea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                sumfluxes += toparea * ΔH*(p_ch - calc_psub(Tf_loc))/Rp0 # Sublimation
+                sumfluxes += toparea * ΔH*(pch - calc_psub(Tf_loc))/Rp0 # Sublimation
             end
             if bot_contact[ir]
                 θr = ϕ[ir,1] / (ϕ[ir,1] - ϕ[ir-1,1])
@@ -386,13 +503,13 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 botarea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
 
-                K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
-                sumfluxes += botarea * K_eff*(params[:Tsh] - Tf_loc) # Shelf heat 
+                K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
             end
 
             A_l = (dom.rgrid[ir] + 0.5dom.dr) * (Δξ[ir+1] + Δξ[ir])/2 *2π
             dTfdr = (Tf[ir+1] - Tf[ir])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
-            sumfluxes +=  A_l*kf*dTfdr + Q_ic*vol
+            sumfluxes +=  A_l*kf*dTfdr + QRFf*vol
             # Write the energy balance differently for this case
             dTfdt[ir] = sumfluxes/vol/ρf/Cpf
             continue
@@ -408,7 +525,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 ri = dom.rgrid[ir] - 0.5*dom.dr
                 toparea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
-                sumfluxes += toparea * ΔH*(p_ch - calc_psub(Tf_loc))/Rp0 # Sublimation
+                sumfluxes += toparea * ΔH*(pch - calc_psub(Tf_loc))/Rp0 # Sublimation
             end
             if bot_contact[ir]
                 θr = ϕ[ir,1] / (ϕ[ir,1] - ϕ[ir+1,1])
@@ -417,13 +534,13 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 botarea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
 
-                K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
-                sumfluxes += botarea * K_eff*(params[:Tsh] - Tf_loc) # Shelf heat 
+                K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
             end
 
             A_l = (dom.rgrid[ir] - 0.5dom.dr) * (Δξ[ir-1] + Δξ[ir])/2 *2π
             dTfdr = (Tf[ir] - Tf[ir-1])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
-            sumfluxes += -A_l*kf*dTfdr + Q_ic*vol
+            sumfluxes += -A_l*kf*dTfdr + QRFf*vol
             # Write the energy balance differently for this case
             dTfdt[ir] = sumfluxes/vol/ρf/Cpf
             continue
@@ -437,8 +554,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             # # adiabatic boundary 
             # top_bound_term = 0
             # direct sublimation boundary
-            # top_bound_term = ΔH*(p_ch - calc_psub(Tf[ir]))/Rp0 * compute_local_H(CI(ir, dom.nz), ϕ, dom)*2
-            top_bound_term = ΔH*(p_ch - calc_psub(Tf[ir]))/Rp0
+            # top_bound_term = ΔH*(pch - calc_psub(Tf[ir]))/Rp0 * compute_local_H(CI(ir, dom.nz), ϕ, dom)*2
+            top_bound_term = ΔH*(pch - calc_psub(Tf[ir]))/Rp0
             if typeof(top_bound_term) <: AbstractFloat
             end
         else
@@ -455,14 +572,14 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
         if bot_contact[ir]
             # Shelf boundary
-            # bot_bound_term = params[:Kv]*(Tf[ir] - params[:Tsh]) * compute_local_H(CI(ir, 1), ϕ, dom)*2
+            # bot_bound_term = Kshf*(Tf[ir] - Tsh) * compute_local_H(CI(ir, 1), ϕ, dom)*2
             if Δξ[ir] > dom.dz
-                K_eff = params[:Kv]
+                K_eff = Kshf
             else
-                K_eff = 1/(1/params[:Kv] + Δξ[ir]/kf)
+                K_eff = 1/(1/Kshf + Δξ[ir]/kf)
             end
-            bot_bound_term = K_eff*(Tf[ir] - params[:Tsh]) 
-            # isnan(bot_bound_term) && @info "NaN bottom" Tf[ir] T[ir,begin] params[:Tsh]
+            bot_bound_term = K_eff*(Tf[ir] - Tsh) 
+            # isnan(bot_bound_term) && @info "NaN bottom" Tf[ir] T[ir,begin] Tsh
         else
             # Stefan boundary
             iz = findfirst(ϕ[ir,:] .<=0) - 1
@@ -478,10 +595,10 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
 
         r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
-        dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + Q_ic + 
+        dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + QRFf + 
             (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
         # if ir ∈ [dom.nr-2, dom.nr-1, dom.nr] && Δξ[dom.nr] <= 5e-4
-        #     @info "right edge" ir kf*r1*dTfdr kf*d2Tfdr2 Q_ic top_bound_term bot_bound_term Δξ[ir] dTfdt[ir] dξdr q
+        #     @info "right edge" ir kf*r1*dTfdr kf*d2Tfdr2 QRFf top_bound_term bot_bound_term Δξ[ir] dTfdt[ir] dξdr q
         # end
 
         # isnan(dTfdt[ir]) && @info "NaN in dTfdt" dTfdr d2Tfdr2 top_bound_term bot_bound_term Δξ[ir]
@@ -490,247 +607,10 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     dTfdt[no_ice] .= 0 # Set to 0 elsewhere
 
     # if any(isnan.(dTfdt))
-    #     @info "NaN in dTfdt"
+    #     @info "NaN in dTfdt" Tf dTfdt
+    # end
+    # if any(Tf .> 300) || any(Tf .< 100)
+    #     @info "weird Tf" Tf dTfdt
     # end
 
-end
-
-
-# -------------------------- Heat transfer only functions
-
-
-"""
-    dudt_heatonly!(du, u, p, t)
-
-Evaluate local time rate of change for `u` and put results in `du`.
-
-This function leaves `Tf` and `Tw` untouched, since there isn't a way to govern their dynamics without mass transfer.
-
-`u` and `du` are both structured as follows:
-First `dom.ntot` values are `ϕ`, reshaped; `dom.ntot+1` index is frozen temperature `Tf`, `dom.ntot+2` index is glass temperature `Tw`
-
-Parameters `p` assumed to be `(dom::Domain, params)`
-This is a right-hand-side for ∂ₜϕ = -v⋅∇ϕ, where v = `(vr, vz)` is evaluated by computing and extrapolating front velocity
-using `compute_frontvel_mass`.
-"""
-function dudt_heatonly!(du, u, integ_pars, t)
-    dom = integ_pars[1]
-    params = integ_pars[2]
-    dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
-    ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
-
-    T = solve_T(u, Tf, dom, params)
-
-    vf, dϕdx_all = compute_frontvel_heat(u, Tf, T, dom, params)
-    extrap_v_fastmarch!(vf, u, dom)
-    vr = @view vf[:, :, 1]
-    vz = @view vf[:, :, 2]
-
-    dTf .= 0
-    dTw .= 0
-
-    # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
-    for ind in CartesianIndices(ϕ)
-        ir, iz = Tuple(ind)
-        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind]>0, vz[ind]>0, dϕdx_all, dom)
-
-        rcomp = dϕdr * vr[ind]
-        zcomp = dϕdz * vz[ind]
-        # dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
-        dϕ[ind] = -rcomp - zcomp
-    end
-    # dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-    # @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) Tf[1] params[:Tsh] Tw extrema(vr) extrema(vz)
-    return nothing
-end
-
-
-"""
-    dudt_heatonly(u, dom::Domain, params)
-    dudt_heatonly(u, config)
-    
-Compute the time derivative of `u` with given parameters.
-
-Wraps a call on `dudt_heatonly!`, for convenience in debugging and elsewhere that efficiency is less important
-"""
-function dudt_heatonly(u, dom::Domain, params)
-    integ_pars = (dom, params, zeros(Float64, size(dom)))
-    du = similar(u)
-    du[dom.ntot+1:end] .= 0
-    dudt_heatonly!(du, u, integ_pars, 0.0)
-    return du
-end
-function dudt_heatonly(u, config)
-    @unpack vialsize, fillvol = config
-
-    dom = Domain(config)
-    params, ncontrols = params_nondim_setup(config[:cparams], config[:controls])
-
-    dudt_heatonly(u, dom, params)
-end
-
-
-
-function dudt_heatmass_dae!(du, u, integ_pars, t)
-    dom = integ_pars[1]
-    params = integ_pars[2]
-    # p_last = integ_pars[3]
-    # Tf_last = integ_pars[4]
-    controls = integ_pars[5]
-    verbose = integ_pars[6]
-
-    input_measurements!(params, t, controls)
-
-    dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
-
-    ϕ, Tf, Tw = ϕ_T_from_u_view(u, dom)
-    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
-
-    if any(Tf .< 0)
-        @info "Negative temperatures passed"
-        du .= NaN
-        return
-    end
-
-    if minimum(ϕ) > 0 # No ice left
-        l_ave = 1/sum(1/params[:l])/length(params[:l])
-        minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
-        b_ave = l_ave * sqrt(params[:Mw]/params[:R]/minT)
-        flux = (calc_psub(minT) - params[:p_ch])/dom.zmax*b_ave
-        dϕ .= flux/params[:ρf]
-        # dϕ .= 0
-        # dTw .= 0
-        verbose && @info "no ice" extrema(dϕ)
-        return nothing
-    end
-
-
-    # Tf = pseudosteady_Tf(u, dom, params, Tf_last)
-    T = solve_T(u, Tf, dom, params)
-    p = solve_p(u, Tf, T, dom, params)
-
-
-
-    # integ_pars[3] .= p # Cache current state of p as a guess for next timestep
-    # integ_pars[4] .= Tf
-    vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
-    extrap_v_fastmarch!(vf, u, dom)
-    vr = @view vf[:, :, 1]
-    vz = @view vf[:, :, 2]
-
-    # dϕdr_w, dϕdr_e, dϕdz_s, dϕdz_n = dϕdx_all
-    for ind in CartesianIndices(ϕ)
-        ir, iz = Tuple(ind)
-
-        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind] > 0, vz[ind] >0, dϕdx_all, dom)
-
-        rcomp = dϕdr * vr[ind]
-        zcomp = dϕdz * vz[ind]
-        dϕ[ind] = max(0.0, -rcomp - zcomp) # Prevent solidification
-        # dϕ[ind] = -rcomp - zcomp
-    end
-
-    dTf .= 0 # zero out in case there was junk there before
-    dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
-
-    Qgl = compute_Qgl(u, T, dom, params)
-    dTw .= (Q_gl_RF - Qgl) / m_cp_gl
-
-
-
-    if verbose &&  eltype(u) <: Float64
-        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-        Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
-        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh] extrema(Δξ) extrema(dTf)
-    end
-    return nothing
-end
-
-function dudt_heatmass_implicit!(du, u, integ_pars, t)
-    dom = integ_pars[1]
-    params = integ_pars[2]
-    # p_last = integ_pars[3]
-    # Tf_last = integ_pars[4]
-    controls = integ_pars[5]
-    verbose = integ_pars[6]
-
-    input_measurements!(params, t, controls)
-
-    dϕ, dTf, dTw = ϕ_T_from_u_view(du, dom)
-
-    ϕ, Tf, Tw = ϕ_T_from_u_view(u, dom)
-    @unpack ρf, Cpf, m_cp_gl, Q_gl_RF = params
-
-    if any(Tf .< 0)
-        @info "Negative temperatures passed"
-        du .= NaN
-        return
-    end
-
-    if minimum(ϕ) > 0 # No ice left
-        l_ave = 1/sum(1/params[:l])/length(params[:l])
-        minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
-        b_ave = l_ave * sqrt(params[:Mw]/params[:R]/minT)
-        flux = (calc_psub(minT) - params[:p_ch])/dom.zmax*b_ave
-        dϕ .= flux/params[:ρf]
-        # dϕ .= 0
-        # dTw .= 0
-        verbose && @info "no ice" extrema(dϕ)
-        return nothing
-    end
-
-
-    # Tf = pseudosteady_Tf(u, dom, params, Tf_last)
-    T = solve_T(u, Tf, dom, params)
-    p = solve_p(u, Tf, T, dom, params)
-
-
-
-    # integ_pars[3] .= p # Cache current state of p as a guess for next timestep
-    # integ_pars[4] .= Tf
-    vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
-    extrap_v_fastmarch!(vf, u, dom)
-    vr = @view vf[:, :, 1]
-    vz = @view vf[:, :, 2]
-
-    # Compute time derivatives for Tf
-    dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
-
-    Qgl = compute_Qgl(u, T, dom, params)
-    dTw .= (Q_gl_RF - Qgl) / m_cp_gl
-
-    for ind in CartesianIndices(ϕ)
-        ir, iz = Tuple(ind)
-
-        dϕdr, dϕdz = choose_dϕdx_boundary(ir, iz, vr[ind] > 0, vz[ind] >0, dϕdx_all, dom)
-
-        rcomp = dϕdr * vr[ind]
-        zcomp = dϕdz * vz[ind]
-        dϕ[ind] = max(0.0, -rcomp - zcomp)
-        # dϕ[ind] = -rcomp - zcomp
-    end
-
-
-    if verbose &&  eltype(u) <: Float64
-        dryfrac = 1 - compute_icevol(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-        @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tw[1] params[:Tsh]
-    end
-    return nothing
-end
-
-function dudt_heatmass_dae_or_newton!(du, u, integ_pars, t)
-    dom = integ_pars[1]
-    ϕ = ϕ_T_from_u(u, dom)[1]
-    Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
-    if minimum(Δξ) > dom.dz/2
-        dudt_heatmass_dae!(du, u, integ_pars, t)
-    else
-        Tf_g = ϕ_T_from_u(u, dom)[2]
-        Tf_sol = dudt_heatmass!(du, u, integ_pars, t; get_Tf=true)
-        dTf = ϕ_T_from_u_view(du, dom)[2]
-        timefac = 100
-        dTf .= (Tf_g - Tf_sol)/timefac
-        @info "here" extrema(Tf_g) extrema(Tf_sol) extrema(dTf)
-    end
-    return nothing
 end

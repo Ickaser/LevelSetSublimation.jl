@@ -19,32 +19,32 @@ cparams = make_default_params()
 cparams[:l] = upreferred(l_bulk)
 cparams[:κ] = 0.0u"m^2"
 cparams[:Rp0] = Rp0*u"m/s"
-cparams[:Kv] *= 0
-cparams[:Kw] = 10u"W/m^2/K"
+cparams[:Kshf] *= 0
+cparams[:Kvwf] = 10u"W/m^2/K"
 ##
 simgridsize = (101, 101)
 Tfm = fill(ustrip(u"K", T0), simgridsize[1])
 Tdm = fill(ustrip(u"K", T0), simgridsize)
 Tf0 = T0
-Tw0 = T0 + 20u"K"
+Tvw0 = T0 + 20u"K"
 ##
 controls = Dict{Symbol, Any}()
-Q_gl_RF = RampedVariable(0.0u"W")
+QRFvw = RampedVariable(0.0u"W")
 Tsh = RampedVariable(0.0u"K")
-Q_ic = RampedVariable(0.0u"W/cm^3")
-p_ch = RampedVariable(100u"mTorr")
-@pack! controls = Q_gl_RF, Tsh, Q_ic, p_ch
+QRFf = RampedVariable(0.0u"W/cm^3")
+pch = RampedVariable(100u"mTorr")
+@pack! controls = QRFvw, Tsh, QRFf, pch
 ### 
 init_prof = :rad
 vialsize = "6R"
 fillvol = 5u"mL"
 config = Dict{Symbol, Any}()
-@pack! config = simgridsize, cparams, init_prof, Tf0, Tw0, controls, vialsize, fillvol
+@pack! config = simgridsize, cparams, init_prof, Tf0, Tvw0, controls, vialsize, fillvol
 ###
 dom = Domain(config)
 params, ncontrols = params_nondim_setup(cparams, controls)
 um = LSS.make_u0_ndim(config)
-ϕm = ϕ_T_from_u_view(um, dom)[1]
+ϕm = @views reshape(um[iϕ(dom)], size(dom))
 ϕm .+= .4*dom.rmax - 1e-6 +1e-8
 ###
 R = dom.rmax
@@ -58,12 +58,12 @@ Ri = LSS.get_subf_r(ϕm, dom)
 
 function ice_T_ode!(du, u, pars, r)
     T, dT = u
-    ΔH, R0, p_ch, kf = pars
+    ΔH, R0, pch, kf = pars
     # du[2] = 
     dTr1 = r > 0 ? dT/r : 0.0
 
     du[1] = dT
-    du[2] = -dTr1 + ΔH/R0*(calc_psub(T) - p_ch)/kf/L
+    du[2] = -dTr1 + ΔH/R0*(calc_psub(T) - pch)/kf/L
     # if any(isnan.(du))
     #     @info "problem" du u
     # end
@@ -76,7 +76,7 @@ end
 
 rspan = (0.0, Ri)
 
-pars = (params[:ΔH], Rp0, ustrip(u"Pa", p_ch(0)), params[:kf])
+pars = (params[:ΔH], Rp0, ustrip(u"Pa", pch(0)), params[:kf])
 
 u0 = [250, 0]
 
@@ -177,7 +177,7 @@ tot_flow_anl2 = sum(z_fluxes .*r_nodes .*r_wts ) *2π
 (tot_flow_anl - tot_flow_anl2) ./ tot_flow_anl
 
 Ωr = dom.rgrid .> Ri
-# tot_flow_num = sum(dom.rgrid[Ωr].*-(p_num[Ωr, end] .- ustrip(p_ch(0)))/Rp0/b)*dom.dr*b * 2π
+# tot_flow_num = sum(dom.rgrid[Ωr].*-(p_num[Ωr, end] .- ustrip(pch(0)))/Rp0/b)*dom.dr*b * 2π
 # tot_flow_num2 = sum((p_num[22, :] .- p_num[21, :])/dom.dr)*dom.dz*Ri*2π*b
 # tot_flow_num2 = sum(LSS.compute_pderiv(um, )/dom.dr)*dom.dz*Ri*2π*b
 # (tot_flow_num - tot_flow_num2) ./ tot_flow_num
@@ -186,7 +186,7 @@ tot_flow_anl2 = sum(z_fluxes .*r_nodes .*r_wts ) *2π
 
 function interface_mflux(Tsub)
     psub = LSS.calc_psub(Tsub)
-    Δp_new = psub - ustrip(u"Pa", p_ch(0))
+    Δp_new = psub - ustrip(u"Pa", pch(0))
     r_fluxes = [b*dpdr_1(Ri, zi, coef = rescaled_coeffs(Δp_new, Δp)) for zi in z_nodes]
     # @info "mflux" extrema(r_fluxes)./b
     tot_flow_anl = sum(r_fluxes .*z_wts)*Ri*2π
@@ -199,7 +199,7 @@ perturbs = perturbs .- step(perturbs)
 
 function interface_mflux(Tsub, ie)
     psub = LSS.calc_psub(Tsub)
-    Δp_new = psub - ustrip(u"Pa", p_ch(0))
+    Δp_new = psub - ustrip(u"Pa", pch(0))
     r_fluxes = [b*anl_sols[ie][2](Ri - perturbs[ie], zi, coef = anl_sols[ie][4].*(Δp_new/Δp)) for zi in z_nodes]
     # @info "mflux" extrema(r_fluxes)./b
     # tot_flow_anl = sum(r_fluxes .*z_wts)*Ri*2π
@@ -209,17 +209,17 @@ end
 
 # --- Analytical T 
 
-Bi = uconvert(NoUnits, cparams[:Kw]*R*u"m"/cparams[:k])
+Bi = uconvert(NoUnits, cparams[:Kvwf]*R*u"m"/cparams[:kd])
 function interface_Tflux(Tsub)
-    C1 = Bi*(ustrip(u"K", Tw0)-Tsub)/(1+Bi*log(R/Ri))
-    return params[:k]*C1/Ri
+    C1 = Bi*(ustrip(u"K", Tvw0)-Tsub)/(1+Bi*log(R/Ri))
+    return params[:kd]*C1/Ri
 end
 function interface_Tflux(Tsub, ie)
-    C1 = Bi*(ustrip(u"K", Tw0)-Tsub)/(1+Bi*log(R/(Ri-perturbs[ie])))
-    return params[:k]*C1/(Ri-perturbs[ie])
+    C1 = Bi*(ustrip(u"K", Tvw0)-Tsub)/(1+Bi*log(R/(Ri-perturbs[ie])))
+    return params[:kd]*C1/(Ri-perturbs[ie])
 end
 function analytical_T(r, Tsub)
-    C1 = Bi*(ustrip(u"K", Tw0)-Tsub)/(1+Bi*log(R/Ri))
+    C1 = Bi*(ustrip(u"K", Tvw0)-Tsub)/(1+Bi*log(R/Ri))
     return C1*log(r/Ri) + Tsub
 end
 
@@ -242,7 +242,7 @@ function nlobj(T_c; ie = 1)
     heat_d = interface_Tflux(Tf_sol[1,end], ie)
     mass_d = interface_mflux(Tf_sol[1,end], ie)
     heat_l = params[:ΔH] * mass_d
-    # @info "analytical" Tf_sol[1,end] Tf_sol[2,end] mass_d/b heat_d/params[:k] heat_f heat_d heat_l
+    # @info "analytical" Tf_sol[1,end] Tf_sol[2,end] mass_d/b heat_d/params[:kd] heat_f heat_d heat_l
     heat_f + heat_d + heat_l
 end
 
@@ -267,7 +267,7 @@ end
 
 @time sols_Tf_num = map(perturbs) do ei
     um = LSS.make_u0_ndim(config)
-    ϕm = ϕ_T_from_u_view(um, dom)[1]
+    ϕm = @views reshape(um[iϕ(dom)], size(dom))
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     Ri = get_subf_r(ϕm, dom)
     @info "startsol" Ri 

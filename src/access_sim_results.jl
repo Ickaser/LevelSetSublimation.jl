@@ -5,7 +5,7 @@ export virtual_thermocouple
 function get_t_Tf(simresults::Dict)
     @unpack sol, dom = simresults
     t = sol.t .* u"s"
-    Tf = sol[dom.ntot+1,:] .* u"K"
+    Tf = sol[iTf(dom)[1],:] .* u"K"
     return t, Tf
 end
 
@@ -13,12 +13,12 @@ function get_t_Tf_subflux(simresults::Dict, simconfig::Dict)
     @unpack sol, dom = simresults
     t = sol.t .* u"s"
     Tf_g = fill(245.0, dom.nr)
-    Tf = sol[dom.ntot+1,:] .* u"K"
+    Tf = sol[iTf(dom)[1],:] .* u"K"
     md = map(sol.t) do ti
         params = calc_params_at_t(ti, simconfig)
         uTfTp = calc_uTfTp_res(ti, simresults, simconfig, Tf0=Tf_g)
         Tf_g = uTfTp[2]
-        Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
+        Tfi = uTfTp[1][iTf(dom)]
         md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(md) == -1
             @info "md=$md" ti Tfi calc_psub(Tfi)
@@ -47,7 +47,7 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
         params = calc_params_at_t(ti, simconfig)
         uTfTp = calc_uTfTp_res(ti, simresults, simconfig, Tf0=Tf_g)
         Tf_g = uTfTp[2]
-        # Tfi = ϕ_T_from_u(uTfTp[1], dom)[2]
+        # Tfi = uTfTp[1][iTf(dom)]
         Tf[i] = uTfTp[3][1,1]
         mdi = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(mdi) == -1
@@ -59,8 +59,8 @@ function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
     mfd = uconvert.(u"kg/hr", md) / (π*(dom.rmax*u"m")^2)
     totvol = π*dom.rmax^2 * dom.zmax
     dryfrac = map(ts_ndim) do ti
-        ϕ = ϕ_T_from_u(sol(ti), dom)[1]
-        1 - compute_icevol(ϕ, dom) / totvol
+        ϕ = reshape(sol(ti)[iϕ(dom)], size(dom))
+        1 - compute_icevol_H(ϕ, dom) / totvol
     end
 
     completed = dryfrac .== 1
@@ -82,24 +82,26 @@ function gen_anim(config, var=:T, casename="test")
     return simres
 end
 
-function calc_params_at_t(t::Float64, simconfig::Dict)
-    @unpack cparams, controls = simconfig
+function calc_params_at_t(t::TT, simconfig::Dict) where TT<:Number
+    @unpack paramsd = simconfig
     
-    params, ncontrols = params_nondim_setup(cparams, controls)
+    params = params_nondim_setup(paramsd)
 
-    input_measurements!(params, t, ncontrols)
-    return params
+    return (params[1], params[2], params[3](t))
 end
 
 function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
     @unpack sol, dom = simresults
     u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)    
-    ϕ = ϕ_T_from_u(u, dom)[1]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
     return u, ϕ, T, p
 end
 
 
-function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
+"""
+    calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
+"""
+function calc_uTfTp_res(t::TT, simresults::Dict, simconfig::Dict; Tf0=nothing) where TT<:Number
     @unpack sol, dom = simresults
     params = calc_params_at_t(t, simconfig)
     
@@ -111,17 +113,11 @@ function calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothi
     # else
     #     Tf = pseudosteady_Tf(u, dom, params, Tf0)
     # end
-    Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+    Tf = sol(t, idxs=iTf(dom))
 
-    # p_sub = calc_psub(Tf)
     T = solve_T(u, Tf, dom, params)
-    if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatonly!
-        return u, Tf, T, zeros(size(dom))
-    end
-    # if isnothing(p0)
-    #     p = solve_p(u, Tf, T, dom, params)
-    # else
-    #     p = solve_p(u, Tf, T, dom, params, p0)
+    # if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatonly!
+    #     return u, Tf, T, zeros(size(dom))
     # end
     p = solve_p(u, Tf, T, dom, params)
     return u, Tf, T, p
@@ -189,7 +185,7 @@ function get_SA(ts, res)
     @unpack sol, dom = res
     SA_t = map(ts) do ti
         u = sol(ti)
-        ϕ = ϕ_T_from_u(u, dom)[1]
+        ϕ = reshape(u[iϕ(dom)], size(dom))
         SA = compute_icesurf_δ(ϕ, dom)
     end
     return ts, SA_t
@@ -201,24 +197,9 @@ end
 Compute the average 𝑧 position of the sublimation front.
 """
 function get_subf_z(ϕ, dom)
-    # cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
-    # ls = lines(cl)
-    # if length(ls) == 0 # No sublimation front: average z is 0
-    #     zbar = 0
-    # elseif length(ls) > 1
-    #     @warn "Interface has more than one contiguous component"
-    #     zbar = 0
-    #     for line in ls
-    #         rs, zs = coordinates(line)
-    #         zbar += sum(zs) / length(zs)
-    #     end
-    # else
-    #     rs, zs = coordinates(ls[1])
-    #     zbar = sum(zs) / length(zs)
-    # end
-    # zbar
     δ = compute_discrete_δ(ϕ, dom)
     ave_z = sum(δ .* permutedims(dom.zgrid) .*dom.rgrid) / sum(δ .* dom.rgrid)
+    return ave_z
 end
 """
     get_subf_r(ϕ, dom)
@@ -226,25 +207,9 @@ end
 Compute the average 𝓇 position of the sublimation front.
 """
 function get_subf_r(ϕ, dom)
-    # cl = contour(dom.rgrid, dom.zgrid, ϕ, 0.0)
-    # ls = lines(cl)
-    # if length(ls) == 0 # No sublimation front: average z is 0
-    #     rbar = 0
-    # elseif length(ls) > 1
-    #     @warn "Interface has more than one contiguous component"
-    #     rbar = 0
-    #     for line in ls
-    #         rs, zs = coordinates(line)
-    #         rbar += sum(rs) / length(rs)
-    #     end
-    # else
-    #     line = ls[1]
-    #     rs, zs = coordinates(line)
-    #     rbar = sum(rs) / length(rs)
-    # end
-    # rbar
     δ = compute_discrete_δ(ϕ, dom)
-    ave_z = sum(δ .* dom.rgrid .*dom.rgrid) / sum(δ .* dom.rgrid)
+    ave_r = sum(δ .* permutedims(dom.zgrid) .*dom.rgrid) / sum(δ .* permutedims(dom.zgrid))
+    return ave_r
 end
 
 

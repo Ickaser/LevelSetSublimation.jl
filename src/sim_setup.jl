@@ -1,7 +1,11 @@
-export make_default_params
+export make_M1_properties
+export PhysicalProperties
+export TimeConstantProperties
+export TimeVaryingProperties
 export make_ϕ0, make_ramp
 export params_nondim_setup, make_u0_ndim
 export ϕ_T_from_u, ϕ_T_from_u_view
+
 
 """
     make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
@@ -24,7 +28,7 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     if ϕtype == :top || ϕtype == :flat
         ϕ0 = [z - dom.zmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :midflat
-        ϕ0 = [z - dom.zmax*0.5 for r in dom.rgrid, z in dom.zgrid]
+        ϕ0 = [z - dom.zmax*0.5+ϵ for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :rad || ϕtype == :cyl
         ϕ0 = [r - dom.rmax*(1-ϵ) for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :box
@@ -60,260 +64,377 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
     return ϕ0
 end
 
+
 """
-    params_nondim_setup(cparams, controls)
-    
-Return a copied `params` dictionary and list of keys from `controls` 
-to be updated at each time sampled point.
+An immutable type for representing a slate of physical properties and constants needed.
+
+A default constructor is provided which uses all defaults (borosilicate glass, water, ice), but thanks to [`Parameters.jl`](https://mauro3.github.io/Parameters.jl/stable/)
+you can call with just values that need to be changed, e.g.
+
+    PhysicalProperties() # all defaults
+    PhysicalProperties(ρ_vw = 1u"kg/m^3", cp_vw = 1u"J/kg/K", εpp_vw = 1e-1) # adjust vial wall properties
+
+All properties stored here are:
+$(FIELDS)
 """
-function params_nondim_setup(cparams, controls)
-    params = deepcopy(cparams)
-    nondim_controls = deepcopy(controls)
-
-    for pk in keys(cparams)
-        if dimension(PBD[pk]) != dimension(cparams[pk])
-            @error "Bad dimensions in passed parameter." pk params[pk] PBD[pk]   
-        end
-        params[pk] = ustrip.(PBD[pk], cparams[pk])
-    end
-    for mk in keys(controls)
-        # nondim_controls[mk] = ustrip.(PBD[mk], controls[mk])
-        nondim_controls[mk] = nondim_controlvar(mk, controls[mk])
-        params[mk] = nondim_controls[mk](0)
-    end
-    # if length(nondim_controls[:t_samp]) == 1
-    #     nondim_controls[:t_samp] = [0.0]
-    # end
-
-    # arr_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])>1)]
-    # sc_keys = [ki for ki in keys(controls) if (ki!=:t_samp && length(controls[ki])==1)]
-    # for ki in sc_keys
-    #     params[ki] = nondim_controls[ki]
-    # end
-    # for ki in arr_keys
-    #     # if length(controls[ki]) != length(controls[:t_samp])
-    #     #     @error "Improper length of measurement vector. Must match time vector length." ki length(controls[ki]) length(controls[:t_samp])
-    #     # end
-    #     params[ki] = nondim_controls[ki](0)
-    # end
-    # if length(arr_keys) == 0
-    #     arr_keys = nothing
-    # end
-    # return params, arr_keys, nondim_controls
-
-    return params, nondim_controls
+@with_kw struct PhysicalProperties
+    "Universal gas constant."
+    R = 8.3145u"J/mol/K"
+    "Vacuum permittivity (universal constant)."
+    ε0 = LevelSetSublimation.ε0
+    "Density of vial wall (defaults to borosilicate glass)."
+    ρ_vw = LevelSetSublimation.ρ_gl
+    "Heat capacity of vial wall (defaults to borosilicate glass)."
+    cp_vw = LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
+    "Dielectric loss coefficient of vial wall (defaults to borosilicate glass)."
+    εpp_vw = LevelSetSublimation.εpp_gl
+    "Density of frozen material (taken as water ice)."
+    ρf = ρ_ice 
+    "Heat capacity of frozen material (taken as water ice)."
+    Cpf = Cp_ice
+    "Thermal conductivity of frozen material."
+    kf = LevelSetSublimation.kf
+    "Molecular weight of sublimating species (defaults to water)."
+    Mw = .018u"kg/mol" 
+    "Gas phase viscosity (in rarefied regime) of sublimating species (defaults to water)."
+    μ = LevelSetSublimation.μ
+    "Heat of sublimation of sublimating species (defaults to water); give as positive number."
+    ΔH = LevelSetSublimation.ΔH
+    "Dielectric loss coefficient of frozen layer (defaults to water ice)."
+    εpp_f = LevelSetSublimation.εpp_f
+    "Dielectric loss coefficient of dry layer (defaults to 0)."
+    εpp_d = 0.0
 end
 
-# function nondim_controlvar(varname::Symbol, control_dim::Q) where Q <: Quantity
-#     if dimension(control_dim) != dimension(PBD[varname])
-#         @error "Bad units on controlled variable." varname control_dim PBD[varname]
-#     end
-#     base_un = PBD[varname]
-#     control_ndim = RampedVariable(ustrip(base_un, control_dim))
-#     return control_ndim
-# end
-# function nondim_controlvar(varname::Symbol, control_dim::RampedVariable)
-#     if dimension(control_dim(0u"s")) != dimension(PBD[varname])
-#         @error "Bad units on ramped variable." varname control_dim PBD[varname]
-#     end
-#     base_un = PBD[varname]
-#     if length(control_dim.setpts) > 1
-#         setpts = ustrip.(base_un, control_dim.setpts)
-#         ramprates = ustrip.(base_un/u"s", control_dim.ramprates)
-#         holds = ustrip.(u"s", control_dim.holds)
-#         control_ndim = RampedVariable(setpts, ramprates, holds)
-#     else
-#         control_ndim = RampedVariable(ustrip(base_un, control_dim.setpts[1]))
-#     end
-#     return control_ndim
-# end
-function nondim_controlvar(varname, control_dim)
+
+"""
+An instance of [`PhysicalProperties`](@ref) with default values.
+"""
+const base_props = PhysicalProperties()
+
+"""
+    TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_rad, B_d, B_f, B_vw)
+
+A struct for holding physical properties which are likely to change from case to case.
+
+No default constructor is provided by intention--all of these parameters should be at least considered before running a simulation.
+
+$(FIELDS)
+"""
+struct TimeConstantProperties
+    # Mass transfer
+    "dimensionless, the porosity or fraction of solid space taken up by ice."
+    ϵ 
+    "length, a dusty gas model parameter (roughly the pore size)"
+    l 
+    "area, a dusty gas model parameter (roughly the area of a pore neck)"
+    κ 
+    "length/time, empirical mass transfer resistance at zero dry layer height"
+    Rp0 
+    # Heat transfer
+    "dry layer thermal conductivity"
+    kd 
+    "vial wall to frozen layer heat transfer coeff"
+    Kvwf 
+    "vial mass"
+    m_v 
+    "radiative area for vial wall-shelf heat transfer"
+    A_rad 
+    # Microwave
+    "Ω/m^2, dry layer field strength coefficient"
+    B_d 
+    "Ω/m^2, frozen layer field strength coefficient"
+    B_f 
+    "Ω/m^2, vial wall field strength coefficient"
+    B_vw 
+end
+
+"""
+    TimeVaryingProperties(f_RF, P_per_vial, Tsh, pch, Kshf)
+
+A struct for holding controlled parameters that may change over time.
+
+To get the value of all those parameters at a given time, call the struct 
+with a time, and it will evaluate each field at that time and provide a [`TimeVaryingPropertiesSnapshot`](@ref). 
+
+No default constructor is provided by intention--all of these parameters should be at least considered before running a simulation.
+
+Each should be passed as a callable, which returns the value of the parameter as a function of time, with the exception of `Kshf` which is a function of pressure.
+See the `RampedVariable` and `RpFormFit` types from `LyoPronto`, which are intended to make this more convenient.
+
+$(FIELDS)
+"""
+struct TimeVaryingProperties
+    "Microwave frequency"
+    f_RF 
+    "Microwave power per vial"
+    P_per_vial 
+    "Shelf temperature"
+    Tsh 
+    "Chamber pressure"
+    pch 
+    "Heat transfer coefficient as function of pressure"
+    Kshf 
+end
+
+"""
+    TimeVaryingPropertiesSnapshot(f_RF, P_per_vial, Tsh, pch, Kshf)
+
+A struct for holding a snapshot of the controlled parameters that may change over time.
+
+This is meant to be constructed by calling an instance of the [`TimeVaryingProperties`](@ref) type.
+
+$(FIELDS)
+"""
+struct TimeVaryingPropertiesSnapshot
+    "Microwave frequency"
+    f_RF 
+    "Microwave power per vial"
+    P_per_vial 
+    "Shelf temperature"
+    Tsh 
+    "Chamber pressure"
+    pch 
+    "Heat transfer coefficient as function of pressure"
+    Kshf 
+end
+
+function (tvp::TimeVaryingProperties)(t)
+    snap = TimeVaryingPropertiesSnapshot(
+        tvp.f_RF(t),
+        tvp.P_per_vial(t),
+        tvp.Tsh(t),
+        tvp.pch(t),
+        tvp.Kshf(tvp.pch(t)),
+    )
+    return snap
+end
+function (tup::Tuple{PhysicalProperties, TimeConstantProperties, TimeVaryingProperties})(t)
+    return (tup[1], tup[2], tup[3](t))
+end
+
+
+function nondim_controlvar(tvp, varname)
+    control_dim = getfield(tvp, varname)
+    if varname == :Kshf
+        control_ndim = p->ustrip(PBD[varname], tvp.Kshf(p*u"Pa"))
+        return control_ndim
+    end
     if dimension(control_dim(0u"s")) != dimension(PBD[varname])
-        @error "Bad units on ramped variable." varname control_dim PBD[varname]
+        @error "Bad units on potentially time-varying variable." varname control_dim PBD[varname]
     end
     base_un = PBD[varname]
-    control_ndim = t->ustrip.(base_un, control_dim(t*u"s"))
+    control_ndim = t->ustrip(base_un, control_dim(t*u"s"))
     return control_ndim
 end
 
+function nondim_param(tcp, pk)
+    p = getfield(tcp, pk)
+    if (length(p) > 1) 
+        if any([dimension(PBD[pk])] .!= dimension(p))
+            @error "Bad dimensions in passed parameter." pk getfield(tcp, pk) PBD[pk]   
+        end
+    else
+        if (dimension(PBD[pk]) != dimension(p))
+            @error "Bad dimensions in passed parameter." pk getfield(tcp, pk) PBD[pk]   
+        end
+    end
+    return ustrip.(PBD[pk], p)
+end
+
+"""
+    params_nondim_setup(params_dim)
+    params_nondim_setup(base_d, tcp_d, tvp_d)
+    
+
+"""
+function params_nondim_setup(base_d, tcp_d, tvp_d)
+    nd_b(key) = nondim_param(base_d, key)
+    nd_p(key) = nondim_param(tcp_d, key)
+    nd_c(key) = nondim_controlvar(tvp_d, key)
+
+    base_n = PhysicalProperties(map(nd_b, fieldnames(typeof(base_d)))...)
+    tcp_n = TimeConstantProperties(map(nd_p, fieldnames(typeof(tcp_d)))...)
+    tvp_n = TimeVaryingProperties(map(nd_c, fieldnames(typeof(tvp_d)))...)
+
+    return base_n, tcp_n, tvp_n
+end
+function params_nondim_setup(params_dim)
+    base_d, tcp_d, tvp_d = params_dim
+    params_nondim_setup(base_d, tcp_d, tvp_d)
+end
+
 const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
-    :Kw => u"W/m^2/K",
-    :Kv => u"W/m^2/K",
-    :Q_ic => u"W/m^3",
-    :Q_gl_RF => u"W",
-    :Q_ck => u"W/m^3",
-    :k => u"W/m/K",
-
-    :Tsh => u"K",
-    :Tw0 => u"K",
-    :Tf0 => u"K",
-    :Tw => u"K",
-    :Tf => u"K",
-
-    :p_ch => u"Pa",
-
-    :kf => u"W/m/K",
-    :ρf => u"kg/m^3",
-    :Cpf => u"J/kg/K",
-    :ΔH => u"J/kg",
-    :m_cp_gl => u"J/K",
-    :vial_thick => u"m",
-
-    :ϵ => NoUnits,
-    :l => u"m",
-    :κ => u"m^2",
-    :μ => u"Pa*s",
+    # Base properties
+    :cp_vw => u"J/kg/K",
+    :ρ_vw=> u"kg/m^3",
     :R => u"J/mol/K",
     :Mw => u"kg/mol",
-    :Rp0 => u"m/s",
+    :μ => u"Pa*s",
+    :ΔH => u"J/kg",
+    :ρf => u"kg/m^3",
+    :Cpf => u"J/kg/K",
+    :kf => u"W/m/K",
+    :ε0 => u"F/m",
+    :εpp_d => NoUnits,
+    :εpp_f => NoUnits,
+    :εpp_vw => NoUnits, 
 
-    :t_samp => u"s",
+    # Time constant properties
+    :ϵ =>NoUnits, # 90% porosity
+    :l =>u"m", # ~size of a pore
+    :κ =>u"m^2", # ~size^2 of a pore
+    :Rp0 => u"m/s", # R0 from Rp: guess from thin-film thickness & pore size?
+    :kd => u"W/m/K",
+    :Kvwf => u"W/m^2/K",
+    :m_v => u"kg", # vial mass
+    :A_rad =>u"m^2", # radiative area for vial wall-shelf heat transfer
+    :B_d => u"Ω/m^2", # dry layer field strength
+    :B_f =>u"Ω/m^2", # frozen layer field strength coefficient
+    :B_vw =>u"Ω/m^2", # vial wall field strength coefficient
+
+    # Time varying properties
+    :f_RF =>u"Hz", # RF frequency
+    :P_per_vial =>u"W", # RF power per vial
+    :Tsh =>u"K", # Shelf temperature
+    :pch =>u"Pa", # Chamber pressure
+    :Kshf =>u"W/m^2/K", # Heat transfer coefficient as function of pressure
+
+    # Initial conditions
+    :Tvw0 => u"K",
+    :Tf0 => u"K",
+    :Tvw => u"K",
+    :Tf => u"K",
 )
 
+
 """
-    make_default_params()
+    make_M1_properties()
 
-Return a dictionary of `cparams`, with values corresponding to SI units
+Returns dicts of physical parameters for the mannitol experimental case which was used to originally develop and validate this model.
 
-In theory, gives physical values of parameters. Haven't actually done that, though.
+Useful for testing.
 """
-function make_default_params()
-            
-    # Very artificial parameters
-    # Heat transfer
-    Kw = 1e2 *u"W/K/m^2" # 1/(Contact resistance 1e-4 + cylindrical resistance from outer wall 1e-3 to 1e-5)
-    Kv = 20 * u"W/K/m^2"
-    Q_ic = 0.0u"W/cm^3"
-    Q_ck = 0.0u"W/m^3"
-    
-    m_cp_gl = 5u"g" * LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
-
+function make_M1_properties()
+    # ---- Properties which do not change in time
     # Mass transfer
-    p_ch = 100u"mTorr" # 100 mTorr is about 13 Pa
-    ϵ = 0.9 # 90% porosity
+    ϵ = 0.95 # 90% porosity
     l = 1e-6u"m" # ~size of a pore
-    κ = 1e-10u"m^2" # ~size^2 of a pore
+    κ = 0.0u"m^2" # ~size^2 of a pore
     Rp0 = 1.4u"cm^2*Torr*hr/g" # R0 from Rp: guess from thin-film thickness & pore size?
-    k = k_sucrose * (1-ϵ)
+    # Heat transfer
+    kd = k_sucrose * (1-ϵ)
+    Kvwf = 24.7 *u"W/K/m^2" 
+    m_v = LyoPronto.get_vial_mass("6R")
+    A_rad = π*LyoPronto.get_vial_radii("6R")[2]^2
+    # Microwave
+    B_d = 0.0u"Ω/m^2"
+    B_f = 2.8e8u"Ω/m^2"
+    B_vw = 4.6e6u"Ω/m^2"
 
-    R = 8.3145u"J/mol/K"
-    Mw = .018u"kg/mol" #mol/kg
-    μ = LevelSetSublimation.μ
+    tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_rad, B_d, B_f, B_vw)
 
-    # Sublimation
-    ΔH = LevelSetSublimation.ΔH
-    # ΔHsub = 678.0 # u"cal/g"
-    ρf = ρ_ice 
-    Cpf = Cp_ice
-    kf = LevelSetSublimation.kf
+    # ----- Properties which may change in time
+    f_RF = RampedVariable(8.0u"GHz")
+    pch = RampedVariable(100.0u"mTorr")
+    Tsh = RampedVariable(uconvert.(u"K", [-40.0, 10]*u"°C"), 1u"K/minute")
+    P_per_vial = RampedVariable(10u"W"/17)
 
-    # Rw = 8.3145 / .018 # J/molK * mol/kg
-    # calc_ρvap(T) = calc_psub(T)/Rw/T
+    # Heat transfer coefficient as function of pressure
+    KC = 2.75e-4u"cal/s/K/cm^2"
+    KP = 8.93e-4u"cal/s/K/cm^2/Torr"
+    KD = 0.46u"1/Torr"
+    Kshf = RpFormFit(KC, KP, KD)
+    tvprops = TimeVaryingProperties(f_RF, P_per_vial, Tsh, pch, Kshf)
 
-
-    params = Dict{Symbol, Any}()
-    @pack! params = Kw, Kv, Q_ic, Q_ck, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, Rp0, R, Mw, μ, Cpf
-    # @pack! params = Kw, Kv, k, m_cp_gl, ΔH, kf, ρf, p_ch, ϵ, l, κ, Rp0, R, Mw, μ, Cpf
-    return params
+    return base_props, tcprops, tvprops
 end
         
-# """
-#     make_ramp(ustart, uend, ramprate, ts)
-
-# Convenience function for filling out a time series during and after setpoint ramp.
-# `ustart` and `uend` are initial and final setpoints; `ts` the time points at which to sample.
-
-# `ts` need not start at 0, but should contain at least enough time for the full ramp.
-# """
-# function make_ramp(ustart, uend, ramprate, ts)
-#     du = uend - ustart
-#     dt = du / ramprate
-#     us = fill(ustart, size(ts))
-#     dus = min.((ts.-ts[begin])/dt, 1) .* (uend - ustart)
-#     return us .+ dus
-# end
-
 
 # --------- Functions mapping state `u` to level set and temperatures
 
+# The source of truth for what indices are used for what variables!!!
 """
-    ϕ_T_from_u_view(u, dom)
+    iϕ(dom::Domain) = 1:dom.ntot
 
-Take the current system state `u` and return views corresponding to `ϕ`, `Tf`, and `Tw`.
+This is the source of truth for what indices in the system state are used for `ϕ`.
+See also [`iTf`](@ref) and [`iTvw`](@ref).
+"""
+iϕ(dom::Domain) = 1:dom.ntot
+"""
+    iTf(dom::Domain) = dom.ntot+1:dom.not+nr
+
+This is the source of truth for what indices in the system state are used for `Tf`.
+See also [`iϕ`](@ref) and [`iTvw`](@ref).
+"""
+iTf(dom::Domain) = dom.ntot+1:dom.ntot+dom.nr
+"""
+    iTvw(dom::Domain) = dom.ntot+dom.nr+1 # returns a single index
+    iTvw(dom::Domain, dummyarg) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1 # returns a 1-length UnitRange
+
+This is the source of truth for what indices in the system state are used for `Tvw`.
+See also [`iϕ`](@ref) and [`iTf`](@ref).
+"""
+iTvw(dom::Domain) = dom.ntot+dom.nr+1
+iTvw(dom::Domain, dummyarg) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1
+"""
+    ulen(dom::Domain) = iTvw(dom)
+
+Returns the total length of the system state vector, which currently is the same as the index of `Tvw`.
+"""
+ulen(dom::Domain) = iTvw(dom)
+
+ϕ_from_u(u, dom) = reshape(u[iϕ(dom)], size(dom))
+# reshape(a::AbstractArray, dom::Domain) = reshape(a, size(dom))
+
+"""
+    ϕ_from_u_view(u, dom)
+
+Take the current system state `u` and return views corresponding to `ϕ`, `Tf`, and `Tvw`.
 Nothing too fancy--just to avoid rewriting the same logic everywhere
 """
 function ϕ_T_from_u_view(u, dom)
-    ϕ = @views reshape(u[1:dom.ntot], size(dom))
-    Tf = @view u[dom.ntot+1:dom.ntot+dom.nr]
-    Tw = @view u[end]
-    return ϕ, Tf, Tw
+    ϕ = @views reshape(u[iϕ(dom)], size(dom))
+    Tf = @view u[iTf(dom)]
+    Tvw = @view u[iTvw(dom)]
+    return ϕ, Tf, Tvw
 end
 
 """
     ϕ_T_from_u(u, dom)
 
-Take the current system state `u` and break it into `ϕ`, `Tf`, and `Tw`.
+Take the current system state `u` and break it into `ϕ`, `Tf`, and `Tvw`.
 Nothing too fancy--just to avoid rewriting the same logic everywhere
 """
 function ϕ_T_from_u(u, dom)
-    ϕ = reshape(u[1:dom.ntot], size(dom))
-    Tf = u[dom.ntot+1:dom.ntot+dom.nr]
-    Tw = u[end]
-    return ϕ, Tf, Tw
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    Tf = u[iTf(dom)]
+    Tvw = u[iTvw(dom)]
+    return ϕ, Tf, Tvw
 end
 
 """
-    make_u0_ndim(init_prof, Tf0, Tw0, dom)
+    make_u0_ndim(init_prof, Tf0, Tvw0, dom)
 
 Set up a vector of dynamic variables as initial state for simulation.
 
-Structure of vector `u`:
-- `dom.ntot` entries for level set function `ϕ`; initialized with profile using `make_ϕ0`.
-- `dom.nr` entries for frozen (ice) temperature `Tf`
-- 1 entry for glass (outer wall) temperature `Tw`
+Structure of vector `u`: set by [`iϕ`](@ref), [`iTf`](@ref), and [`iTvw`](@ref).
 """
-function make_u0_ndim(init_prof, Tf0, Tw0, dom)
+function make_u0_ndim(init_prof, Tf0, Tvw0, dom)
     Tf0_nd = ustrip.(u"K", Tf0)
-    Tw0_nd = ustrip(u"K", Tw0)
-    # ϕ0 = make_ϕ0(init_prof, dom)
-    # ϕ0_flat = reshape(ϕ0, :)
+    Tvw0_nd = ustrip(u"K", Tvw0)
 
     ϕ0_flat = reshape(make_ϕ0(init_prof, dom), :)
-    u0 = similar(ϕ0_flat, dom.ntot+dom.nr+1) # Add 2 to length: Tf, Tw
-    u0[1:dom.ntot] .= ϕ0_flat
-    u0[dom.ntot+1:dom.ntot+dom.nr] .= Tf0_nd 
-    u0[end] = Tw0_nd
+    u0 = similar(ϕ0_flat, ulen(dom)) 
+    u0[iϕ(dom)] .= ϕ0_flat
+    u0[iTf(dom)] .= Tf0_nd 
+    u0[iTvw(dom)] = Tvw0_nd
     return u0
 end
 
 function make_u0_ndim(config::Dict)
     # dom = Domain(config)
-    # Tf0_nd = ustrip.(u"K", config[:Tf0])
-    # Tw0_nd = ustrip(u"K", get(config, :Tw0, config[:Tf0]))
-    make_u0_ndim(config[:init_prof], config[:Tf0], 
-                get(config, :Tw0, config[:Tf0]), Domain(config))
+    Tf0_nd = ustrip.(u"K", get(config,:Tf0, config[:paramsd].Tsh(0u"s")))
+    Tvw0_nd = ustrip(u"K", get(config, :Tvw0, Tf0_nd*u"K"))
+    make_u0_ndim(config[:init_prof], Tf0_nd, Tvw0_nd, Domain(config))
 end
-
-# """
-#     ϕ_T_into_u!(u, ϕ, Tf, Tw, dom)
-
-# Take `ϕ`, `Tf`, and `Tw`, and stuff them into `u` with appropriate indices.
-# Nothing too fancy--just to keep indexing abstract
-# """
-# function ϕ_T_into_u!(u, ϕ, Tf, Tw, dom)
-#     u[1:dom.ntot] = reshape(ϕ, :)
-#     u[dom.ntot+dom.nr] = Tf
-#     u[end] = Tw
-#     return nothing
-# end
-# """
-#     T_into_u!(u, Tf, Tw, dom)
-
-# Take `Tf` and `Tw` and stuff them into `u` with appropriate indices.
-# Nothing too fancy--just to keep indexing abstract
-# """
-# function T_into_u!(u, Tf, Tw, dom)
-#     u[dom.ntot+1] = Tf
-#     u[dom.ntot+2] = Tw
-#     return nothing
-# end

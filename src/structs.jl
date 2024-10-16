@@ -1,4 +1,4 @@
-export Domain, RampedVariable
+export Domain
 
 """
 Stores information on the grid and domain size for simulation.
@@ -134,54 +134,54 @@ function Domain(nr::I, nz::I, rmin::F, rmax::F, zmin::F, zmax::F,
 end
 
 
-struct RampedVariable
-    setpts::AbstractVector
-    ramprates::AbstractVector
-    holds::AbstractVector
-    timestops::AbstractVector
-end
+# struct RampedVariable
+#     setpts::AbstractVector
+#     ramprates::AbstractVector
+#     holds::AbstractVector
+#     timestops::AbstractVector
+# end
 
-function RampedVariable(initial)
-    RampedVariable([initial], [], [], [0])
-end
+# function RampedVariable(initial)
+#     RampedVariable([initial], [], [], [0])
+# end
 
-function RampedVariable(setpts, ramprates, holds)
-    timestops = fill(0.0*holds[1], length(ramprates) + length(holds) + 1)
+# function RampedVariable(setpts, ramprates, holds)
+#     timestops = fill(0.0*holds[1], length(ramprates) + length(holds) + 1)
 
-    if length(ramprates) != length(holds)
-        @error "Number of ramps should equal number of holds"
-    end
-    if length(setpts) != length(holds) + 1
-        @error "Number of set points should be 1 more than ramps/holds, since initial is included"
-    end
-    for i in axes(ramprates, 1)
-        # @show timestops
-        timestops[2i] = timestops[2i-1] + (setpts[i+1]-setpts[i])/ramprates[i]
-        timestops[2i+1] = timestops[2i] + holds[i]
-    end
-    RampedVariable(setpts, ramprates, holds, timestops)
-end
+#     if length(ramprates) != length(holds)
+#         @error "Number of ramps should equal number of holds"
+#     end
+#     if length(setpts) != length(holds) + 1
+#         @error "Number of set points should be 1 more than ramps/holds, since initial is included"
+#     end
+#     for i in axes(ramprates, 1)
+#         # @show timestops
+#         timestops[2i] = timestops[2i-1] + (setpts[i+1]-setpts[i])/ramprates[i]
+#         timestops[2i+1] = timestops[2i] + holds[i]
+#     end
+#     RampedVariable(setpts, ramprates, holds, timestops)
+# end
 
-function (rv::RampedVariable)(t)
-    if length(rv.timestops) == 1
-        return rv.setpts[1]
-    end
-    im = findlast(rv.timestops .<= t)
-    if im == length(rv.timestops)
-        return rv.setpts[end]
-    elseif iseven(im)
-        return rv.setpts[im ÷ 2 + 1]
-    else
-        ip = im+1
-        return (rv.setpts[ip÷2+1] - rv.setpts[ip÷2])/(rv.timestops[ip] - rv.timestops[im])*(t - rv.timestops[im]) + rv.setpts[im]
-    end
-end
+# function (rv::RampedVariable)(t)
+#     if length(rv.timestops) == 1
+#         return rv.setpts[1]
+#     end
+#     im = findlast(rv.timestops .<= t)
+#     if im == length(rv.timestops)
+#         return rv.setpts[end]
+#     elseif iseven(im)
+#         return rv.setpts[im ÷ 2 + 1]
+#     else
+#         ip = im+1
+#         return (rv.setpts[ip÷2+1] - rv.setpts[ip÷2])/(rv.timestops[ip] - rv.timestops[im])*(t - rv.timestops[im]) + rv.setpts[im]
+#     end
+# end
 
     
-function Base.show(io::IO, rv::RampedVariable) 
-    if length(rv.timestops) == 1
-        return print(io, "RampedVariable($(rv.setpts[1]))")
-    else 
-        return print(io, "RampedVariable($(rv.setpts), $(rv.ramprates), $(rv.holds)")
-    end
-end
+# function Base.show(io::IO, rv::RampedVariable) 
+#     if length(rv.timestops) == 1
+#         return print(io, "RampedVariable($(rv.setpts[1]))")
+#     else 
+#         return print(io, "RampedVariable($(rv.setpts), $(rv.ramprates), $(rv.holds)")
+#     end
+# end

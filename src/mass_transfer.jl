@@ -5,7 +5,7 @@ export solve_p, eval_b
 """
     solve_p(u, T, dom::Domain, params[, p0]; maxit=20, reltol=1e-6) where G<:AbstractArray
 
-Iteratively compute the pressure profile for system state `u` and `T`.
+Iteratively compute the pressure profile for system state `u`, `Tf`, and `T`.
 
 There is a weak nonlinearity in the system, since the mass transfer coefficient `b` depends partially on pressure.
 To treat this, use a guessed pressure `p0` (which, if not provided, is set everywhere to chamber pressure) to compute `b`,
@@ -17,31 +17,27 @@ Usually if it doesn't converge, it is because temperatures are outside the expec
 
 """
 function solve_p(u, Tf, T, dom::Domain, params; kwargs...) 
-    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
-    ϕ = ϕ_T_from_u(u, dom)[1]
-    # b = sum(eval_b(meanT, 0, dom, params))/dom.ntot
-    b = eval_b(T, params[:p_ch], params)
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    b = eval_b(T, params[3].pch, params)
     p0 = similar(Tf, size(dom)) 
     p0 .= solve_p_given_b(ϕ, b, Tf, dom, params)
-    if params[:κ] == 0
+    if params[2].κ == 0
         return p0
     else
         solve_p(u, Tf, T, dom::Domain, params, p0; kwargs...)
     end
 end
 function solve_p(u, Tf, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
-    # ϕ, Tf, Tw = ϕ_T_from_u(u, dom)
-    ϕ = ϕ_T_from_u(u, dom)[1]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
 
     relerr::eltype(Tf) = 0.0
-    # p⁺ = copy(p0)
     p⁺ = similar(Tf, size(dom))
     # Iterate up to maxit times
     for i in 1:maxit
         b = eval_b(T, p0, params)
         p⁺ .= solve_p_given_b(ϕ, b, Tf, dom, params)
         relerr = norm((p⁺ .- p0) ./ p⁺, Inf)
-        if relerr < reltol || params[:κ] == 0
+        if relerr < reltol || params[2].κ == 0
             # @info "Number of p iterations: $i"
             return p⁺
         end
@@ -65,7 +61,8 @@ so in practice there are no units to track.
 If `κ=0`, no spatial variation due to pressure occurs.
 """
 function eval_b(T, p, params)
-    @unpack l, κ, R, Mw, μ = params
+    @unpack R, Mw, μ = params[1]
+    @unpack l, κ = params[2]
     b = @. Mw/R/T * (l*NaNMath.sqrt(R*T/Mw) + κ/μ*p)
 end
 
@@ -75,7 +72,8 @@ end
 Locally evaluate transport coefficient (indexes into spatially varying `l` and `κ` if necessary).
 """
 function eval_b_loc(T, p, ir, iz, params)
-    @unpack l, κ, R, Mw, μ = params
+    @unpack R, Mw, μ = params[1]
+    @unpack l, κ = params[2]
     lloc = (length(l) > 1) ? l[ir,iz] : l
     κloc = (length(κ) > 1) ? κ[ir,iz] : κ
     b = Mw/R/T[ir,iz] * (lloc*NaNMath.sqrt(R*T[ir,iz]/Mw) + κloc/μ*p[ir,iz])
@@ -87,10 +85,10 @@ end
 Compute 2D axisymmetric pseudosteady pressure profile for given values of level set function `ϕ`, temperature `T`, and transport coefficient `b`.
 
 `b` is a dusty-gas transport coefficient for the pressure, which can vary spatially.
-Homogeneous Neumann boundary conditions at `r=0`, `r=R`, `z=0`; Dirichlet on zero-level set (`p=p_sub`), Robin at top (`dp/dz = (p_ch-p)/Rp0`).
+Homogeneous Neumann boundary conditions at `r=0`, `r=R`, `z=0`; Dirichlet on zero-level set (`p=p_sub`), Robin at top (`dp/dz = (pch-p)/Rp0`).
 `params` should have fields: 
 - `Rp0` : zero-thickness resistance offset, often written R0 in lyo literature
-- `p_ch` : chamber (or vial) pressure at top surface
+- `pch` : chamber (or vial) pressure at top surface
 
 This implementation uses second-order finite differences, with linear extrapolation into Ω⁻.  
 (For details, see [gibouFourthOrderAccurate2005](@cite).)  
@@ -101,7 +99,8 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 function solve_p_given_b(ϕ, b, Tf, dom::Domain, params) 
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, ntot = dom
-    @unpack Rp0, p_ch = params
+    @unpack Rp0 = params[2]
+    @unpack pch = params[3]
 
 
     rows = Vector{Int}(undef, 0)
@@ -152,7 +151,7 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     rhs[imx] -= 2bp*psub_l*dr2/θr #+ BC1*(r1 - 2dr1)
                 else # Front is within .05 cells of boundary
                     pc += -2bp*dr2/(θr+1)
-                    rhs[imx] -= 2psub_l*bp*dr2/(θr+1) 
+                    rhs[imx] -= 2bp*psub_l*dr2/(θr+1) 
                 end
             else
                 # Using Neumann boundary to define ghost point: west T= east T - 2BC1*dr
@@ -209,10 +208,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
                 if θr >= θ_THRESH
-                    # Linear ghost cell extrap
-                    # pc += (bp*(-(θr+1)*dr2 + (θr-1)*0.5dr1*r1) + dbr*(θr-1)*0.5dr1)/θr
-                    # wc +=  bp*(-0.5dr1*r1 + dr2) - dbr*0.5dr1 # Regular + gradient in b
-                    # rhs[imx] -= psub_l*(bp*(dr2+0.5dr1*r1) + dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                     # Quadratic ghost cell
                     pc += (bp*(-2*dr2 -(1-θr)*dr1*r1) - dbr*(1-θr)*dr1)/θr
                     wc += (bp*(-dr1*r1*θr + 2dr2) - dbr*dr1*θr )/(θr+1)# Regular + b gradient
@@ -223,85 +218,21 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
                     wc += (bp*(2θr*dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                     rhs[imx] -= psub_l*(bp*(2dr2+dr1*r1) + dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
                     # # Constant
-                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-                    # rhs[imx] = calc_psub(Tf[ir])
-                    # continue
                 end
             elseif wϕ <= 0 # West ghost cell across front
                 θr = pϕ / (pϕ - wϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 psub_l = calc_psub(Tf_loc)
                 if θr >= θ_THRESH # Regular magnitude θ
-                    # if ir > 2
-                    #     # Logarithmic ghost cell extrapolation
-                    #     pc += (bp*(0.5dr1*r1*log(rΓ/rm) + dr2*log(r1*r1*rΓ*rm)) + dbr*0.5*dr1*log(rΓ/rm))/log(r/rΓ)
-                    #     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    #     rhs[imx] -= psub_l*(bp*(dr2*log(r/rm) + 0.5dr1*r1*log(rm*r1)) + dbr*0.5dr1*log(rm*r1))/log(r/rΓ) # Dirichlet BC in ghost cell extrap
-                    #     @show ir iz pc ec rhs[imx]
-                    # else
-                    #     # Linear ghost cell extrapolation
-                    #     pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                    #     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    #     rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
-                    #     @show ir iz pc ec rhs[imx]
-                    # end
-                    # Linear ghost cell extrapolation
-                    # pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                    # ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
                     # Quadratic ghost cell extrapolation
                     pc += (bp*(-2*dr2+(1-θr)*dr1*r1) + dbr*(1-θr)*dr1)/θr
                     ec += (bp*( dr1*r1*θr + 2dr2) + dbr*dr1*θr )/(θr+1)# Regular + b gradient
                     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
                 else # Very small θ
-                    # Treat as constant
-                    # add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-                    # rhs[imx] = calc_psub(Tf[ir])
-                    # continue
-                    # if ir > 2
-                    #     # Logarithmic extrapolation
-                    #     rp = rgrid[ir+1]
-                    #     pc += -2bp*dr2 
-                    #     ec += (bp*(dr2*log(rΓ*rΓ/rp/rm) + 0.5dr1*r1*log(rm/rp)) + 0.5dbr*dr1*log(rm/rp))/log(rΓ/rp) # Weaker dependence on this cell
-                    #     # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-                    #     rhs[imx] -= psub_l*(bp*(dr2*log(rm/rp) + 0.5dr1*r1*log(rp/rm)) + dbr*0.5dr1*log(rp/rm))/log(rΓ/rp) # Dirichlet BC in ghost cell extrap
-                    # else
-                    #     # Linear extrapolation, looking a cell further out
-                    #     pc += -2bp*dr2 
-                    #     ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
-                    #     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-                    # end
                     # Linear extrapolation, looking a cell further out
                     pc += -2bp*dr2 
                     ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1) # Weaker dependence on this cell
                     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-
-                    
-                    # if iz == nz
-                    #     # No special treatment
-                    #     pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                    #     ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    #     rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
-                    #     # Constant extrapolation
-                    #     # pc += -2bp*dr2
-                    #     # ec += bp*(dr2  + 0.5dr1*r1) + 0.5dbr*r1
-                    #     # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - 0.5dbr*dr1)
-                    # else
-                    #     # pc += -2bp*dr2 # Regular
-                    #     # ec += (bp*(2θr*dr2 + dr1*r1) + dbr*dr1)/(θr+1)
-                    #     # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1) # Dirichlet BC in ghost cell extrap
-                    #     pc += (bp*(-2*dr2+(1-θr)*dr1*r1) + dbr*(1-θr)*dr1)/θr
-                    #     ec += (bp*( dr1*r1*θr + 2dr2) + dbr*dr1*θr )/(θr+1)# Regular + b gradient
-                    #     rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/θr/(θr+1) # Dirichlet BC in ghost cell extrap
-                    # end
-                    # Constant extrapolation
-                    # pc += (bp*(-(θr+1)*dr2 + (1-θr)*0.5dr1*r1) + dbr*(1-θr)*0.5dr1)/θr
-                    # ec += bp*( 0.5dr1*r1 + dr2) + dbr*0.5dr1# Regular + b gradient
-                    # rhs[imx] -= psub_l*(bp*(dr2 - 0.5dr1*r1) - dbr*0.5dr1)/θr # Dirichlet BC in ghost cell extrap
-                    # Funny custom linear extrapolation
-                    # pc += -2bp*dr2 - bp*0.5dr1*r1 - dbr*0.5dr1
-                    # ec += ((3+θr)*dbr*dr + (3+θr)*bp*dr1*r1 + 2*(θr-1)*bp*dr2)*0.5/(θr+1)
-                    # rhs[imx] -= psub_l*(bp*(2dr2 - dr1*r1) - dbr*dr1)/(θr+1)
                 end
 
             else # Bulk, not at front 
@@ -349,23 +280,24 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             dbz = (b[ir, iz]-b[ir, iz-1])*dz1
             # Check for Stefan front
             if sϕ < 0 # Front is within a cell of boundary
-                # stefan_debug = true
-                # p. 65 of project notes
+                # If close to front, ignore dbz because it's not even exposed yet
+                # If it's included, produces unphysical pressures 
+                dbz = 0
                 θz = pϕ/(pϕ-sϕ)
                 if θz > θ_THRESH
                     pc += -2bp*dz2/θz -2/Rp0*dz1 - dbz/bp/Rp0
-                    rhs[imx] -= 2*psub_l*bp*dz2/θz + p_ch/Rp0*(dbz/bp + 2dz1)
+                    rhs[imx] -= 2*psub_l*bp*dz2/θz + pch/Rp0*(dbz/bp + 2dz1)
                 else
                     # First: use Robin BC to get ghost cell left
                     # Second: extrapolate using left ghost cell across front
                     pc += (-2bp*dz2 + dbz*dz1 - (dbz/bp + 2*θz*dz1)/Rp0)/(θz+1)
-                    rhs[imx] -= (psub_l*(2dz2*bp - dbz*dz1) + p_ch/Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
+                    rhs[imx] -= (psub_l*(2dz2*bp - dbz*dz1) + pch/Rp0*(dbz/bp + 2θz*dz1))/(θz+1)
                 end
             else
-                # Using Robin boundary to define ghost point: north p= south p - 2dz/bp/Rp0*(pi - p_ch)
+                # Using Robin boundary to define ghost point: north p= south p - 2dz/bp/Rp0*(pi - pch)
                 pc += -2bp*dz2 - (2*dz1 + dbz/bp)/Rp0
                 sc +=  2bp*dz2
-                rhs[imx] -= p_ch*(dbz/bp + 2dz1)/Rp0
+                rhs[imx] -= pch*(dbz/bp + 2dz1)/Rp0
                 # @info "here" ir pc sc rhs[imx]
             end
 
@@ -426,11 +358,6 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             end
         end
 
-        # if ec == 0 && nc == 0
-        #     @info "doubleghost" ir iz pc wc sc rhs[imx]
-        # elseif ec == 0
-        #     @info "eastghost" ir iz pc wc nc sc rhs[imx]
-        # end
 
         # Assign all computed stencil values into matrix
         pc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 0), pc)
@@ -445,4 +372,24 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
     sol = solve(prob, SparspakFactorization()).u 
     # sol = mat_lhs \ rhs
     psol = reshape(sol, nr, nz)
+end
+
+"""
+    compute_topmassflux(ϕ, T, p, dom::Domain, params)
+
+Compute total mass flow through top of the cake (that is, mass flux integrated across top surface).
+"""
+function compute_topmassflux(u, Tf, T, p, dom::Domain, params)
+    dpdz = [compute_pderiv(u, Tf, T, p, ir, dom.nz, dom, params)[2] for ir in 1:dom.nr]
+    b = eval_b(T, p, params)[:,end] # all r, top of z
+    rweights = zeros(Float64, dom.nr) 
+    for ir in 1:dom.nr-1
+        rmid = (dom.rgrid[ir] + dom.rgrid[ir+1])/2
+        rweights[ir] += rmid^2/2
+        rweights[ir+1] -= rmid^2/2
+    end
+    # md = - 2π * sum(rweights .* b .*dpdz )
+    md = - 2π * sum(dpdz .*b .* dom.rgrid) * dom.dr
+    # @info "massflux" dpdz b md 1/dom.dz
+    return md
 end

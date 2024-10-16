@@ -3,7 +3,8 @@ using DrWatson
 using Documenter
 using DocumenterCitations
 
-bib = CitationBibliography(projectdir("bib", "Zotero_LevelSet.bib"))
+bib = CitationBibliography(projectdir("bib", "Zotero_LevelSet.bib");
+        style=:authoryear)
 
 makedocs(
         sitename="Level Set Sublimation Documentation",

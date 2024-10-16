@@ -1,6 +1,8 @@
-export heat, plot_contour, freshplot, markfront, markcells
-export plot_cylheat, plot_cylcont, arrows
+export heat, freshplot, markfront, markcells
+export plot_cylheat, arrows
+export LevelSet
 export summaryplot, resultsanim,  gen_sumplot, gen_anim
+export summaryT
 export plotframe, finalframe 
 
 """
@@ -15,21 +17,46 @@ function heat(field, dom::Domain; kwargs...)
                     xlim=(dom.rmin,dom.rmax), ylim=(dom.zmin, dom.zmax),
                      aspect_ratio=:equal, kwargs...)
 end
-"""
-    plot_contour(phi, dom::Domain; lab="", c=:black)
 
-In a mutating fashion, add 0-level contour of `phi` to current plot.
 """
-function plot_contour(phi, dom::Domain; lab="", c=:black)
-    # cl = levels(contours(dom.rgrid,dom.zgrid,phi, [0.0]))[1]
-    cl = contour(dom.rgrid,dom.zgrid,phi, 0.0)
-    p = nothing
-    for seg in lines(cl)
-        xs, ys = coordinates(seg) # coordinates of this line segment
-        p = plot!(xs, ys, color=c, label=lab) 
-    end
-    p
+    LevelSet(phi, dom::Domain)
+
+A small struct, used in dispatch for plotting.
+
+The plot recipe can be variously called as:
+
+    plot(LevelSet(phi, dom), reflect=true)
+    plot(LevelSet(phi, dom), reflect=false)
+    plot!(LevelSet(phi, dom), reflect=true)
+    plot!(LevelSet(phi, dom), reflect=false)
+"""
+struct LevelSet
+    phi
+    dom::Domain
 end
+@recipe function f(ls::LevelSet; reflect=true)
+    cl = contour(ls.dom.rgrid,ls.dom.zgrid,ls.phi, 0.0)
+    for seg in lines(cl)
+        xs, ys = coordinates(seg)
+        @series begin
+            seriestype := :path
+            color --> :black
+            label --> ""
+            (xs, ys)
+        end
+        if reflect
+            @series begin
+                primary := false # no legend entry
+                seriestype := :path
+                color --> :black
+                (-xs, ys)
+            end
+        end
+    end
+end
+
+
+
 """
     freshplot(dom::Domain)  
 
@@ -54,21 +81,6 @@ function plot_cylheat(T, dom::Domain; maxT=nothing, clims=nothing)
     heatmap!(dom.rgrid, dom.zgrid, T', c=:thermal, clims=clims)
     heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, T[end:-1:begin, :]', c=:thermal) # plot reflected
     plot!(xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
-end
-"""
-    plot_cylcont(ϕ, dom::Domain; lab="", c=:black)
-
-In a mutating fashion, add a "cylindrical" 0-level contour of `ϕ` to the current plot.
-("Cylindrical" meaning reflected across x=0 axis.)
-"""
-function plot_cylcont(phi, dom::Domain; lab="", c=:black)
-    # cl = levels(contours(dom.rgrid,dom.zgrid,phi, [0.0]))[1]
-    cl = contour(dom.rgrid,dom.zgrid,phi, 0.0)
-    for seg in lines(cl)
-        xs, ys = coordinates(seg) # coordinates of this line segment
-        plot!(xs, ys, color=c, label=lab) 
-        plot!(-xs, ys, color=c, label="") 
-    end
 end
 """
     markfront(phi, dom::Domain; lab="", c=:white)
@@ -151,11 +163,11 @@ Unpack simulation results and plot the state at time `t`.
 `heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
-function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T, Tf0=nothing, clims=nothing)
+function plotframe(t::Float64, simresults::Dict, simconfig::Dict; heatvar=:T, Tf0=nothing, clims=nothing)
     @unpack sol, dom = simresults
 
     if heatvar == :ϕ 
-        ϕ = ϕ_T_from_u(sol(t), dom)[1]
+        ϕ = reshape(sol(t, idxs=iϕ(dom)), size(dom))
         heatvar_vals = ϕ
         clab = "ϕ, m"
         # cmap = :algae
@@ -167,32 +179,18 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
             Tf0 = fill(245.0, dom.nr)
         end
         u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
-        # T = solve_T(u, dom, params)
-        ϕ, Tw = ϕ_T_from_u(u, dom)[[true, false, true]]
-        Tw -= 273.15
-        heatvar_vals = T .- 273.15
-        clab = "Temperature [°C]"
-        # cmap = :plasma
-        cmap = :linear_bmy_10_95_c78_n256
-        if maximum(ϕ_T_from_u(u, dom)[2]) > maximum(T) # Tf > T
-            cont_c = :black
-        else
-            cont_c = :white
-        end
-        Tsh = ustrip(u"°C", simconfig[:controls][:Tsh](t*u"s"))
-        maxT = max(Tw, Tsh, maximum(heatvar_vals))
-        if isnothing(clims)
-            clims = extrema(heatvar_vals)
-        end
-        if maximum(clims) < maxT
-            clims = (clims[1], maxT)
-        end
+        ϕ = reshape(u[iϕ(dom)], size(dom))
+        T .-= 273.15
+        Tvw = u[iTvw(dom)] - 273.15
+        Tsh = ustrip(u"°C", simconfig[:paramsd][3].Tsh(t*u"s"))
+        pl = plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=clims)
+        return pl, T, Tf
     elseif heatvar == :p
         if isnothing(Tf0)
             Tf0 = fill(245.0, dom.nr)
         end
         u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
-        ϕ = ϕ_T_from_u(u, dom)[1]
+        ϕ = reshape(u[iϕ(dom)], size(dom))
         # T = solve_T(u, dom, params)
         # p = solve_p(u, T, dom, params, p0)
         heatvar_vals = ustrip.(u"mTorr", p.*u"Pa")
@@ -214,26 +212,157 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, 
     tr = round(t/3600, digits=2)
     local pl = plot(aspect_ratio=:equal, xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
     # plot_cylheat(heatvar_vals, dom; clims=clims)
-    if heatvar == :T
-        plot!(xlim=(-1, 1) .* (dom.rmax+1.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
-        heatmap!(vcat(dom.rgrid .- dom.rmax, dom.rgrid), [-dom.dz], fill(Tsh, 1, 2dom.nr), cmap=cmap, clims=clims)
-        heatmap!([-dom.rmax-dom.dr], dom.zgrid, fill(Tw, 1, dom.nz)', cmap=cmap, clims=clims)
-        heatmap!([ dom.rmax+dom.dr], dom.zgrid, fill(Tw, 1, dom.nz)', cmap=cmap, clims=clims)
-        plot!([-1, -1, 1, 1] .* (dom.rmax+0.5dom.dr), [dom.zmax, -0.5dom.dz, -0.5dom.dz, dom.zmax], c=:black, label=:none)
-    end
     heatmap!(dom.rgrid, dom.zgrid, heatvar_vals', c=cmap, clims=clims)
     heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, heatvar_vals[end:-1:begin, :]', c=cmap, clims=clims) # plot reflected
-    heatvar == :T && plot!([-1, -1, 1, 1] .* (dom.rmax+0.5dom.dr), [dom.zmax, -0.5dom.dz, -0.5dom.dz, dom.zmax], c=:black, label=:none)
-    plot_cylcont(ϕ, dom, c=cont_c)
+    plot!(LevelSet(ϕ, dom), c=cont_c)
     if heatvar == :ϕ
         Plots.contour!(dom.rgrid, dom.zgrid, ϕ', color=:black)
     end
     plot!(xlabel="t = $tr hr")
     plot!(colorbar_title=clab)
-    plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], ["-R", "0", "R"]), )
-    plot!(y_ticks = ([0, dom.zmax], ["0", "L"]),  )
+    plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
+    plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
     # plot!(x_ticks=[-dom.rmax, 0, dom.rmax], xlabel="radius")
     return pl, heatvar_vals, Tf
+end
+
+function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
+    cmap = :linear_bmy_10_95_c78_n256
+    cg = cgrad(cmap)
+    if isnothing(clims)
+        clims = extrema(T)
+        if clims[2] - clims[1] < 1e-4
+            clims = clims .+ (0, 0.10)
+        end
+    end
+    cpick = x->cg[(x-clims[1])/(clims[2]-clims[1])]
+
+    hextend = 1.05
+    vextend = 1.05
+    lwall = Plots.Shape([(-dom.rmax*hextend, dom.zmax), 
+             (-dom.rmax*hextend, 0),
+             (-dom.rmax, 0),
+             (-dom.rmax, dom.zmax)])
+    rwall = Plots.Shape([( dom.rmax*hextend, dom.zmax), 
+             ( dom.rmax*hextend, 0),
+             ( dom.rmax, 0),
+             ( dom.rmax, dom.zmax)])
+    shelf = Plots.Shape([( dom.rmax*hextend, 0), 
+             (-dom.rmax*hextend, 0),
+             (-dom.rmax*hextend, -(vextend-1)*dom.zmax),
+             ( dom.rmax*hextend, -(vextend-1)*dom.zmax)])
+
+    # plots = map(zip(frames, ϕs, Ts, Tvws, Tshs)) do (t, ϕ, T, Tvw, Tsh)
+    if (T[1] - clims[1])/(clims[2]-clims[1]) > 0.65 # Tf relatively high
+        cont_c = :black
+    else
+        cont_c = :white
+    end
+    tr = round(t/3600, digits=2)
+
+    # Set up plot
+    pl = plot(aspect_ratio = :equal, showaxis=false,
+            xlim=(-1, 1) .* (dom.rmax*hextend) , ylim=(dom.zmin-(vextend-1)*dom.zmax, dom.zmax))
+    # plot temperatures
+    heatmap!(dom.rgrid, dom.zgrid, T', c=cmap, clims=clims, )
+    heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, T[end:-1:begin, :]', c=cmap, clims=clims) # plot reflected
+    # plot ice surface
+    plot!(LevelSet(ϕ, dom), c=cont_c)
+    # Plot shelf and wall Ts
+    plot!(lwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
+    plot!(rwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
+    plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
+    # Vial outline
+    plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
+    plot!(xlabel="t = $tr hr")
+#     plot!(colorbar_title=clab)
+    plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
+    plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
+    # end
+    return pl
+end
+
+function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
+    @unpack sol, dom = simresults
+
+    tf = sol.t[end]
+    nplots = prod(layout)
+    frames = range(tf*tstart, tf*tend, length=nplots)
+
+    Ts = map(frames) do f
+        u, Tf, T, p = calc_uTfTp_res(f, simresults, simconfig)
+        T .- 273.15
+    end
+    ϕs = map(frames) do f
+        reshape(simresults["sol"](f, idxs = 1:dom.nr*dom.nz), dom.nr, dom.nz)
+    end
+    Tvws = map(frames) do f
+        simresults["sol"](f, idxs = dom.nr*(dom.nz+1)+1) - 273.15
+    end
+    Tshs = map(frames) do f
+        Tsh = ustrip(u"°C", simconfig[:paramsd][3].Tsh(f*u"s"))
+    end
+
+    if clims === nothing
+        cmax = max(maximum(maximum.(Ts)), maximum(Tvws), maximum(Tshs))
+        cmin = min(minimum(minimum.(Ts)), minimum(Tvws), minimum(Tshs))
+        clims = (cmin, cmax)
+    end
+
+    # cmap = :plasma
+    cmap = :linear_bmy_10_95_c78_n256
+    cg = cgrad(cmap)
+    cpick = x->cg[(x-clims[1])/(clims[2]-clims[1])]
+
+    lwall = Plots.Shape([(-dom.rmax-2.5dom.dr, dom.zmax), 
+             (-dom.rmax-2.5dom.dr, 0),
+             (-dom.rmax, 0),
+             (-dom.rmax, dom.zmax)])
+    rwall = Plots.Shape([( dom.rmax+2.5dom.dr, dom.zmax), 
+             ( dom.rmax+2.5dom.dr, 0),
+             ( dom.rmax, 0),
+             ( dom.rmax, dom.zmax)])
+    shelf = Plots.Shape([( dom.rmax+2.5dom.dr, 0), 
+             (-dom.rmax-2.5dom.dr, 0),
+             (-dom.rmax-2.5dom.dr, -2.5dom.dz),
+             ( dom.rmax+2.5dom.dr, -2.5dom.dz)])
+
+    plots = map(zip(frames, ϕs, Ts, Tvws, Tshs)) do (t, ϕ, T, Tvw, Tsh)
+        if (T[1] - clims[1])/(clims[2]-clims[1]) > 0.65 # Tf relatively high
+            cont_c = :black
+        else
+            cont_c = :white
+        end
+        tr = round(t/3600, digits=2)
+
+        # Set up plot
+        pl = plot(aspect_ratio = :equal, showaxis=false,
+             xlim=(-1, 1) .* (dom.rmax+2.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
+        # plot temperatures
+        heatmap!(dom.rgrid, dom.zgrid, T', c=cmap, clims=clims, cbar=nothing)
+        heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, T[end:-1:begin, :]', c=cmap, clims=clims, cbar=nothing) # plot reflected
+        # plot ice surface
+        plot!(LevelSet(ϕ, dom), c=cont_c)
+        # Plot shelf and wall Ts
+        plot!(lwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
+        plot!(rwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
+        plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
+        # Vial outline
+        plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
+        plot!(xlabel="t = $tr hr")
+    #     plot!(colorbar_title=clab)
+        plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
+        plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
+    end
+    l = @layout [grid(layout...) a{0.03w}]
+
+    c2 = plot([Inf], [Inf], zcolor=[Inf], clims=clims,
+                 xlims=(1,1.1), label="", c=cmap, colorbar_title="Temperature [°C]", framestyle=:none)
+
+    p_all = plot(plots..., c2, layout=l, link=:all)
+
+    plsize = ((2*dom.rmax/dom.zmax)*200 * layout[2], 200*layout[1])
+    plot!(size=plsize)
 end
 
 function finalframe(simresults, simconfig; kwargs...)
@@ -249,14 +378,14 @@ Return a 2x3 plot of simulation results from start to finish.
 `simresults` should have a field `"sol"` , which is passed to `get_ϕ(sol, t, dom::Domain)` .  
 `heatvar` determines what is plotted as a heatmap in the results (`:T` or `:ϕ`, currently.)
 """
-function summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
+function summaryplot(simresults::Dict, simconfig; layout=(3,2), tstart=0, tend=0.95, heatvar=:T)
     @unpack sol, dom = simresults
 
     tf = sol.t[end]
 
     plots = []
     nplots = prod(layout)
-    frames = range(0.0, tf*0.95, length=nplots)
+    frames = range(tf*tstart, tf*tend, length=nplots)
 
     max_heat = 250.0
     min_heat = 250.0
@@ -292,7 +421,6 @@ Pass either `:p` or `:T` as `heatvar`. Passing `ϕ` will probably cause filename
 """
 function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T, clims=nothing)
     @unpack sol, dom = simresults
-    @unpack cparams= simconfig
 
     tf = sol.t[end]
 
@@ -310,6 +438,52 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=
     end
 
     # fps = ceil(Int, nt/2)  # nt/x makes x-second long animation
-    fname = "$(casename)_$(heatvar)_$(hash(simconfig))_evol.gif"
-    gif(anim, plotsdir(fname), fps=fps)
+    fname = "$(casename)_$(heatvar)_$(hash(simconfig))_evol.mp4"
+    mp4(anim, plotsdir(fname), fps=fps)
+end
+
+
+@userplot TPlotModel
+@recipe function f(tpm::TPlotModel)
+    time, Ts = tpm.args
+    step = size(time, 1) ÷ 10
+    n = size(Ts, 1)
+    pal = palette(:Oranges_4, rev=true) 
+    # pal = [RGB{Float64}(0.031,0.318,0.612), 
+    #        RGB{Float64}(0.192,0.51,0.741), 
+    #        RGB{Float64}(0.42,0.682,0.839), 
+    #        RGB{Float64}(0.741,0.843,0.906)]
+    
+    for i in axes(Ts, 2)
+        T = Ts[:,i]
+        @series begin
+            seriestype := :samplemarkers
+            step := step
+            offset := step÷n *(i-1) + 1
+            markersize --> 7
+            seriescolor --> pal[i]
+            if T == :dummy
+                return [Inf], [Inf]
+            else
+                return time, T
+            end
+        end
+    end
+end
+
+@userplot TPlotModVW
+@recipe function f(tpmv::TPlotModVW)
+    time, T = tpmv.args
+    step = size(time, 1) ÷ 10
+    color = palette(:Oranges_4)[end]
+    
+    @series begin
+        seriestype := :samplemarkers
+        step := step
+        markershape --> :dtriangle
+        markersize --> 7
+        seriescolor --> color
+        linestyle := :dash
+        time, T
+    end
 end

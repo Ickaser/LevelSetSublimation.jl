@@ -42,8 +42,3 @@ CurrentModule = LevelSetSublimation
 - [`𝒢_weno`](@ref) , wrapped by `𝒢_weno_all`
     - Used in [`reinitialize_ϕ_HCR!`](@ref)
     - Godunov's scheme for the norm of gradient, using WENO derivatives
-
-## Obsolete Methods
-- [`𝒢_1st`](@ref) , wrapped by `𝒢_1st_all`
-    - No longer implemented in any reinitialization scheme, since is lower-order than WENO method. Retained only for purposes of sanity checks
-    - Godunov's scheme for the norm of gradient using first-order upwind derivatives

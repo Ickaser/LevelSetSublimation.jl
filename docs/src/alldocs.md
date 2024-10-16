@@ -1,5 +1,5 @@
 # Unfiltered List of All Documented Functions
 
-```@autodocs
+```@autodocs; canonical=false
 Modules = [LevelSetSublimation]
 ```
