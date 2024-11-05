@@ -415,7 +415,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
                 end
 
-                sumfluxes += QRFf*vol # No A_l*kf*dTfdr becuase dTfdr=0
+                sumfluxes += QRFf[ir]*vol # No A_l*kf*dTfdr becuase dTfdr=0
                 # Write the energy balance differently for this case
                 dTfdt[ir] = sumfluxes/vol/ρf/Cpf
                 continue
@@ -471,7 +471,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 end
 
                 A_l = dom.rgrid[ir] * Δξ[ir] *2π
-                sumfluxes += -A_l*kf*dTfdr + QRFf*vol
+                sumfluxes += -A_l*kf*dTfdr + QRFf[ir]*vol
                 # Write the energy balance differently for this case
                 dTfdt[ir] = sumfluxes/vol/ρf/Cpf
                 continue
@@ -509,7 +509,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
             A_l = (dom.rgrid[ir] + 0.5dom.dr) * (Δξ[ir+1] + Δξ[ir])/2 *2π
             dTfdr = (Tf[ir+1] - Tf[ir])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
-            sumfluxes +=  A_l*kf*dTfdr + QRFf*vol
+            sumfluxes +=  A_l*kf*dTfdr + QRFf[ir]*vol
             # Write the energy balance differently for this case
             dTfdt[ir] = sumfluxes/vol/ρf/Cpf
             continue
@@ -540,7 +540,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
             A_l = (dom.rgrid[ir] - 0.5dom.dr) * (Δξ[ir-1] + Δξ[ir])/2 *2π
             dTfdr = (Tf[ir] - Tf[ir-1])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
-            sumfluxes += -A_l*kf*dTfdr + QRFf*vol
+            sumfluxes += -A_l*kf*dTfdr + QRFf[ir]*vol
             # Write the energy balance differently for this case
             dTfdt[ir] = sumfluxes/vol/ρf/Cpf
             continue
@@ -595,10 +595,10 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
 
         r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
-        dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + QRFf + 
+        dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + QRFf[ir] + 
             (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
         # if ir ∈ [dom.nr-2, dom.nr-1, dom.nr] && Δξ[dom.nr] <= 5e-4
-        #     @info "right edge" ir kf*r1*dTfdr kf*d2Tfdr2 QRFf top_bound_term bot_bound_term Δξ[ir] dTfdt[ir] dξdr q
+        #     @info "right edge" ir kf*r1*dTfdr kf*d2Tfdr2 QRFf[ir] top_bound_term bot_bound_term Δξ[ir] dTfdt[ir] dξdr q
         # end
 
         # isnan(dTfdt[ir]) && @info "NaN in dTfdt" dTfdr d2Tfdr2 top_bound_term bot_bound_term Δξ[ir]

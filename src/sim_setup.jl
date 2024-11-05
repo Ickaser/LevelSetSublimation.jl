@@ -230,8 +230,8 @@ end
 
 function nondim_param(tcp, pk)
     p = getfield(tcp, pk)
-    if varname == :ϵpp_f
-        var_ndim = (T,f)->ustrip(PBD[varname], tcp.ϵpp_f(T*PBD[:Tsh], f*PBD[:f_RF]))
+    if pk == :εpp_f
+        var_ndim = (T,f)->ustrip(PBD[pk], tcp.εpp_f(T*PBD[:Tsh], f*PBD[:f_RF]))
         return var_ndim
     end
     if (length(p) > 1) 
