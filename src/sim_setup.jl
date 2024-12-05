@@ -91,7 +91,7 @@ $(FIELDS)
     "Density of frozen material (taken as water ice)."
     ρf = ρ_ice 
     "Heat capacity of frozen material (taken as water ice)."
-    Cpf = Cp_ice
+    Cpf = cp_ice
     "Thermal conductivity of frozen material."
     kf = LevelSetSublimation.kf
     "Molecular weight of sublimating species (defaults to water)."
