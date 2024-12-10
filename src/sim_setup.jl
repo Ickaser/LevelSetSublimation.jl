@@ -101,7 +101,7 @@ $(FIELDS)
     "Heat of sublimation of sublimating species (defaults to water); give as positive number."
     ΔH = LevelSetSublimation.ΔH
     "Dielectric loss coefficient of frozen layer (defaults to water ice)."
-    εpp_f = LevelSetSublimation.εpp_f
+    εpp_f = LyoPronto.εpp_f
     "Dielectric loss coefficient of dry layer (defaults to 0)."
     εpp_d = 0.0
 end
@@ -113,7 +113,7 @@ An instance of [`PhysicalProperties`](@ref) with default values.
 const base_props = PhysicalProperties()
 
 """
-    TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_rad, B_d, B_f, B_vw)
+    TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_v, B_d, B_f, B_vw)
 
 A struct for holding physical properties which are likely to change from case to case.
 
@@ -138,8 +138,8 @@ struct TimeConstantProperties
     Kvwf 
     "vial mass"
     m_v 
-    "radiative area for vial wall-shelf heat transfer"
-    A_rad 
+    "total vial-bottom area, used for heat transfer"
+    A_v 
     # Microwave
     "Ω/m^2, dry layer field strength coefficient"
     B_d 
@@ -292,7 +292,7 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     :kd => u"W/m/K",
     :Kvwf => u"W/m^2/K",
     :m_v => u"kg", # vial mass
-    :A_rad =>u"m^2", # radiative area for vial wall-shelf heat transfer
+    :A_v =>u"m^2", # radiative area for vial wall-shelf heat transfer
     :B_d => u"Ω/m^2", # dry layer field strength
     :B_f =>u"Ω/m^2", # frozen layer field strength coefficient
     :B_vw =>u"Ω/m^2", # vial wall field strength coefficient
@@ -330,13 +330,13 @@ function make_M1_properties()
     kd = k_sucrose * (1-ϵ)
     Kvwf = 24.7 *u"W/K/m^2" 
     m_v = LyoPronto.get_vial_mass("6R")
-    A_rad = π*LyoPronto.get_vial_radii("6R")[2]^2
+    A_v = π*LyoPronto.get_vial_radii("6R")[2]^2
     # Microwave
     B_d = 0.0u"Ω/m^2"
     B_f = 2.8e8u"Ω/m^2"
     B_vw = 4.6e6u"Ω/m^2"
 
-    tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_rad, B_d, B_f, B_vw)
+    tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_v, B_d, B_f, B_vw)
 
     # ----- Properties which may change in time
     f_RF = RampedVariable(8.0u"GHz")

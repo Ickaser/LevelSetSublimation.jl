@@ -28,7 +28,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     Tvw = u[iTvw(dom)]
 
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
-    @unpack A_rad, m_v = params[2]
+    @unpack A_v, m_v = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if minimum(ϕ) > 0 # No ice left
@@ -64,7 +64,8 @@ function dudt_heatmass!(du, u, integ_pars, t)
 
     # Compute time derivative for Tvw
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    A_p = π*dom.rmax^2
+    Q_shvw = (A_v-A_p) * params[3].Kshf * (params[3].Tsh - Tvw)
     dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
     if verbose && eltype(u) <: Float64
@@ -89,7 +90,7 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
 
     ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
-    @unpack A_rad, m_v = params[2]
+    @unpack A_v, m_v = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(Tf .< 0)
@@ -134,8 +135,8 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    # dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
-    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    A_p = π*dom.rmax^2
+    Q_shvw = (A_v-A_p) * params[3].Kshf * (params[3].Tsh - Tvw)
     dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
 
@@ -165,7 +166,7 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
 
     ϕ, Tf, Tvw = ϕ_T_from_u_view(u, dom)
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
-    @unpack A_rad, m_v = params[2]
+    @unpack A_v, m_v = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(Tf .< 0)
@@ -201,8 +202,8 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    # dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
-    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    A_p = π*dom.rmax^2
+    Q_shvw = (A_v-A_p) * params[3].Kshf * (params[3].Tsh - Tvw)
     dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
     for ind in CartesianIndices(ϕ)

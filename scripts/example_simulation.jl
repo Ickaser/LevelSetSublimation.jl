@@ -36,13 +36,13 @@ l = sqrt(base_props.R*Tguess/base_props.Mw) / A1 # Constant in height
 kd = LevelSetSublimation.k_sucrose*(1-ϵ)
 Kvwf = 20.0u"W/m^2/K"
 m_v = get_vial_mass(vialsize)
-A_rad = get_vial_radii(vialsize)[2]^2 *π
+A_v = get_vial_radii(vialsize)[2]^2 *π
 B_d = 0u"Ω/m^2"
 B_f = 5e7u"Ω/m^2"
 B_vw = 2e6u"Ω/m^2"
 
 tcp = TimeConstantProperties(ϵ, l, κ, Rp0,
-                            kd, Kvwf, m_v, A_rad,
+                            kd, Kvwf, m_v, A_v,
                             B_d, B_f, B_vw)
 
 # ------------------------------
