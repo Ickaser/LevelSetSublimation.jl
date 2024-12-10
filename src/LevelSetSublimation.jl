@@ -10,7 +10,10 @@ using SteadyStateDiffEq
 @reexport using Plots
 @reexport using Unitful
 @reexport using LaTeXStrings
-using CSV
+@reexport using CSV
+@reexport using TypedTables
+@reexport using PrettyTables
+@reexport using StatsPlots: @df
 using Contour: contour, lines, coordinates
 using LinearAlgebra: norm, Diagonal
 using UnicodePlots: spy
@@ -22,7 +25,7 @@ using DocStringExtensions
 using Parameters
 
 @reexport using LyoPronto
-const calc_psub = LyoPronto.calc_psub
+import LyoPronto: calc_psub
 export calc_psub
 
 const CI = CartesianIndex
