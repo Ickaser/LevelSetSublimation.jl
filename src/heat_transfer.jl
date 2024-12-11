@@ -384,7 +384,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     if all(has_ice) # If all ice present, use all DOF
 
         prob = NonlinearProblem(resid!, Tf_g)
-        sol = solve(prob, NewtonRaphson(), abstol=1e-4)
+        sol = solve(prob, NewtonRaphson(), abstol=1e-6) # Allowing some error (in K/s) makes things much, much faster.
         # prob = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
@@ -411,7 +411,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         end
 
         prob = NonlinearProblem(resid_lessdof!, Tf_trim)
-        sol = solve(prob, NewtonRaphson(), abstol = 1e-4)
+        sol = solve(prob, NewtonRaphson(), abstol = 1e-6)
         # prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
