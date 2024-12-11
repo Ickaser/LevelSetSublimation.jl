@@ -97,7 +97,7 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(Tf .< 0)
-        @info "Negative temperatures passed"
+        verbose && @info "Negative temperatures passed"
         du .= NaN
         return
     end
@@ -170,7 +170,7 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(Tf .< 0)
-        @info "Negative temperatures passed"
+        verbose && @info "Negative temperatures passed"
         du .= NaN
         return
     end
