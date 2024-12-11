@@ -5,7 +5,7 @@ Stores information on the grid and domain size for simulation.
 
 **Constructors:**  
 ```julia
-Domain(simconfig::Dict) 
+Domain(config::Dict) 
 Domain(nr, nz, rmax, zmax) 
 Domain(nr, nz, rmax, zmax, bwfrac)
 Domain(nr, nz, rmin, rmax, zmin, zmax)
@@ -64,9 +64,9 @@ end
 # For convenience, extend `size` for Domains
 Base.size(d::Domain) = (d.nr, d.nz)
 
-function Domain(simconfig::Dict)
-    @unpack vialsize, fillvol = simconfig
-    simgridsize = get(simconfig, :simgridsize, (51,51))
+function Domain(config::Dict)
+    @unpack vialsize, fillvol = config
+    simgridsize = get(config, :simgridsize, (51,51))
 
     r_vial = get_vial_radii(vialsize)[1]
     Ap = π * r_vial^2

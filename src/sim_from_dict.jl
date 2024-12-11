@@ -215,7 +215,8 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
         # @info "fixed"
         # sol = solve(prob, SSPRK33(), dt=60, callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Fixed timestepping: 1 minute
         sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); ) # Adaptive timestepping: default
-        sim = (sol=sol, dom=dom, config=config, Tf=saved_Tf)
+        Tf_interp = interp_saved_Tf(saved_Tf)
+        sim = (sol=sol, dom=dom, config=config, Tf=Tf_interp)
     elseif dudt_func == dudt_heatmass_dae!
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
         massmat = Diagonal(vcat(ones(dom.nr*dom.nz), zeros(dom.nr), [1]))

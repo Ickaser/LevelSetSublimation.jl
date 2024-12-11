@@ -2,31 +2,23 @@ export calc_uϕTp_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopr
 export get_subf_z, get_subf_r, get_ϕ, get_SA
 export virtual_thermocouple
 
-function get_t_Tf(sim::NamedTuple)
+function get_t_Tf(sim)
     @unpack sol, dom, config = sim
-    if sol isa CombinedSolution
-    
-    elseif config[:dudt_func] == dudt_heatmass!
-        saved = sim.Tf
-        t = saved.t .* u"s"
-        Tf = saved.saveval .* u"K"
-    else
-        t = sol.t .* u"s"
-        Tf = sol[iTf(dom)[1],:] .* u"K"
+    t = sol.t * u"s"
+    Tf = map(sol.t) do ti
+        Tfr = calc_Tf_res(ti, sim)
+        return Tfr[1]*u"K"
     end
     return t, Tf
 end
 
-function get_t_Tf_subflux(simresults::Dict, simconfig::Dict)
-    @unpack sol, dom = simresults
-    t = sol.t .* u"s"
-    Tf_g = fill(245.0, dom.nr)
-    Tf = sol[iTf(dom)[1],:] .* u"K"
-    md = map(sol.t) do ti
-        params = calc_params_at_t(ti, simconfig)
-        uTfTp = calc_uTfTp_res(ti, simresults, simconfig, Tf0=Tf_g)
-        Tf_g = uTfTp[2]
-        Tfi = uTfTp[1][iTf(dom)]
+function get_t_Tf_subflux(sim)
+    @unpack sol, dom = sim
+    t, Tf = get_t_Tf(sim)
+    mdt = map(sol.t) do ti
+        params = calc_params_at_t(ti, sim.config)
+        uTfTp = calc_uTfTp_res(ti, sim)
+        Tfi = uTfTp[2]
         md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(md) == -1
             @info "md=$md" ti Tfi calc_psub(Tfi)
@@ -34,29 +26,24 @@ function get_t_Tf_subflux(simresults::Dict, simconfig::Dict)
         md = max(zero(md), md)
         md
     end
-    return t, Tf, md
+    return t, Tf, mdt
 end
 
-function compare_lyopronto_res(simresults::Dict, simconfig::Dict)
-    @unpack sol, dom = simresults
-    t = uconvert.(u"hr", sol.t .* u"s")
-    return compare_lyopronto_res(t, simresults, simconfig)
+function compare_lyopronto_res(sim)
+    t = uconvert.(u"hr", sim.sol.t .* u"s")
+    return compare_lyopronto_res(t, sim)
 end
 
-function compare_lyopronto_res(ts, simresults::Dict, simconfig::Dict)
-    @unpack sol, dom = simresults
-    # t = uconvert.(u"hr", sol.t .* u"s")
+function compare_lyopronto_res(ts, sim)
+    @unpack sol, dom, config = sim
     ts_ndim = ustrip.(u"s", ts)
     # Tf = sol(ts_ndim, idxs=dom.ntot+1).u .* u"K"
-    Tf_g = fill(245.0, dom.nr)
-    Tf = similar(ts_ndim)
+    Tf = similar(ts_ndim)*u"K"
     md = similar(ts_ndim).*u"kg/s"
     for (i, ti) in enumerate(ts_ndim)
-        params = calc_params_at_t(ti, simconfig)
-        uTfTp = calc_uTfTp_res(ti, simresults, simconfig, Tf0=Tf_g)
-        Tf_g = uTfTp[2]
-        # Tfi = uTfTp[1][iTf(dom)]
-        Tf[i] = uTfTp[3][1,1]
+        params = calc_params_at_t(ti, sim)
+        uTfTp = calc_uTfTp_res(ti, sim)
+        Tf[i] = uTfTp[3][1,1]*u"K"
         mdi = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(mdi) == -1
             @info "md=$mdi" ti Tfi calc_psub(Tfi)
@@ -90,43 +77,46 @@ function gen_anim(config, var=:T, casename="test")
     return simres
 end
 
-function calc_params_at_t(t::TT, simconfig::Dict) where TT<:Number
-    @unpack paramsd = simconfig
+function calc_params_at_t(t::TT, sim::Dict) where TT<:Number
+    @unpack paramsd = sim.config
     
     params = params_nondim_setup(paramsd)
 
     return (params[1], params[2], params[3](t))
 end
 
-function calc_uϕTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
-    @unpack sol, dom = simresults
-    u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)    
-    ϕ = reshape(u[iϕ(dom)], size(dom))
-    return u, ϕ, T, p
-end
-
-
 """
-    calc_uTfTp_res(t::Float64, sim; Tf0=nothing)
+    interp_saved_Tf(saved_Tf)
+
+Thin wrapper around SplineInterpolation for a set of SavedValues of Tf.
+Useful so that I use the same interpolation everywhere it shows up.
 """
-function calc_uTfTp_res(t::TT, sim; Tf0=nothing) where TT<:Number
-    @unpack sol, dom, config = sim
-    params = calc_params_at_t(t, config)
-    
-    u = sol(t)
+interp_saved_Tf(saved_Tf) = SplineInterpolation(saved_Tf.saveval, saved_Tf.t)
+
+function calc_Tf_res(t, sim)
+    @unpack sol, dom = sim
     if sol isa CombinedSolution
-        # Handle the CombinedSolution
+        if t <= sol.tsplit
+            Tf = sol.sol1(t, idxs=iTf(dom))
+        else
+            Tf = sol.Tf(t)
+        end
     elseif haskey(sim, :Tf)
-        Tf = sim.Tf.savedval
-    else # 
+        Tf = sim.Tf(t)
+    else # Used a DAE or implicit solve
         Tf = sol(t, idxs=iTf(dom))
     end
-    # Tf = sol(t, idxs=iTf(dom))
+end
 
+"""
+    calc_uTfTp_res(t, sim; Tf0=nothing)
+"""
+function calc_uTfTp_res(t, sim)
+    @unpack sol, dom, config = sim
+    params = calc_params_at_t(t, config)
+    u = sol(t)
+    Tf = calc_Tf_res(t, sim)
     T = solve_T(u, Tf, dom, params)
-    # if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatonly!
-    #     return u, Tf, T, zeros(size(dom))
-    # end
     p = solve_p(u, Tf, T, dom, params)
     return u, Tf, T, p
 end
@@ -135,9 +125,8 @@ function virtual_thermocouple(sim::NamedTuple)
     virtual_thermocouple([(0, 0)], sim)
 end
 function virtual_thermocouple(locs, sim::NamedTuple)
-    simt = sim.sol.t
     # Avoid the very last time--tends to be poorly-behaved
-    # evalt = range(0.0, simt[end]*0.99, length=100)
+    # evalt = range(0.0, sim.sol.t[end]*0.99, length=100)
     virtual_thermocouple(locs, sim.sol.t, sim)
 end
 function virtual_thermocouple(locs, t, sim::NamedTuple)
@@ -157,16 +146,10 @@ function virtual_thermocouple(locs, t, sim::NamedTuple)
     Tdat = map(t) do ti 
         params = calc_params_at_t(ti, config)
         u = sol(ti)
-        # if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
-        #     Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
-        # elseif haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_implicit!
-        #     Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
-        # else
-        #     Tf = pseudosteady_Tf(u, dom, params, Tf)
-        # end
-        Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
+        Tf = calc_Tf_res(ti, sim)
         T = solve_T(u, Tf, dom, params)
         Tloc = T[inds]
+        return Tloc
     end
     return stack(Tdat)'
 end

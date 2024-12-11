@@ -62,7 +62,7 @@ sol = sim.sol
 # plot!(tsol, Tf_sol, c=2)
 tsol = range(0, sol.t[end], 50) *u"s"
 locx, locy = [0.0, 0.8, 0.1, 0.5], [0.00, 0.1, 0.5, 0.9]
-Tf_sol = virtual_thermocouple(locx, locy, ustrip.(u"s", tsol), sim["res"], sim["config"]).*u"K"
+Tf_sol = virtual_thermocouple(locx, locy, ustrip.(u"s", tsol), sim).*u"K"
 Tvw_m = sol.(ustrip.(u"s", tsol), idxs=2653).*u"K"
 
 default(:fontfamily, "Helvetica")
@@ -86,10 +86,10 @@ plot!(size=(500,400))
 end
 savefig(plotsdir("multiT.svg"))
 
-pl, T = plotframe(38000.0, sim["res"], sim["config"])
+pl, T = plotframe(38000.0, sim)
 pl;
 texts = [text("\$T_\\textrm{f$i}\$", "Computer Modern") for i in 1:4]
-dom = sim["res"]["dom"]
+dom = sim.dom
 plot()
 plot!(xlabel="");
 scatter!(pl, dom.rmax.*locx, dom.zmax.*locy, c=5:8, label="", markersize=20);
@@ -99,8 +99,8 @@ savefig(pl, plotsdir("virtual_thermocouple.svg"))
 # for fname in [fname_sim1, fname_sim2, fname_sim3]
 # stuff = map([fname_sim2, fname_sim3]) do fname
 #     sim = load(datadir("sims", fname))
-#     t = sim["res"]["sol"].t
-#     # T = @time virtual_thermocouple(sim["res"], sim["config"])
+#     t = sim.sol.t
+#     # T = @time virtual_thermocouple(sim)
 #     # (sim, t, T)
 # end
 
