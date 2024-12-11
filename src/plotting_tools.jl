@@ -164,7 +164,7 @@ Unpack simulation results and plot the state at time `t`.
 `heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
-function plotframe(t::Float64, sim; heatvar=:T, Tf0=nothing, clims=nothing)
+function plotframe(t, sim; heatvar=:T, clims=nothing)
     @unpack sol, dom = sim
 
     if heatvar == :ϕ 
@@ -179,7 +179,7 @@ function plotframe(t::Float64, sim; heatvar=:T, Tf0=nothing, clims=nothing)
         if isnothing(Tf0)
             Tf0 = fill(245.0, dom.nr)
         end
-        u, Tf, T, p = calc_uTfTp_res(t, sim; Tf0=Tf0)
+        u, Tf, T, p = calc_uTfTp_res(t, sim)
         ϕ = reshape(u[iϕ(dom)], size(dom))
         T .-= 273.15
         Tvw = u[iTvw(dom)] - 273.15
@@ -190,7 +190,7 @@ function plotframe(t::Float64, sim; heatvar=:T, Tf0=nothing, clims=nothing)
         if isnothing(Tf0)
             Tf0 = fill(245.0, dom.nr)
         end
-        u, Tf, T, p = calc_uTfTp_res(t, sim; Tf0=Tf0)
+        u, Tf, T, p = calc_uTfTp_res(t, sim)
         ϕ = reshape(u[iϕ(dom)], size(dom))
         # T = solve_T(u, dom, params)
         # p = solve_p(u, T, dom, params, p0)
@@ -295,7 +295,7 @@ function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
         T .- 273.15
     end
     ϕs = map(frames) do f
-        reshape(sim.sol(f, idxs = 1:dom.nr*dom.nz), dom.nr, dom.nz)
+        reshape(sim.sol(f, idxs = iϕ(dom)), dom.nr, dom.nz)
     end
     Tvws = map(frames) do f
         sim.sol(f, idxs = dom.nr*(dom.nz+1)+1) - 273.15
@@ -470,7 +470,7 @@ end
     sim, locs = vtp.args
     time = sim.sol.t*u"s"
     Tfs = virtual_thermocouple(locs, sim)*u"K"
-    Tvw = sim.sol[end,:]*u"K"
+    Tvw = sim.sol.(sim.sol.t, idxs=iTvw(sim.dom))*u"K"
     @series begin
         TPlotModel((time, Tfs))
     end
@@ -479,6 +479,39 @@ end
     end
 end
 
+@userplot PlaceThermocouples
+@recipe function f(pt::PlaceThermocouples)
+    dom, locs = pt.args
+    locr = [loc[1] for loc in locs]
+    locz = [loc[2] for loc in locs]
+    @series begin
+        seriestype := :scatter
+        markersize --> 7
+        dom.rmax.*locr, dom.zmax.*locz
+    end
+end
+
+@userplot LabelThermocouples
+@recipe function f(lt::LabelThermocouples; labels = nothing)
+    dom, locs, labels = lt.args
+    if isnothing(labels)
+        @info "check" labels
+        texts = [text(L"$T_text{f%$i}$", size=10) for i in 1:length(locs)]
+    else
+        texts = labels
+    end
+    locr = [loc[1] for loc in locs]
+    locz = [loc[2] for loc in locs]
+    @series begin
+        @info "check" texts
+        seriestype := :scatter
+        markeralpha := 0
+        primary := false
+        text
+        series_annotations := texts
+        return dom.rmax.*locr, dom.zmax.*locz
+    end
+end
 
 @userplot TPlotModVW
 @recipe function f(tpmv::TPlotModVW)

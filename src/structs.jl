@@ -139,11 +139,11 @@ end
 
 CombinedSolution(sol1, sol2) = CombinedSolution(sol1, sol2, sol1.t[end], length(sol1.t), vcat(sol1.t, sol2.t), vcat(sol1.u, sol2.u), nothing)
 CombinedSolution(sol1, sol2, Tf2) = CombinedSolution(sol1, sol2, sol1.t[end], length(sol1.t), vcat(sol1.t, sol2.t), vcat(sol1.u, sol2.u), Tf2)
-function (cs::CombinedSolution)(t) 
+function (cs::CombinedSolution)(t; kwargs...) 
     if t <= cs.tsplit
-        return cs.sol1(t)
+        return cs.sol1(t; kwargs...)
     else
-        return cs.sol2(t)
+        return cs.sol2(t; kwargs...)
     end
 end
 function Base.getindex(cs::CombinedSolution, i)

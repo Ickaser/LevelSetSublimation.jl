@@ -41,7 +41,7 @@ function compare_lyopronto_res(ts, sim)
     Tf = similar(ts_ndim)*u"K"
     md = similar(ts_ndim).*u"kg/s"
     for (i, ti) in enumerate(ts_ndim)
-        params = calc_params_at_t(ti, sim)
+        params = calc_params_at_t(ti, sim.config)
         uTfTp = calc_uTfTp_res(ti, sim)
         Tf[i] = uTfTp[3][1,1]*u"K"
         mdi = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
@@ -77,11 +77,9 @@ function gen_anim(config, var=:T, casename="test")
     return simres
 end
 
-function calc_params_at_t(t::TT, sim::Dict) where TT<:Number
-    @unpack paramsd = sim.config
-    
+function calc_params_at_t(t, config) where TT<:Number
+    @unpack paramsd = config
     params = params_nondim_setup(paramsd)
-
     return (params[1], params[2], params[3](t))
 end
 
@@ -99,7 +97,7 @@ function calc_Tf_res(t, sim)
         if t <= sol.tsplit
             Tf = sol.sol1(t, idxs=iTf(dom))
         else
-            Tf = sol.Tf(t)
+            Tf = sol.Tf2(t)
         end
     elseif haskey(sim, :Tf)
         Tf = sim.Tf(t)
