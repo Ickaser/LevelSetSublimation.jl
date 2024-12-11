@@ -16,7 +16,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params_vary = integ_pars[2]
     verbose = integ_pars[3]
-    Tf_last = integ_pars[4]
+    saved_Tf = integ_pars[4]
 
     params = params_vary(t)
 
@@ -42,12 +42,15 @@ function dudt_heatmass!(du, u, integ_pars, t)
         return nothing
     end
 
-    Tf_g = Tf_last
+    # Tf_g = Tf_last
     # Tf_g = u[iTf(dom)]
+    Tf_g = Tf_guess(u[iTf(dom)], t, saved_Tf)
     Tf = pseudosteady_Tf(u, dom, params, Tf_g)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
-    integ_pars[4] .= Tf
+
+    # Save the computed Tf here, as well as in the callback
+    # integ_pars[4] .= Tf
 
     vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
@@ -143,9 +146,6 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
 
     if verbose &&  eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-        # if dryfrac < 0.00034 && dryfrac > 0.00033
-            @info "check" p[1,:] p[:,end-2:end]
-        # end
         Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tvw[1] params[3].Tsh extrema(Δξ) extrema(dTf)
     end

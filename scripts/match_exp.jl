@@ -53,10 +53,10 @@ Tsh_rv = RampedVariable(uconvert.(u"K", [-40u"°C", 10u"°C"]).+0.0u"K", [0.5u"K
 
 
 
-sim = load(datadir("sims", "2024-04-11.jld2"))
-sim = load(datadir("sims", "M1_10658494824944108369.jld2"))
+sim = load(datadir("sims", "2024-04-11.jld2"))["sim"]
+sim = load(datadir("sims", "M1_10658494824944108369.jld2"))["sim"]
 
-sol = sim["res"]["sol"]
+sol = sim.sol
 # @unpack Tf_sol = sim
 # Tf_sol *= u"K"
 # plot!(tsol, Tf_sol, c=2)

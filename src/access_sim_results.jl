@@ -2,10 +2,18 @@ export calc_uϕTp_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopr
 export get_subf_z, get_subf_r, get_ϕ, get_SA
 export virtual_thermocouple
 
-function get_t_Tf(simresults::Dict)
-    @unpack sol, dom = simresults
-    t = sol.t .* u"s"
-    Tf = sol[iTf(dom)[1],:] .* u"K"
+function get_t_Tf(sim::NamedTuple)
+    @unpack sol, dom, config = sim
+    if sol isa CombinedSolution
+    
+    elseif config[:dudt_func] == dudt_heatmass!
+        saved = sim.Tf
+        t = saved.t .* u"s"
+        Tf = saved.saveval .* u"K"
+    else
+        t = sol.t .* u"s"
+        Tf = sol[iTf(dom)[1],:] .* u"K"
+    end
     return t, Tf
 end
 
@@ -99,21 +107,21 @@ end
 
 
 """
-    calc_uTfTp_res(t::Float64, simresults::Dict, simconfig::Dict; Tf0=nothing)
+    calc_uTfTp_res(t::Float64, sim; Tf0=nothing)
 """
-function calc_uTfTp_res(t::TT, simresults::Dict, simconfig::Dict; Tf0=nothing) where TT<:Number
-    @unpack sol, dom = simresults
-    params = calc_params_at_t(t, simconfig)
+function calc_uTfTp_res(t::TT, sim; Tf0=nothing) where TT<:Number
+    @unpack sol, dom, config = sim
+    params = calc_params_at_t(t, config)
     
     u = sol(t)
-    # if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
-    #     Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
-    # elseif haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_implicit!
-    #     Tf = sol(t, idxs=(dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
-    # else
-    #     Tf = pseudosteady_Tf(u, dom, params, Tf0)
-    # end
-    Tf = sol(t, idxs=iTf(dom))
+    if sol isa CombinedSolution
+        # Handle the CombinedSolution
+    elseif haskey(sim, :Tf)
+        Tf = sim.Tf.savedval
+    else # 
+        Tf = sol(t, idxs=iTf(dom))
+    end
+    # Tf = sol(t, idxs=iTf(dom))
 
     T = solve_T(u, Tf, dom, params)
     # if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatonly!
@@ -123,36 +131,31 @@ function calc_uTfTp_res(t::TT, simresults::Dict, simconfig::Dict; Tf0=nothing) w
     return u, Tf, T, p
 end
 
-function virtual_thermocouple(simresults::Dict, simconfig::Dict) 
-    simt = simresults["sol"].t
+function virtual_thermocouple(sim::NamedTuple) 
+    virtual_thermocouple([(0, 0)], sim)
+end
+function virtual_thermocouple(locs, sim::NamedTuple)
+    simt = sim.sol.t
     # Avoid the very last time--tends to be poorly-behaved
-    evalt = range(0.0, simt[end]*0.99, length=100)
-    virtual_thermocouple(0, 0, evalt, simresults, simconfig)
+    # evalt = range(0.0, simt[end]*0.99, length=100)
+    virtual_thermocouple(locs, sim.sol.t, sim)
 end
-function virtual_thermocouple(t::TT, simresults::Dict, simconfig::Dict) where TT <: AbstractArray
-    virtual_thermocouple(0, 0, t, simresults, simconfig)
-end
-function virtual_thermocouple(rpos, zpos, simresults::Dict, simconfig::Dict)
-    simt = simresults["sol"].t
-    evalt = range(0.0, simt[end]*0.99, length=100)
-    virtual_thermocouple(rpos, zpos, evalt, simresults, simconfig)
-end
-function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Dict) where TT <: AbstractArray
-    if any(rpos .< 0) || any(rpos .> 1)
-        @error "Radial position of thermocouple should be given as number between 0 and 1 inclusive." rpos
-    elseif any(zpos .< 0) || any(zpos .> 1)
-        @error "Axial (vertical) position of thermocouple should be given as number between 0 and 1 inclusive." zpos
+function virtual_thermocouple(locs, t, sim::NamedTuple)
+    for loc in locs
+        if length(loc) != 2
+            @error "Each location should be a 2-tuple or similar."
+        end
+        if any(loc .< 0) || any(loc .> 1)
+            @error "Location, in r and z, should be given as number between 0 and 1 inclusive." loc
+        end
     end
-    if length(rpos) != length(zpos)
-        @error "Number of radial positions should match number of vertical positions." rpos zpos
+    @unpack sol, dom, config = sim
+
+    inds = map(locs) do (r,z)
+        CI(round(Int, r*(dom.nr-1))+1, round(Int, z*(dom.nz-1))+1)
     end
-    @unpack sol, dom = simresults
-    # Tf = fill(245.0, dom.nr)
-    ri = @. round(Int, rpos*(dom.nr-1)) + 1
-    zi = @. round(Int, zpos*(dom.nz-1)) + 1
-    inds = [CI(ir, iz) for (ir, iz) in zip(ri, zi)]
     Tdat = map(t) do ti 
-        params = calc_params_at_t(ti, simconfig)
+        params = calc_params_at_t(ti, config)
         u = sol(ti)
         # if haskey(simconfig, :dudt_func) && simconfig[:dudt_func] == dudt_heatmass_dae!
         #     Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
@@ -162,12 +165,12 @@ function virtual_thermocouple(rpos, zpos, t::TT, simresults::Dict, simconfig::Di
         #     Tf = pseudosteady_Tf(u, dom, params, Tf)
         # end
         Tf = sol(ti, idxs= (dom.nr*dom.nz+1):(dom.nr*(dom.nz+1)))
-        # @info "check" ti Tf[1]
         T = solve_T(u, Tf, dom, params)
         Tloc = T[inds]
     end
     return stack(Tdat)'
 end
+virtual_thermocouple(sim::Dict) = virtual_thermocouple(sim["sim"])
 
 """
     get_SA(res::Dict)

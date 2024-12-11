@@ -4,6 +4,7 @@ export LevelSet
 export summaryplot, resultsanim,  gen_sumplot, gen_anim
 export summaryT
 export plotframe, finalframe 
+export blankplothrC
 
 """
     heat(field, dom::Domain)
@@ -442,17 +443,14 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=
     mp4(anim, plotsdir(fname), fps=fps)
 end
 
+blankplothrC() = plot(u"hr", u"°C", ylabel = "Temperature", xlabel = "Time", unitformat=:square)
 
 @userplot TPlotModel
 @recipe function f(tpm::TPlotModel)
     time, Ts = tpm.args
     step = size(time, 1) ÷ 10
-    n = size(Ts, 1)
+    n = size(Ts, 2)
     pal = palette(:Oranges_4, rev=true) 
-    # pal = [RGB{Float64}(0.031,0.318,0.612), 
-    #        RGB{Float64}(0.192,0.51,0.741), 
-    #        RGB{Float64}(0.42,0.682,0.839), 
-    #        RGB{Float64}(0.741,0.843,0.906)]
     
     for i in axes(Ts, 2)
         T = Ts[:,i]
@@ -462,14 +460,25 @@ end
             offset := step÷n *(i-1) + 1
             markersize --> 7
             seriescolor --> pal[i]
-            if T == :dummy
-                return [Inf], [Inf]
-            else
-                return time, T
-            end
+            return time, T
         end
     end
 end
+
+@userplot VT_Plot
+@recipe function f(vtp::VT_Plot)
+    sim, locs = vtp.args
+    time = sim["res"]["sol"].t*u"s"
+    Tfs = virtual_thermocouple(locs, sim)*u"K"
+    Tvw = sim["res"]["sol"][end,:]*u"K"
+    @series begin
+        TPlotModel((time, Tfs))
+    end
+    @series begin
+        TPlotModVW((time, Tvw))
+    end
+end
+
 
 @userplot TPlotModVW
 @recipe function f(tpmv::TPlotModVW)

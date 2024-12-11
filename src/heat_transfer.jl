@@ -365,12 +365,9 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     @unpack kf, ρf, Cpf = params[1]
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
-    # Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
-    # @info "Tf solve" extrema(Δξ) extrema(Tf_g)
     if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
         return Tf_g
     end
-
     # function resid!(dTfdt, Tf)
     function resid!(dTfdt, Tf, unused_arg)
         if any(isnan.(Tf))
@@ -387,7 +384,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     if all(has_ice) # If all ice present, use all DOF
 
         prob = NonlinearProblem(resid!, Tf_g)
-        sol = solve(prob, NewtonRaphson())
+        sol = solve(prob, NewtonRaphson(), abstol=1e-4)
         # prob = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
@@ -413,12 +410,12 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             nothing
         end
 
-        prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
-        sol = solve(prob, DynamicSS(Rosenbrock23()))
-        # prob = NonlinearProblem(resid_lessdof!, Tf_trim)
-        # sol = solve(prob, NewtonRaphson())
+        prob = NonlinearProblem(resid_lessdof!, Tf_trim)
+        sol = solve(prob, NewtonRaphson(), abstol = 1e-4)
+        # prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
+        # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
-        Tfs = zeros(dom.nr)
+        Tfs = zeros(eltype(u[iTf(dom)]), dom.nr)
         Tfs[has_ice] = sol.u
         extrap_Tf_noice!(Tfs, has_ice, dom)
     end

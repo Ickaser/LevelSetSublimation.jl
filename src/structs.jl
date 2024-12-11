@@ -125,3 +125,40 @@ function Domain(nr::I, nz::I, rmin::F, rmax::F, zmin::F, zmax::F,
     bwr::I, bwz::I, ntot::I
     )
 end
+
+
+struct CombinedSolution
+    sol1
+    sol2
+    tsplit
+    isplit
+    t
+    u
+    Tf2
+end
+
+CombinedSolution(sol1, sol2) = CombinedSolution(sol1, sol2, sol1.t[end], length(sol1.t), vcat(sol1.t, sol2.t), vcat(sol1.u, sol2.u), nothing)
+CombinedSolution(sol1, sol2, Tf2) = CombinedSolution(sol1, sol2, sol1.t[end], length(sol1.t), vcat(sol1.t, sol2.t), vcat(sol1.u, sol2.u), Tf2)
+function (cs::CombinedSolution)(t) 
+    if t <= cs.tsplit
+        return cs.sol1(t)
+    else
+        return cs.sol2(t)
+    end
+end
+function Base.getindex(cs::CombinedSolution, i)
+    if i <= isplit
+        return cs.sol1[i]
+    elseif i <= isplit + length(cs.sol2.t)
+        return cs.sol2[i]
+    else
+        throw(ArgumentError("Index must be less than combined solution length"))
+    end
+end
+function Base.show(io::IO, cs::CombinedSolution)
+    print(io, "CombinedSolution: ")
+    # print(io, "sol1: $(cs.sol1), ")
+    # print(io, "sol2: $(cs.sol2), ")
+    print(io, "tsplit: $(cs.tsplit), ")
+    print(io, "isplit: $(cs.isplit)")
+end
