@@ -77,7 +77,7 @@ function gen_anim(config, var=:T, casename="test")
     return simres
 end
 
-function calc_params_at_t(t, config) where TT<:Number
+function calc_params_at_t(t, config)
     @unpack paramsd = config
     params = params_nondim_setup(paramsd)
     return (params[1], params[2], params[3](t))

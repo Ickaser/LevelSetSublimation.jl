@@ -174,11 +174,7 @@ function plotframe(t, sim; heatvar=:T, clims=nothing)
         # cmap = :algae
         cmap = :linear_green_5_95_c69_n256
         cont_c = :black
-        Tf = fill(0.0, dom.nr)
     elseif heatvar == :T 
-        if isnothing(Tf0)
-            Tf0 = fill(245.0, dom.nr)
-        end
         u, Tf, T, p = calc_uTfTp_res(t, sim)
         ϕ = reshape(u[iϕ(dom)], size(dom))
         T .-= 273.15
@@ -187,9 +183,6 @@ function plotframe(t, sim; heatvar=:T, clims=nothing)
         pl = plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=clims)
         return pl, T, Tf
     elseif heatvar == :p
-        if isnothing(Tf0)
-            Tf0 = fill(245.0, dom.nr)
-        end
         u, Tf, T, p = calc_uTfTp_res(t, sim)
         ϕ = reshape(u[iϕ(dom)], size(dom))
         # T = solve_T(u, dom, params)
