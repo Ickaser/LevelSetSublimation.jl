@@ -88,10 +88,10 @@ end
 """
     interp_saved_Tf(saved_Tf)
 
-Thin wrapper around SplineInterpolation for a set of SavedValues of Tf.
+Thin wrapper around CubicSpline for a set of SavedValues of Tf.
 Useful so that I use the same interpolation everywhere it shows up.
 """
-interp_saved_Tf(saved_Tf) = SplineInterpolation(saved_Tf.saveval, saved_Tf.t)
+interp_saved_Tf(saved_Tf) = CubicSpline(saved_Tf.saveval, saved_Tf.t)
 
 function calc_Tf_res(t, sim)
     @unpack sol, dom = sim
