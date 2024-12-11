@@ -45,7 +45,7 @@ controls = Dict{Symbol, Any}()
 config = Dict{Symbol, Any}()
 @pack! config = cparams, init_prof, Tf0, controls, vialsize, fillvol
 
-# config[:dudt_func] = LSS.dudt_heatmass_dae!
+# config[:time_integ] = :dae
 
 # -------------------- Read in LyoPronto data
 

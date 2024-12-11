@@ -72,7 +72,7 @@ paramsd = (base_props, tcp, tvp)
 # This is one way of constructing the dictionary, if your variable 
 # names match the required dictionary keys
 config = @dict paramsd vialsize fillvol simgridsize
-config[:dudt_func] = dudt_heatmass_dae!
+config[:time_integ] = :dae
 
 # alt_simgridsize = (21, 21)
 # # Or we can do the following, if variables have other names

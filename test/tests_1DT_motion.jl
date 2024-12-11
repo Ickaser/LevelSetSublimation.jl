@@ -65,7 +65,8 @@ params_base[:Q_ck] *= 0
 params_base[:Kvwf] *= 0
 params_base[:Kshf] *= 0
 
-dudt_func = LSS.dudt_heatonly!
+# TODO: this is broken right now
+# time_integ = LSS.dudt_heatonly!
 init_prof = :flat
 Tf0 = 233.15u"K"
 vialsize = "10R"
@@ -81,7 +82,7 @@ controls = Dict{Symbol, Any}()
 
 cparams = deepcopy(params_base)
 config_base = Dict{Symbol, Any}()
-@pack! config_base = cparams, init_prof, Tf0, controls, vialsize, fillvol, simgridsize, dudt_func
+@pack! config_base = cparams, init_prof, Tf0, controls, vialsize, fillvol, simgridsize, time_integ
 
 @testset "Case 1: Vertical Motion, Shelf Heating" begin
     
