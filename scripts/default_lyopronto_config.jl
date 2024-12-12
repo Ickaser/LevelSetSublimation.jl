@@ -20,6 +20,7 @@ end
 slice = floor.(Int, range(1, length(lpraw), length=100))
 lpdat = map(lyopronto_rename, lpraw[slice])
 
+# Set up simulation
 
 base_props = LSS.base_props
 
@@ -92,6 +93,7 @@ begin
 pl1 = plot(u"hr", u"°C", unitformat=uf, ylabel="T_\\text{f}", xlabel="t")
 @df lpdat plot!(:t, :Tsub, label="LyoPronto", legend=:bottomright)
 plot!(tsol, Tsol, label="LevelSetSublimation")
+plot!(Tsh, tmax=6u"hr", label=L"T_\text{sh}", c=:black)
 pl2 = plot(u"hr", u"kg/hr/m^2", unitformat=uf, ylabel="\\dot{m}''", xlabel="t")
 @df lpdat plot!(:t, :md, label="LyoPronto", unitformat=:square,legend=:bottomright)
 plot!(tsol, msol, label="LevelSetSublimation")
@@ -103,8 +105,11 @@ end
 
 # ------------- Plots for prelim
 plot!(pl1, size=(300, 250))
+savefig(plotsdir("lyopronto_T.svg"))
 savefig(plotsdir("lyopronto_T.pdf"))
 plot!(pl2, size=(300, 250))
+savefig(plotsdir("lyopronto_subflux.svg"))
 savefig(plotsdir("lyopronto_subflux.pdf"))
 plot!(pl3, size=(300, 250))
+savefig(plotsdir("lyopronto_dryfrac.svg"))
 savefig(plotsdir("lyopronto_dryfrac.pdf"))
