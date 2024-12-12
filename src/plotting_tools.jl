@@ -479,13 +479,14 @@ end
     locz = [loc[2] for loc in locs]
     @series begin
         seriestype := :scatter
+        label --> ""
         markersize --> 7
         dom.rmax.*locr, dom.zmax.*locz
     end
 end
 
 @userplot LabelThermocouples
-@recipe function f(lt::LabelThermocouples; labels = nothing)
+@recipe function f(lt::LabelThermocouples)
     dom, locs, labels = lt.args
     if isnothing(labels)
         @info "check" labels
