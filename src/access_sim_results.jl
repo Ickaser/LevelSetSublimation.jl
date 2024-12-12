@@ -37,10 +37,10 @@ end
 function compare_lyopronto_res(ts, sim)
     @unpack sol, dom, config = sim
     ts_ndim = ustrip.(u"s", ts)
-    # Tf = sol(ts_ndim, idxs=dom.ntot+1).u .* u"K"
-    Tf = similar(ts_ndim)*u"K"
-    md = similar(ts_ndim).*u"kg/s"
-    for (i, ti) in enumerate(ts_ndim)
+    cyc = ts_ndim .< sol.t[end]
+    Tf = similar(ts_ndim[cyc])*u"K"
+    md = similar(ts_ndim[cyc]).*u"kg/s"
+    for (i, ti) in enumerate(ts_ndim[cyc])
         params = calc_params_at_t(ti, sim.config)
         uTfTp = calc_uTfTp_res(ti, sim)
         Tf[i] = uTfTp[3][1,1]*u"K"
@@ -53,14 +53,12 @@ function compare_lyopronto_res(ts, sim)
     end
     mfd = uconvert.(u"kg/hr", md) / (π*(dom.rmax*u"m")^2)
     totvol = π*dom.rmax^2 * dom.zmax
-    dryfrac = map(ts_ndim) do ti
+    dryfrac = map(ts_ndim[cyc]) do ti
         ϕ = reshape(sol(ti)[iϕ(dom)], size(dom))
         1 - compute_icevol_H(ϕ, dom) / totvol
     end
 
-    completed = dryfrac .== 1
-    cyc = .~completed
-    return ts[cyc], Tf[cyc].*u"K", mfd[cyc], dryfrac[cyc]
+    return ts[cyc], Tf, mfd, dryfrac
 end
 
 function gen_sumplot(config, var=:T, casename="test")
