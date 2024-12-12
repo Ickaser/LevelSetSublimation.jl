@@ -593,25 +593,9 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             # isnan(bot_bound_term) && @info "NaN bottom" q dϕdz dϕdr dTfdr
         end
 
-
-
         r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
         dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + QRFf[ir] + 
             (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
-        # if ir ∈ [dom.nr-2, dom.nr-1, dom.nr] && Δξ[dom.nr] <= 5e-4
-        #     @info "right edge" ir kf*r1*dTfdr kf*d2Tfdr2 QRFf[ir] top_bound_term bot_bound_term Δξ[ir] dTfdt[ir] dξdr q
-        # end
-
-        # isnan(dTfdt[ir]) && @info "NaN in dTfdt" dTfdr d2Tfdr2 top_bound_term bot_bound_term Δξ[ir]
     end
-
     dTfdt[no_ice] .= 0 # Set to 0 elsewhere
-
-    # if any(isnan.(dTfdt))
-    #     @info "NaN in dTfdt" Tf dTfdt
-    # end
-    # if any(Tf .> 300) || any(Tf .< 100)
-    #     @info "weird Tf" Tf dTfdt
-    # end
-
 end
