@@ -20,6 +20,7 @@ end
 slice = floor.(Int, range(1, length(lpraw), length=100))
 lpdat = map(lyopronto_rename, lpraw[slice])
 
+# Set up simulation
 
 base_props = LSS.base_props
 
@@ -103,8 +104,11 @@ end
 
 # ------------- Plots for prelim
 plot!(pl1, size=(300, 250))
+savefig(plotsdir("lyopronto_T.svg"))
 savefig(plotsdir("lyopronto_T.pdf"))
 plot!(pl2, size=(300, 250))
+savefig(plotsdir("lyopronto_subflux.svg"))
 savefig(plotsdir("lyopronto_subflux.pdf"))
 plot!(pl3, size=(300, 250))
+savefig(plotsdir("lyopronto_dryfrac.svg"))
 savefig(plotsdir("lyopronto_dryfrac.pdf"))
