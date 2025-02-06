@@ -212,10 +212,10 @@ function plotframe(t, sim; heatvar=:T, clims=nothing)
     if heatvar == :ϕ
         Plots.contour!(dom.rgrid, dom.zgrid, ϕ', color=:black)
     end
-    plot!(xlabel="t = $tr hr")
+    plot!(xlabel=L"t = %($tr) hr")
     plot!(colorbar_title=clab)
     plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
-    plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
+    plot!(y_ticks = ([0, dom.zmax], ["0", L"h_\mathrm{f0}"]),  )
     # plot!(x_ticks=[-dom.rmax, 0, dom.rmax], xlabel="radius")
     return pl, heatvar_vals, Tf
 end
@@ -268,7 +268,7 @@ function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
     plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
     # Vial outline
     plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
-    plot!(xlabel="t = $tr hr")
+    plot!(xlabel=L"t = %$tr \mathrm{hr}")
 #     plot!(colorbar_title=clab)
     plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
     plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
@@ -343,7 +343,7 @@ function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
         plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
         # Vial outline
         plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
-        plot!(xlabel="t = $tr hr")
+        plot!(xlabel=L"t = %$tr \mathrm{hr}")
     #     plot!(colorbar_title=clab)
         plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
         plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
@@ -449,9 +449,8 @@ blankplothrC() = plot(u"hr", u"°C", ylabel = "Temperature", xlabel = "Time", un
         T = Ts[:,i]
         @series begin
             seriestype := :samplemarkers
-            step := step
+            step --> step
             offset := step÷n *(i-1) + 1
-            markersize --> 7
             seriescolor --> pal[i]
             return time, T
         end
@@ -480,7 +479,6 @@ end
     @series begin
         seriestype := :scatter
         label --> ""
-        markersize --> 7
         dom.rmax.*locr, dom.zmax.*locz
     end
 end
@@ -490,7 +488,7 @@ end
     dom, locs, labels = lt.args
     if isnothing(labels)
         @info "check" labels
-        texts = [text(L"$T_text{f%$i}$", size=10) for i in 1:length(locs)]
+        texts = [text(L"$T_\mathrm{f%$i}$", size=10) for i in 1:length(locs)]
     else
         texts = labels
     end
@@ -515,9 +513,8 @@ end
     
     @series begin
         seriestype := :samplemarkers
-        step := step
+        step --> step
         markershape --> :dtriangle
-        markersize --> 7
         seriescolor --> color
         linestyle := :dash
         time, T
