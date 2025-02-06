@@ -60,7 +60,7 @@ end
 function Tf_guess(fallback, t, saved_Tf::SavedValues)
     if length(saved_Tf.saveval) > 1
         ti = length(saved_Tf.saveval) # If currently inside the callback, saved_Tf.t is one longer than saveval
-        Tf_g = LinearInterpolation(saved_Tf.saveval[ti-1:ti], saved_Tf.t[ti-1:ti], extrapolate=true)(t)
+        Tf_g = LinearInterpolation(saved_Tf.saveval[ti-1:ti], saved_Tf.t[ti-1:ti], extrapolation=ExtrapolationType.Linear)(t)
     elseif length(saved_Tf.saveval) == 1
         Tf_g = saved_Tf.saveval[1]
     else
