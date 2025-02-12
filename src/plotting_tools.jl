@@ -436,7 +436,7 @@ function resultsanim(sim, casename; seconds_length=5, heatvar=:T, clims=nothing)
     mp4(anim, plotsdir(fname), fps=fps)
 end
 
-blankplothrC() = plot(u"hr", u"°C", ylabel = "Temperature", xlabel = "Time", unitformat=:square)
+blankplothrC(;kwargs...) = plot(u"hr", u"°C", ylabel = "Temperature", xlabel = "Time", unitformat=:square; kwargs...)
 
 @userplot TPlotModel
 @recipe function f(tpm::TPlotModel)
