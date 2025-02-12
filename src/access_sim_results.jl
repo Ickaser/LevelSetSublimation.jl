@@ -1,5 +1,6 @@
-export calc_uϕTp_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
+export calc_ϕ_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
 export get_subf_z, get_subf_r, get_ϕ, get_SA
+export get_eff_Rp
 export virtual_thermocouple
 
 function get_t_Tf(sim)
@@ -27,6 +28,37 @@ function get_t_Tf_subflux(sim)
         md
     end
     return t, Tf, mdt
+end
+
+
+calc_fillvol(dom) = π*dom.rmax^2*dom.zmax*u"m^3"
+
+function get_eff_Rp(sim)
+    @unpack sol, dom = sim
+    t, Tf = get_t_Tf(sim)
+    hf0 = dom.zmax*u"m"
+    Ap = π*dom.rmax^2*u"m^2"
+    fillvol = Ap*hf0
+    h_md_t = map(sol.t) do ti
+        params = calc_params_at_t(ti, sim.config)
+        uTfTp = calc_uTfTp_res(ti, sim)
+        ϕ = calc_ϕ_res(ti, sim)
+        Vf = compute_icevol_H(ϕ, dom)*u"m^3"
+        hd = (1-Vf/fillvol)*hf0
+        md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
+        if sign(md) == -1
+            Tfi = uTfTp[2]
+            @info "md=$md" ti Tfi calc_psub(Tfi)
+        end
+        md = max(zero(md), md)
+        [hd, md]
+    end
+    hd = [u[1] for u in h_md_t]
+    md = [u[2] for u in h_md_t]
+    psub = calc_psub.(Tf)
+    pch = sim.config[:paramsd][3].pch.(sol.t*u"s")
+    Rp = @. (psub - pch)*Ap/md
+    return t, hd, Rp
 end
 
 function compare_lyopronto_res(sim)
@@ -115,6 +147,12 @@ function calc_uTfTp_res(t, sim)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
     return u, Tf, T, p
+end
+
+function calc_ϕ_res(t, sim)
+    @unpack sol, dom = sim
+    ϕ = reshape(sol(t, idxs=iϕ(dom)), size(dom))
+    return ϕ
 end
 
 function virtual_thermocouple(sim::NamedTuple) 
