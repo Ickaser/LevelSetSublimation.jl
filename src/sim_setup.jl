@@ -213,25 +213,33 @@ function (tup::Tuple{PhysicalProperties, TimeConstantProperties, TimeVaryingProp
     return (tup[1], tup[2], tup[3](t))
 end
 
+struct NondimensionalizedFunc{F, I, O}
+    f::F
+    in_un::I
+    out_un::O
+end
+(nf::NondimensionalizedFunc)(x...) = ustrip(nf.out_un, nf.f((x .* nf.in_un)...))
 
 function nondim_controlvar(tvp, varname)
     control_dim = getfield(tvp, varname)
     if varname == :Kshf
-        control_ndim = p->ustrip(PBD[varname], tvp.Kshf(p*u"Pa"))
-        return control_ndim
+        # control_ndim = p->ustrip(PBD[varname], tvp.Kshf(p*u"Pa"))
+        # return control_ndim
+        return NondimensionalizedFunc(tvp.Kshf, u"Pa", PBD[varname])
     end
     if dimension(control_dim(0u"s")) != dimension(PBD[varname])
         @error "Bad units on potentially time-varying variable." varname control_dim PBD[varname]
     end
     base_un = PBD[varname]
-    control_ndim = t->ustrip(base_un, control_dim(t*u"s"))
-    return control_ndim
+    # control_ndim = t->ustrip(base_un, control_dim(t*u"s"))
+    return NondimensionalizedFunc(control_dim, u"s", base_un)
 end
 
 function nondim_param(tcp, pk)
     p = getfield(tcp, pk)
     if pk == :εpp_f
         var_ndim = (T,f)->ustrip(PBD[pk], tcp.εpp_f(T*PBD[:Tsh], f*PBD[:f_RF]))
+        var_ndim = NondimensionalizedFunc(tcp.εpp_f, (PBD[:Tsh], PBD[:f_RF]), PBD[pk])
         return var_ndim
     end
     if (length(p) > 1) 
