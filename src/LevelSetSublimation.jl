@@ -20,6 +20,7 @@ using LinearAlgebra: norm, Diagonal
 using UnicodePlots: spy
 using NonlinearSolve
 using LinearSolve
+using Sparspak
 using NaNMath
 using PrecompileTools
 using DocStringExtensions
