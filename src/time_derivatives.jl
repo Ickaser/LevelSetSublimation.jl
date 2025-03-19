@@ -423,7 +423,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             end
         elseif ir == dom.nr
             dTfdr = Kvwf/kf*(Tvw - Tf[ir])
-            if Δξ[ir] < dom.dz/2 # At small ice height, need a special case
+            # if Δξ[ir] < dom.dz/2 # At small ice height, need a special case
+            if Δξ[ir]/dom.dz < θ_THRESH # At small ice height, need a special case
                 iz = findlast(ϕ[ir,:] .<=0) + 1
                 q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
 
@@ -439,6 +440,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 # timescale = Δξ[ir]^2/kf*ρf*Cpf
                 timescale = dom.zmax^2/kf*ρf*Cpf
                 dTfdt[ir] = (rhs - Tf[ir])/timescale
+                # @info "Small ice at corner" iz ir Δξ[ir] timescale dTfdt[ir-3:ir] rhs Tf[ir]
                 continue
 
             end
@@ -446,8 +448,6 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             if has_ice[dom.nr-1]
                 d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
             else
-                # d2Tfdr2 = 0 
-                # @warn "Possible mistreatment: set d2Tf/dr2 to 0 at right boundary, in an unlikely case"
                 topz = min(findlast(ϕ[ir,:] .< 0) + 1, dom.nz)
                 botz = max(findfirst(ϕ[ir,:] .< 0)- 1, 1)
                 integ_cells = [CI(iir, iz) for iz in botz:topz, iir in ir-1:ir]
