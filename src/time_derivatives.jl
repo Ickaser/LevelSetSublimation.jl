@@ -323,9 +323,9 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
         locvol = (ro^2-ri^2) * dom.dz * π
         if ϕ[cell] > 0
             qloc, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
-            # surf_area += compute_local_δ(cell, ϕ, dom)*locvol
         else # Cell is in ice, so need to extrapolate to get qloc
             # Identify possible neighbors across interface, take sum
+            # At most one side neighbor, in normal circumstances
             if side == :left
                 possible_nbs = [cell] .+ [CI(0, 1), CI(0, -1), CI(-1, 0)]
             elseif side == :right
@@ -337,17 +337,17 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
             nbs = [nb for nb in possible_nbs if (checkbounds(Bool, ϕ, nb) && ϕ[nb]>0)]
             if length(nbs) == 0
                 @warn "um... no neighbors somehow?"
-            elseif length(nbs) == 1 # No vertical neighbor- just horizontal
+            elseif length(nbs) == 1 # One neighbor: just use its value
                 qloc = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nbs[1])..., dϕdx_all, dom, params)[1]
-            elseif length(nbs) == 2 # One vertical neighbor, one horizontal
+            elseif length(nbs) == 2 # At most one horizontal neighbor, so probably one vertical and one horizontal: take a dot product
                 qloc = mapreduce(+, nbs) do nb 
                     ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
-                    Tuple(nb)[2] == 0 ?  ql*dϕdr : ql*dϕdz
+                    Tuple(nb)[2] == Tuple(cell)[2] ?  ql*dϕdr : ql*dϕdz
                 end
-            elseif length(nbs) == 3 # Tvwo vertical neighbor
+            elseif length(nbs) == 3 # Three neighbors guarantees one horizontal and two vertical
                 qloc = mapreduce(+, nbs) do nb 
                     ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
-                    Tuple(nb)[2] == 0 ? ql*dϕdr : ql*dϕdz/2
+                    Tuple(nb)[2] == Tuple(cell[2]) ? ql*dϕdr : ql*dϕdz/2
                 end
             else
                 @warn "4 neighbors somehow in local surface integration"
@@ -557,8 +557,6 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             # direct sublimation boundary
             # top_bound_term = ΔH*(pch - calc_psub(Tf[ir]))/Rp0 * compute_local_H(CI(ir, dom.nz), ϕ, dom)*2
             top_bound_term = ΔH*(pch - calc_psub(Tf[ir]))/Rp0
-            if typeof(top_bound_term) <: AbstractFloat
-            end
         else
             iz = findlast(ϕ[ir,:] .<=0) + 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
@@ -580,7 +578,6 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 K_eff = 1/(1/Kshf + Δξ[ir]/kf)
             end
             bot_bound_term = K_eff*(Tf[ir] - Tsh) 
-            # isnan(bot_bound_term) && @info "NaN bottom" Tf[ir] T[ir,begin] Tsh
         else
             # Stefan boundary
             iz = findfirst(ϕ[ir,:] .<=0) - 1
@@ -590,7 +587,6 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             dξdr = -dϕdr/dϕdz
             bot_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
             # bot_bound_term = q/dϕdz + kf*dξdr*dTfdr
-            # isnan(bot_bound_term) && @info "NaN bottom" q dϕdz dϕdr dTfdr
         end
 
         r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
