@@ -412,7 +412,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     botarea = π*(ro^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
 
-                    K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    # K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    K_eff = Kshf
                     sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
                 end
 
@@ -428,8 +429,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 iz = findlast(ϕ[ir,:] .<=0) + 1
                 q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
 
-                dξdr = -dϕdr/dϕdz
-                qtop = q*sqrt(dξdr^2 + 1)
+                qtop = q/dϕdz
 
                 # We get terms that go to zero, and can therefore solve a linear equaiton for Tf, other than q_top
                 # den = (Δξ[ir]/dom.dr/2*Kvwf + Kshf)
@@ -467,7 +467,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     ri = dom.rgrid[ir] - θr*dom.dr
                     botarea = π*(ro^2-ri^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                    K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    # K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    K_eff = Kshf
                     sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
                 end
 
@@ -504,7 +505,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 botarea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
 
-                K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                # K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                K_eff = Kshf
                 sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
             end
 
@@ -535,7 +537,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 botarea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
 
-                K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                # K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                K_eff = Kshf
                 sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
             end
 
@@ -552,8 +555,6 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
         # Treat top and bottom
         if top_contact[ir]
-            # # adiabatic boundary 
-            # top_bound_term = 0
             # direct sublimation boundary
             # top_bound_term = ΔH*(pch - calc_psub(Tf[ir]))/Rp0 * compute_local_H(CI(ir, dom.nz), ϕ, dom)*2
             top_bound_term = ΔH*(pch - calc_psub(Tf[ir]))/Rp0
@@ -561,32 +562,26 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             iz = findlast(ϕ[ir,:] .<=0) + 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
             # top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
-            # top_bound_term = q*sqrt( (dϕdr/ dϕdz)^2 + 1)
             dξdr = -dϕdr/dϕdz
-            top_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
-            # top_bound_term = q/dϕdz + kf*dξdr*dTfdr
-            # isnan(top_bound_term) && @info "top bound" q dϕdr dϕdz dTfdr
-            # top_bound_term = q*dϕdz
+            top_bound_term = q/dϕdz + kf*dξdr*dTfdr
         end
 
         if bot_contact[ir]
             # Shelf boundary
             # bot_bound_term = Kshf*(Tf[ir] - Tsh) * compute_local_H(CI(ir, 1), ϕ, dom)*2
-            if Δξ[ir] > dom.dz
-                K_eff = Kshf
-            else
-                K_eff = 1/(1/Kshf + Δξ[ir]/kf)
-            end
+            # if Δξ[ir] < dom.dz
+            #     K_eff = Kshf
+            # else
+            #     K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+            # end
+            K_eff = Kshf
             bot_bound_term = K_eff*(Tf[ir] - Tsh) 
         else
             # Stefan boundary
             iz = findfirst(ϕ[ir,:] .<=0) - 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-            # bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
-            # bot_bound_term = q*sqrt( (dϕdr/ dϕdz)^2 + 1)
             dξdr = -dϕdr/dϕdz
-            bot_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
-            # bot_bound_term = q/dϕdz + kf*dξdr*dTfdr
+            bot_bound_term = q/dϕdz + kf*dξdr*dTfdr
         end
 
         r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
