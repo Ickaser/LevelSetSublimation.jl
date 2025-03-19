@@ -304,7 +304,7 @@ function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
     qflux = kd*(dϕdr*dTdr + dϕdz*dTdz)
     # mflux = b*(dϕdr*dpdr + dϕdz*dpdz)
     mflux = min(0.0, b*(dϕdr*dpdr + dϕdz*dpdz)) # Prevent desublimation in energy balance
-    return qflux + ΔH*mflux, dϕdr, dϕdz, mflux
+    return qflux + ΔH*mflux, dϕdr, dϕdz
 end
 
 
@@ -322,7 +322,7 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
         ro = min(dom.rmax, dom.rgrid[ir] +0.5dom.dr)
         locvol = (ro^2-ri^2) * dom.dz * π
         if ϕ[cell] > 0
-            qloc, dϕdr, dϕdz, mloc = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
+            qloc, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
         else # Cell is in ice, so need to extrapolate to get qloc
             # Identify possible neighbors across interface, take sum
             # At most one side neighbor, in normal circumstances
@@ -341,12 +341,12 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
                 qloc = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nbs[1])..., dϕdx_all, dom, params)[1]
             elseif length(nbs) == 2 # At most one horizontal neighbor, so probably one vertical and one horizontal: take a dot product
                 qloc = mapreduce(+, nbs) do nb 
-                    ql, dϕdr, dϕdz, mloc = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
+                    ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
                     Tuple(nb)[2] == Tuple(cell)[2] ?  ql*dϕdr : ql*dϕdz
                 end
             elseif length(nbs) == 3 # Three neighbors guarantees one horizontal and two vertical
                 qloc = mapreduce(+, nbs) do nb 
-                    ql, dϕdr, dϕdz, mloc = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
+                    ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
                     Tuple(nb)[2] == Tuple(cell[2]) ? ql*dϕdr : ql*dϕdz/2
                 end
             else
@@ -371,7 +371,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     ϕ = reshape(u[iϕ(dom)], size(dom))
     Tvw = u[iTvw(dom)]
     @unpack ρf, Cpf, kf, ΔH = params[1]
-    @unpack Rp0, Kvwf, ϵ = params[2]
+    @unpack Rp0, Kvwf = params[2]
     @unpack Tsh, pch, Kshf = params[3]
     QRFf = calc_QpppRFf.(Tf, [params])
 
@@ -391,8 +391,9 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             dTfdr = 0
             if has_ice[2]
                 d2Tfdr2 = (-2Tf[1] + 2Tf[2])*dom.dr2 # Adiabatic ghost cell
-            else # Single column of ice at r=0. Write separate energy balance for this case,
-                #rather than use rest of the logic. 
+            else
+                # d2Tfdr2 = 0 
+                # @warn "Possible mistreatment: set d2Tf/dr2 to 0 at left boundary, in an unlikely case"
                 topz = min(findlast(ϕ[ir,:] .< 0) + 1, dom.nz)
                 botz = max(findfirst(ϕ[ir,:] .< 0)- 1, 1)
                 integ_cells = [CI(iir, iz) for iz in botz:topz, iir in ir:ir+1]
@@ -400,16 +401,16 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 sumfluxes = Q_surf_pp
                 if top_contact[ir]
                     θr = ϕ[ir,dom.nz] / (ϕ[ir,dom.nz] - ϕ[ir+1,dom.nz])
-                    ro = θr*dom.dr # current r position is 0
+                    ro = dom.rgrid[ir] + θr*dom.dr
                     toparea = π*(ro^2)
-                    Tf_loc = Tf[ir] #+ θr*(Tf[ir+1]-Tf[ir]) # Use bulk temperature since not evaluating at front
+                    Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                     sumfluxes += toparea * ΔH*(pch - calc_psub(Tf_loc))/Rp0 # Sublimation
                 end
                 if bot_contact[ir]
                     θr = ϕ[ir,1] / (ϕ[ir,1] - ϕ[ir+1,1])
-                    ro = θr*dom.dr
+                    ro = dom.rgrid[ir] + θr*dom.dr
                     botarea = π*(ro^2)
-                    Tf_loc = Tf[ir] # + θr*(Tf[ir+1]-Tf[ir]) # Use bulk temperature since not evaluating at front
+                    Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
 
                     K_eff = 1/(1/Kshf + Δξ[ir]/kf)
                     sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
@@ -421,10 +422,11 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 continue
             end
         elseif ir == dom.nr
+            dTfdr = Kvwf/kf*(Tvw - Tf[ir])
             # if Δξ[ir] < dom.dz/2 # At small ice height, need a special case
             if Δξ[ir]/dom.dz < θ_THRESH # At small ice height, need a special case
                 iz = findlast(ϕ[ir,:] .<=0) + 1
-                q, dϕdr, dϕdz, mloc = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
+                q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
 
                 dξdr = -dϕdr/dϕdz
                 qtop = q*sqrt(dξdr^2 + 1)
@@ -442,11 +444,10 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 continue
 
             end
-            dTfdr = Kvwf/kf*(Tvw - Tf[ir])
             # elseif has_ice[dom.nr-1]
             if has_ice[dom.nr-1]
                 d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
-            else # Single column of ice at wall. Separate energy balance
+            else
                 topz = min(findlast(ϕ[ir,:] .< 0) + 1, dom.nz)
                 botz = max(findfirst(ϕ[ir,:] .< 0)- 1, 1)
                 integ_cells = [CI(iir, iz) for iz in botz:topz, iir in ir-1:ir]
@@ -476,10 +477,13 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 dTfdt[ir] = sumfluxes/vol/ρf/Cpf
                 continue
             end
-        elseif no_ice[ir-1] && no_ice[ir+1] # Not on boundary, ice on both sides
+        elseif no_ice[ir-1] && no_ice[ir+1] # Ice on both sides
+            # @warn "Ice surrounded by gap: ignore radial gradients, treat only vertical." has_ice[ir-1:ir+1] 
             dTfdr = 0
             d2Tfdr2 = 0
-        elseif no_ice[ir-1] # Stefan boundary on center side: write special energy balance
+            # dTfdr = (Tf[ir+1] - Tf[ir-1])*0.5*dom.dr1
+            # d2Tfdr2 = (Tf[ir+1] - 2Tf[ir] + Tf[ir-1])*dom.dr2
+        elseif no_ice[ir-1] # On left side: away from center
             topz = min(findlast(ϕ[ir,:] .< 0) + 1, dom.nz)
             botz = max(findfirst(ϕ[ir,:] .< 0)- 1, 1)
             integ_cells = [CI(iir, iz) for iz in botz:topz, iir in ir-1:ir]
@@ -490,8 +494,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 ro = dom.rgrid[ir] + 0.5*dom.dr
                 ri = dom.rgrid[ir] - θr*dom.dr
                 toparea = π*(ro^2-ri^2)
-                # Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                Tf_loc = Tf[ir] # Evaluate Tf at the cell, not the front
+                Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
                 sumfluxes += toparea * ΔH*(pch - calc_psub(Tf_loc))/Rp0 # Sublimation
             end
             if bot_contact[ir]
@@ -499,8 +502,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 ro = dom.rgrid[ir] + 0.5*dom.dr
                 ri = dom.rgrid[ir] - θr*dom.dr
                 botarea = π*(ro^2-ri^2)
-                # Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                Tf_loc = Tf[ir] # Evaluate Tf at the cell, not the front
+                Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
+
                 K_eff = 1/(1/Kshf + Δξ[ir]/kf)
                 sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
             end
@@ -522,8 +525,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 ro = dom.rgrid[ir] + θr*dom.dr
                 ri = dom.rgrid[ir] - 0.5*dom.dr
                 toparea = π*(ro^2-ri^2)
-                # Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
-                Tf_loc = Tf[ir] # Eval Tf at cell, not front
+                Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
                 sumfluxes += toparea * ΔH*(pch - calc_psub(Tf_loc))/Rp0 # Sublimation
             end
             if bot_contact[ir]
@@ -531,8 +533,8 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 ro = dom.rgrid[ir] + θr*dom.dr
                 ri = dom.rgrid[ir] - 0.5*dom.dr
                 botarea = π*(ro^2-ri^2)
-                # Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
-                Tf_loc = Tf[ir] # Eval Tf at cell, not front
+                Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
+
                 K_eff = 1/(1/Kshf + Δξ[ir]/kf)
                 sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
             end
@@ -557,17 +559,14 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             top_bound_term = ΔH*(pch - calc_psub(Tf[ir]))/Rp0
         else
             iz = findlast(ϕ[ir,:] .<=0) + 1
-            q, dϕdr, dϕdz, mloc = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-            dξdt = -mloc/ρf/ϵ *dϕdz
+            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
             # top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
             # top_bound_term = q*sqrt( (dϕdr/ dϕdz)^2 + 1)
             dξdr = -dϕdr/dϕdz
+            top_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
             # top_bound_term = q/dϕdz + kf*dξdr*dTfdr
             # isnan(top_bound_term) && @info "top bound" q dϕdr dϕdz dTfdr
             # top_bound_term = q*dϕdz
-            dξdt 
-
-            top_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr - ρf*Cpf*dξdt*Tf[ir]
         end
 
         if bot_contact[ir]
@@ -582,12 +581,11 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
         else
             # Stefan boundary
             iz = findfirst(ϕ[ir,:] .<=0) - 1
-            q, dϕdr, dϕdz, mloc = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-            dξdt = -mloc/ρf/ϵ *dϕdz
+            q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
             # bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
             # bot_bound_term = q*sqrt( (dϕdr/ dϕdz)^2 + 1)
             dξdr = -dϕdr/dϕdz
-            bot_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr - ρf*Cpf*dξdt*Tf[ir]
+            bot_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
             # bot_bound_term = q/dϕdz + kf*dξdr*dTfdr
         end
 
