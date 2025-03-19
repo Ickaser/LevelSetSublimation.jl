@@ -77,39 +77,47 @@ simgridsizes = [(21, 15),
 config = @dict paramsd vialsize fillvol
 config[:simgridsize] = simgridsizes
 config[:time_integ] = :dae_then_exp
+# config[:time_integ] = :exp_newton
 allconfigs = dict_list(config)
 
 
 # Run simulations
-# map(allconfigs) do config
-#     @time res, fname = produce_or_load(sim_from_dict, config; filename=hash, verbose=true, tag=false, prefix=datadir("sims", "err"))
-# end
+timing = map(allconfigs) do config
+    @elapsed produce_or_load(sim_from_dict, config; filename=hash, verbose=true, tag=false, prefix=datadir("sims", "err"))
+end
 
 allsims = collect_results(datadir("sims"), rinclude=[r"err"])
-simtab = Table(map(eachrow(allsims)) do sim
-    merge(sim.sim, (path=sim["path"],), NamedTuple(sim.sim.config))
+simtab = Table(map(eachrow(allsims)) do row
+    # if row.sim.config[:time_integ] == :dae_then_exp
+    #     row.sim = merge(row.sim, (Tf = nothing,))
+    # end
+    merge(row.sim, (path=row["path"],), NamedTuple(row.sim.config))
 end)
 
 best = simtab[argmax(prod.(simtab.simgridsize))];
-rbest = simtab[findmax(x->x[2], simtab.simgridsize)[2]];
+rbest = simtab[findmax(x->x[1], simtab.simgridsize)[2]];
+zbest = simtab[findmax(x->x[2], simtab.simgridsize)[2]];
 best.simgridsize
 
 locs = [(0.0, 0.0), (0.8, 0.05), (0.2, 0.5)]
-t = range(0, best.sol.t[end]*0.99, length=100)
+t = range(0, best.sol.t[end]*0.8, length=100)
 Tbest = virtual_thermocouple(locs, t, best)
 Tbestr = virtual_thermocouple(locs, t, rbest)
-function compare_T(sim, Tb = Tbest)
+Tbestz = virtual_thermocouple(locs, t, rbest)
+function compare_T(sim; Tb = Tbest, t=t)
     Ts = virtual_thermocouple(locs, t, sim)
-    return sum(abs2, Ts-Tb)
+    return sqrt(sum(abs2, Ts-Tb))
 end
 
 sqerr = map(simtab) do sim
     lerr = @time compare_T(sim)
-    return (sqerr=lerr, rerr=compare_T(sim, Tbestr), tend=sim.sol.t[end], nr=sim.simgridsize[1], nz=sim.simgridsize[2])
+    rerr = compare_T(sim, Tb=Tbestr)
+    zerr = compare_T(sim, Tb=Tbestz)
+    return (sqerr=lerr, rerr=rerr, zerr=zerr, tend=sim.sol.t[end], nr=sim.simgridsize[1], nz=sim.simgridsize[2])
 end
 # @time compare_T(simtab[1])
-errtab = Table(simtab, sqerr)
-sort!(errtab, by=x->x.nr*x.nz)
+errtab = Table(simtab, sqerr);
+sort!(errtab, by=x->x.nr*x.nz);
 
 cs = cgrad(:viridis)
 begin
@@ -118,17 +126,33 @@ blankplothrC(ylabel="Temperature difference to reference")
 markers=[:circle, :heptagon, :utriangle, :dtriangle, :ltriangle, :rtriangle]
 for (i,sim) in enumerate(errtab)
     c = cs[257 - sim.nr*sim.nz*256÷prod(best.simgridsize)]
-    mark = markers[i%6+1]
+    mark = markers[(i-1)%6+1]
     plot!(t, Tbest[:,1] .- virtual_thermocouple([locs[1]], t, sim), c=c, marker=mark, label="nr=$(sim.nr), nz=$(sim.nz)")
     scatter!([sim.tend], [0], label="", c=c)
 end
-plot!(xlim=(3e4, 5e4), ylim=(-1,1), legend=:outerright)
+plot!(xlim=(0e4, 5e4), ylim=(-0.2,0.2), legend=:outerright)
 end
 
-@df filter(x->(x.nz==31 && x.sqerr>0), errtab) scatter( :nr, :sqerr, scale=:log10)
-plot!([1e2, 10^1.5], [10^2, 10^2.5])
-@df filter(x->(x.nr==31 && x.rerr>0), errtab) scatter(:nz, :rerr, scale=:log10)
-plot!([1e2, 1e1], [1e1, 1e2])
-@df filter(x->(x.nr==x.nz && x.sqerr>0), errtab) scatter(:nr, :sqerr, scale=:log10)
+@df filter(x->(x.nz==31 && x.rerr>0), errtab) scatter( :nr, :sqerr, scale=:log10)
+plot!([10^1.5, 10^1.8], [10^0, 10^(-0.3/4)], label="slope -1/4")
+@df filter(x->(x.nr==31 && x.zerr>0), errtab) scatter(:nz, :rerr, scale=:log10)
+plot!([1e1, 1e2], [10^0.5, 10^-0.5], label="slope -1")
+@df filter(x->(x.nr==x.nz && x.sqerr>0), errtab) scatter(:nz, :sqerr, scale=:log10, label="nr=nz")
+plot!([10^1.3, 1e2], [1e0, 10^-0.7], label="slope -1")
 
-@df filter(x->x.sqerr>0, errtab) scatter(:nz, :sqerr, scale=:log10)
+@df filter(x->x.sqerr>0, errtab) scatter(:nz, :sqerr, scale=:log10, label="nz")
+begin
+@df filter(x->(x.nr==x.nz && x.sqerr>0), errtab) scatter(:nr, :sqerr, scale=:log10, label="nz=nr")
+@df filter(x->(x.nz==31 && x.sqerr>0), errtab) scatter!(:nr, :sqerr, scale=:log10, label="nz=const")
+@df filter(x->(x.nr==31 && x.sqerr>0), errtab) scatter!(:nr, :sqerr, scale=:log10, label="nr=const")
+plot!(xlabel=L"Number of r grid points, $n_r$", ylabel="L2 error, early time")
+end
+savefig(plotsdir("M1_LSS_convergence_nr_2.svg"))
+begin
+# @df filter(x->(x.nz==31 && x.sqerr>0), errtab) scatter!(:nz, :sqerr, scale=:log10, label="nz=const")
+@df filter(x->(x.nr==31 && x.sqerr>0), errtab) scatter(:nz, :sqerr, scale=:log10, label="nr=const")
+@df filter(x->(x.nr==x.nz && x.sqerr>0), errtab) scatter!(:nz, :sqerr, scale=:log10, label="nr=nz")
+plot!([10^1.3, 1e2], [1e0, 10^-0.7], label="slope -1")
+plot!(xlabel=L"Number of z grid points, $n_z$", ylabel="L2 error, early time")
+end
+savefig(plotsdir("M1_LSS_convergence_nz_2.svg"))
