@@ -128,15 +128,17 @@ function compare_T(sim; Tb = Tbest, t=t)
     return sqrt(sum(abs2, Ts-Tb))
 end
 
-sqerr = map(simtab) do sim
-    lerr = @time compare_T(sim)
+errs = map(simtab) do sim
+    rzerr = @time compare_T(sim)
     rerr = compare_T(sim, Tb=Tbestr)
     zerr = compare_T(sim, Tb=Tbestz)
-    terr = abs(sim.sol.t[end] - best.sol.t[end])
-    return (sqerr=lerr, rerr=rerr, zerr=zerr, terr=terr, tend=sim.sol.t[end], nr=sim.simgridsize[1], nz=sim.simgridsize[2])
+    trzerr = abs(sim.sol.t[end] - best.sol.t[end])
+    trerr = abs(sim.sol.t[end] - rbest.sol.t[end])
+    tzerr = abs(sim.sol.t[end] - zbest.sol.t[end])
+    return merge((nr=sim.simgridsize[1], nz=sim.simgridsize[2]), @ntuple rzerr rerr zerr trzerr trerr tzerr)
 end
 # @time compare_T(simtab[1])
-errtab = Table(simtab, sqerr);
+errtab = Table(simtab, errs);
 sort!(errtab, by=x->x.nr*x.nz);
 
 cs = cgrad(:viridis)
@@ -148,7 +150,6 @@ for (i,sim) in enumerate(errtab)
     c = cs[257 - sim.nr*sim.nz*256÷prod(best.simgridsize)]
     mark = markers[(i-1)%6+1]
     plot!(t, Tbest[:,1] .- virtual_thermocouple([locs[1]], t, sim), c=c, marker=mark, label="nr=$(sim.nr), nz=$(sim.nz)")
-    scatter!([sim.tend], [0], label="", c=c)
 end
 plot!(xlim=(0e4, 5e4), ylim=(-0.2,0.2), legend=:outerright)
 end
@@ -157,16 +158,17 @@ plot!(ylim=(-1.9, 0.3))
 resetfontsizes()
 scalefontsizes(1.2)
 begin
-plr = @df filter(x->(x.nz==31 && x.sqerr>0), errtab) scatter(:nr, :sqerr, scale=:log10, marker=:square, label=L"n_z=31")
-@df filter(x->(x.nr==x.nz && x.sqerr>0), errtab) scatter!(:nr, :sqerr, scale=:log10, label=L"n_z=n_r")
-# @df filter(x->(x.nr==31 && x.sqerr>0), errtab) scatter!(:nr, :sqerr, scale=:log10, label="nr=31")
+plr = @df filter(x->(x.nz==31 && x.rerr>0), errtab) scatter(:nr, :rerr, scale=:log10, marker=:square, label=L"n_z=31")
+@df filter(x->(x.nr==x.nz && x.rzerr>0), errtab) scatter!(:nr, :rzerr, scale=:log10, label=L"n_z=n_r")
+# @df filter(x->(x.nr==31 && x.rzerr>0), errtab) scatter!(:nr, :rzerr, scale=:log10, label="nr=31")
 plot!([10^1.5, 10^1.8], [10^0.25, 10^-0.35], label="slope -2", ls=:dash, c=:gray)
-plot!([10^1.4, 10^1.9], [10^0.27, 10^0.27], label="slope 0", ls=:dot, c=:gray)
+plot!([10^1.4, 10^1.9], [10^0.01, 10^0.01], label="slope 0", ls=:dot, c=:gray)
 plot!(xlabel=L"$n_r$, number of $r$ grid points", ylabel=L"L2 error in $T_\mathrm{f}$ [K]")
 
-plz = @df filter(x->(x.nr==31 && x.sqerr>0), errtab) scatter(:nz, :sqerr, scale=:log10, marker=:square, label=L"n_r=31")
-@df filter(x->(x.nr==x.nz && x.sqerr>0), errtab) scatter!(:nz, :sqerr, scale=:log10, label=L"n_r=n_z")
+plz = @df filter(x->(x.nr==31 && x.zerr>0), errtab) scatter(:nz, :zerr, scale=:log10, marker=:square, label=L"n_r=31")
+@df filter(x->(x.nr==x.nz && x.rzerr>0), errtab) scatter!(:nz, :rzerr, scale=:log10, label=L"n_r=n_z")
 plot!([10^1.3, 10^1.9], [10^0.8, 10^-0.4], label="slope -2", ls=:dash, c=:gray)
+plot!([10^1.4, 10^1.9], [10^0.31, 10^0.31], label="slope 0", ls=:dot, c=:gray)
 plot!(xlabel=L"$n_z$, number of $z$ grid points", )#ylabel=L"L2 error in $T_\mathrm{f}$ [K]")
 
 plot!(plr, left_margin=20Plots.px, )
@@ -177,22 +179,24 @@ savefig(plotsdir("M1_LSS_convergence_dae.svg"))
 savefig(plotsdir("M1_LSS_convergence_dae.pdf"))
 
 begin
-plr = @df filter(x->(x.nz==31 && x.sqerr>0), errtab) scatter(:nr, :terr, scale=:log10, marker=:square, label=L"n_z=31")
-@df filter(x->(x.nr==x.nz && x.sqerr>0), errtab) scatter!(:nr, :terr, scale=:log10, label=L"n_z=n_r")
-# @df filter(x->(x.nr==31 && x.sqerr>0), errtab) scatter!(:nr, :sqerr, scale=:log10, label="nr=31")
+plr = @df filter(x->(x.nz==31 && x.rerr>0), errtab) scatter(:nr, :trerr, scale=:log10, marker=:square, label=L"n_z=31")
+@df filter(x->(x.nr==x.nz && x.rzerr>0), errtab) scatter!(:nr, :trzerr, scale=:log10, label=L"n_z=n_r")
+# @df filter(x->(x.nr==31 && x.rzerr>0), errtab) scatter!(:nr, :rzerr, scale=:log10, label="nr=31")
 plot!([10^1.5, 10^1.8], [10^2.24, 10^1.34], label="slope -3", ls=:dash, c=:gray)
 # plot!([10^1.4, 10^1.9], [10^1.27, 10^1.27], label="slope 0", ls=:dot, c=:gray)
 plot!(xlabel=L"$n_r$, number of $r$ grid points", ylabel=L"L2 error in $t_\mathrm{end}$ [s]")
+plot!( legend=:bottomleft)
 
-plz = @df filter(x->(x.nr==31 && x.sqerr>0), errtab) scatter(:nz, :terr, scale=:log10, marker=:square, label=L"n_r=31")
-@df filter(x->(x.nr==x.nz && x.sqerr>0), errtab) scatter!(:nz, :terr, scale=:log10, label=L"n_r=n_z")
-plot!([10^1.35, 10^1.85], [10^2.27, 10^2.27], label="slope 0", ls=:dot, c=:gray)
+plz = @df filter(x->(x.nr==31 && x.tzerr>0), errtab) scatter(:nz, :tzerr, scale=:log10, marker=:square, label=L"n_r=31")
+@df filter(x->(x.nr==x.nz && x.trzerr>0), errtab) scatter!(:nz, :trzerr, scale=:log10, label=L"n_r=n_z")
+plot!([10^1.35, 10^1.85], [10^1.77, 10^1.77], label="slope 0", ls=:dot, c=:gray)
 plot!([10^1.5, 10^1.8], [10^2.24, 10^1.34], label="slope -3", ls=:dash, c=:gray)
 plot!(xlabel=L"$n_z$, number of $z$ grid points", )#ylabel=L"L2 error in $T_\mathrm{f}$ [K]")
+plot!(legend=:bottom)
 
 plot!(plr, left_margin=20Plots.px, )
 plot(plr, plz, layout=(1,2), size=(800, 400))
-plot!(legend=:bottomleft, bottom_margin=20Plots.px)
+plot!(bottom_margin=20Plots.px)
 end
 savefig(plotsdir("M1_LSS_convergence_dae_tend.svg"))
 savefig(plotsdir("M1_LSS_convergence_dae_tend.pdf"))
