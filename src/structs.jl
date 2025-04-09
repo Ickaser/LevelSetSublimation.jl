@@ -147,9 +147,9 @@ function (cs::CombinedSolution)(t; kwargs...)
     end
 end
 function Base.getindex(cs::CombinedSolution, i)
-    if i <= isplit
+    if i <= cs.isplit
         return cs.sol1[i]
-    elseif i <= isplit + length(cs.sol2.t)
+    elseif i <= cs.isplit + length(cs.sol2.t)
         return cs.sol2[i]
     else
         throw(ArgumentError("Index must be less than combined solution length"))
