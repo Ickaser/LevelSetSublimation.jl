@@ -162,13 +162,16 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
         @info "Beginning solve"
     end
 
+    tstops = get_tstops(params_vary)
+    @info "tstops" tstops params_vary
+
     time_integ = get(config, :time_integ, :exp_newton) # Default to using Newton internal solve 
     # --- Solve
     if time_integ == :exp_newton 
         # Explict ODE timestepping, with Tf saving
         cb_store = SavingCallback(save_Tf, saved_Tf, save_everystep=true)
         prob = ODEProblem(dudt_heatmass!, u0, tspan, prob_pars)
-        sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); ) # Adaptive timestepping: default
+        sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); tstops=tstops) # Adaptive timestepping: default
         # Interpolate saved Tf to get a function of time
         Tf_interp = interp_saved_Tf(saved_Tf)
         sim = (sol=sol, dom=dom, config=config, Tf=Tf_interp)
@@ -177,20 +180,20 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
         massmat = Diagonal(vcat(ones(length(iϕ(dom))), zeros(length(iTf(dom))), ones(length(iTvw(dom)))))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
-        sol = solve(prob, FBDF(); callback=cbs)
+        sol = solve(prob, FBDF(); callback=cbs, tstops=tstops)
         sim = (sol=sol, dom=dom, config=config)
     elseif time_integ == :dae_then_exp
         # First, DAE
         massmat = Diagonal(vcat(ones(length(iϕ(dom))), zeros(length(iTf(dom))), ones(length(iTvw(dom)))))
         func1 = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob1 = ODEProblem(func1, u0, tspan, prob_pars)
-        sol1 = solve(prob1, FBDF(); callback=cbs)
+        sol1 = solve(prob1, FBDF(); callback=cbs, tstops=tstops)
         # Then, when that hits the corner, ODE
         u1 = sol1.u[end]
         t1 = sol1.t[end]
         prob2 = ODEProblem(dudt_heatmass!, u1, (t1, tf), prob_pars)
         cb_store = SavingCallback(save_Tf, saved_Tf, save_everystep=true)
-        sol2 = solve(prob2, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); ) # Adaptive timestepping: default
+        sol2 = solve(prob2, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); tstops=tstops) # Adaptive timestepping: default
         # Interpolate saved Tf to get a function of time
         Tf_interp = interp_saved_Tf(saved_Tf)
         # Assemble
@@ -198,12 +201,12 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
     elseif time_integ == :ode_implicit
         # Implicit ODE timestepping, so Tf is allowed to vary in time
         prob = ODEProblem(dudt_heatmass_implicit!, u0, tspan, prob_pars)
-        sol = solve(prob, Rodas4P(), callback=cbs; )
+        sol = solve(prob, Rodas4P(), callback=cbs; tstops=tstops)
         sim = (sol=sol, dom=dom, config=config)
     else
         @warn "Unknown time_integ, defaulting to `:exp_newton` without saving Tf"
         prob = ODEProblem(dudt_heatmass!, u0, tspan, prob_pars)
-        sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+        sol = solve(prob, SSPRK43(), callback=cbs; tstops=tstops) # Adaptive timestepping: default
         sim = (sol=sol, dom=dom, config=config)
     end
     return sim

@@ -209,9 +209,12 @@ function (tvp::TimeVaryingProperties)(t)
     )
     return snap
 end
-function (tup::Tuple{PhysicalProperties, TimeConstantProperties, TimeVaryingProperties})(t)
+
+const SimSetup = Tuple{PhysicalProperties, TimeConstantProperties, TimeVaryingProperties} 
+function (tup::SimSetup)(t)
     return (tup[1], tup[2], tup[3](t))
 end
+
 
 struct NondimensionalizedFunc{F, I, O}
     f::F
@@ -219,6 +222,13 @@ struct NondimensionalizedFunc{F, I, O}
     out_un::O
 end
 (nf::NondimensionalizedFunc)(x...) = ustrip(nf.out_un, nf.f((x .* nf.in_un)...))
+
+LyoPronto.extract_ts(nd::NondimensionalizedFunc) = LyoPronto.extract_ts(nd.f, un=nd.in_un)
+function LyoPronto.get_tstops(tvp::TimeVaryingProperties)
+    @info "inside" tvp.P_per_vial
+    return get_tstops((tvp.f_RF, tvp.P_per_vial, tvp.Tsh, tvp.pch))
+end
+LyoPronto.get_tstops(tup::SimSetup) = LyoPronto.get_tstops(tup[3])
 
 function nondim_controlvar(tvp, varname)
     control_dim = getfield(tvp, varname)
