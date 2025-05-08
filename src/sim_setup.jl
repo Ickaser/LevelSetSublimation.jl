@@ -77,33 +77,33 @@ you can call with just values that need to be changed, e.g.
 All properties stored here are:
 $(FIELDS)
 """
-@with_kw struct PhysicalProperties
-    "Universal gas constant."
-    R = 8.3145u"J/mol/K"
-    "Vacuum permittivity (universal constant)."
-    ε0 = LevelSetSublimation.ε0
+@with_kw struct PhysicalProperties{T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13}
     "Density of vial wall (defaults to borosilicate glass)."
-    ρ_vw = LevelSetSublimation.ρ_gl
+    ρ_vw::T1 = LevelSetSublimation.ρ_gl
     "Heat capacity of vial wall (defaults to borosilicate glass)."
-    cp_vw = LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
+    cp_vw::T2 = LevelSetSublimation.cp_gl # Half of a 10R vial's mass contributing; all of a 2R.
     "Dielectric loss coefficient of vial wall (defaults to borosilicate glass)."
-    εpp_vw = LevelSetSublimation.εpp_gl
+    εpp_vw::T3 = LevelSetSublimation.εpp_gl
     "Density of frozen material (taken as water ice)."
-    ρf = ρ_ice 
+    ρf::T4 = ρ_ice 
     "Heat capacity of frozen material (taken as water ice)."
-    Cpf = cp_ice
+    Cpf::T5 = cp_ice
     "Thermal conductivity of frozen material."
-    kf = LevelSetSublimation.kf
+    kf::T6 = LevelSetSublimation.kf
     "Molecular weight of sublimating species (defaults to water)."
-    Mw = .018u"kg/mol" 
+    Mw::T7 = .018u"kg/mol" 
     "Gas phase viscosity (in rarefied regime) of sublimating species (defaults to water)."
-    μ = LevelSetSublimation.μ
+    μ::T8 = LevelSetSublimation.μ
     "Heat of sublimation of sublimating species (defaults to water); give as positive number."
-    ΔH = LevelSetSublimation.ΔH
+    ΔH::T9 = LevelSetSublimation.ΔH
     "Dielectric loss coefficient of frozen layer (defaults to water ice)."
-    εppf = LyoPronto.εppf
+    εppf::T10 = LyoPronto.εppf
     "Dielectric loss coefficient of dry layer (defaults to 0)."
-    εpp_d = 0.0
+    εpp_d::T11 = 0.0
+    "Universal gas constant."
+    R::T12 = u"R"
+    "Vacuum permittivity."
+    ϵ0::T13 = u"ϵ0" |> u"F/m"
 end
 
 
@@ -121,32 +121,32 @@ No default constructor is provided by intention--all of these parameters should 
 
 $(FIELDS)
 """
-struct TimeConstantProperties
+struct TimeConstantProperties{T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11}
     # Mass transfer
     "dimensionless, the porosity or fraction of solid space taken up by ice."
-    ϵ 
+    ϵ::T1
     "length, a dusty gas model parameter (roughly the pore size)"
-    l 
+    l::T2
     "area, a dusty gas model parameter (roughly the area of a pore neck)"
-    κ 
+    κ::T3
     "length/time, empirical mass transfer resistance at zero dry layer height"
-    Rp0 
+    Rp0::T4
     # Heat transfer
     "dry layer thermal conductivity"
-    kd 
+    kd::T5
     "vial wall to frozen layer heat transfer coeff"
-    Kvwf 
+    Kvwf::T6
     "vial mass"
-    m_v 
+    m_v::T7
     "total vial-bottom area, used for heat transfer"
-    A_v 
+    A_v::T8
     # Microwave
     "Ω/m^2, dry layer field strength coefficient"
-    B_d 
+    B_d::T9
     "Ω/m^2, frozen layer field strength coefficient"
-    B_f 
+    B_f::T10
     "Ω/m^2, vial wall field strength coefficient"
-    B_vw 
+    B_vw::T11
 end
 
 """
@@ -164,17 +164,17 @@ See the `RampedVariable` and `RpFormFit` types from `LyoPronto`, which are inten
 
 $(FIELDS)
 """
-struct TimeVaryingProperties
+struct TimeVaryingProperties{Tf, TP, TT, Tp, TK}
     "Microwave frequency"
-    f_RF 
+    f_RF::Tf
     "Microwave power per vial"
-    P_per_vial 
+    P_per_vial::TP
     "Shelf temperature"
-    Tsh 
+    Tsh::TT
     "Chamber pressure"
-    pch 
+    pch::Tp
     "Heat transfer coefficient as function of pressure"
-    Kshf 
+    Kshf::TK
 end
 
 """
@@ -186,17 +186,17 @@ This is meant to be constructed by calling an instance of the [`TimeVaryingPrope
 
 $(FIELDS)
 """
-struct TimeVaryingPropertiesSnapshot
+struct TimeVaryingPropertiesSnapshot{Tf, TP, TT, Tp, TK}
     "Microwave frequency"
-    f_RF 
+    f_RF::Tf
     "Microwave power per vial"
-    P_per_vial 
+    P_per_vial::TP
     "Shelf temperature"
-    Tsh 
+    Tsh::TT
     "Chamber pressure"
-    pch 
+    pch::Tp
     "Heat transfer coefficient as function of pressure"
-    Kshf 
+    Kshf::TK
 end
 
 function (tvp::TimeVaryingProperties)(t)
@@ -290,13 +290,13 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     :cp_vw => u"J/kg/K",
     :ρ_vw=> u"kg/m^3",
     :R => u"J/mol/K",
+    :ϵ0 => u"F/m",
     :Mw => u"kg/mol",
     :μ => u"Pa*s",
     :ΔH => u"J/kg",
     :ρf => u"kg/m^3",
     :Cpf => u"J/kg/K",
     :kf => u"W/m/K",
-    :ε0 => u"F/m",
     :εpp_d => NoUnits,
     :εpp_vw => NoUnits, 
     :εppf => NoUnits,

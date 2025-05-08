@@ -71,7 +71,7 @@ paramsd = base_props, tcprops, tvprops
 # Pack parameters into a Dict
 config = Dict{Symbol, Any}()
 @pack! config = paramsd, vialsize, fillvol, simgridsize
-config[:time_integ] = :exp_newton
+config[:time_integ] = Val(:exp_newton)
 
 # Run the simulation
 @time res, fname = produce_or_load(sim_from_dict, config; filename=hash, verbose=true, tag=true, prefix=datadir("sims", "lyopronto"));

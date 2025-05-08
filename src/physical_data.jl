@@ -40,7 +40,7 @@ import LyoPronto: ρ_ice, cp_ice, Mw, μ_vap, k_ice, ΔH, calc_psub
 const μ = LyoPronto.μ_vap
 const kf = LyoPronto.k_ice
 import LyoPronto: ρ_gl, k_gl, cp_gl, εpp_gl, e_0
-const ε0 = e_0
+const ε0 = u"ϵ0" |> u"F/m"
 import LyoPronto: ρ_sucrose, k_sucrose
 
 const ρ_wat = 997.0u"kg/m^3"

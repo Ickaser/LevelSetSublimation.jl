@@ -31,7 +31,7 @@ c_solid = 0.05u"g/mL"
 Rp0 = 1.4u"cm^2*hr*Torr/g"
 A1 = 16u"cm*hr*Torr/g"
 Tguess = 260u"K"
-l = sqrt(base_props.R*Tguess/base_props.Mw) / A1
+l = sqrt(u"R"*Tguess/base_props.Mw) / A1
 # Heat transfer
 kd = LSS.k_sucrose * (1-ϵ)
 m_v = LyoPronto.get_vial_mass(vialsize)
@@ -78,8 +78,8 @@ simgridsizes = [
 # @pack! config = paramsd, vialsize, fillvol, simgridsize
 config = @dict paramsd vialsize fillvol
 config[:simgridsize] = simgridsizes
-config[:time_integ] = :dae_then_exp
-# config[:time_integ] = :exp_newton
+config[:time_integ] = Val(:dae_then_exp)
+# config[:time_integ] = Val(:exp_newton)
 allconfigs = dict_list(config)
 
 
@@ -108,7 +108,7 @@ end
 using DataFrames
 allsims = collect_results(datadir("sims"), rinclude=[r"err"])
 simtab = Table(map(eachrow(allsims)) do row
-    # if row.sim.config[:time_integ] == :dae_then_exp
+    # if row.sim.config[:time_integ] == Val(:dae_then_exp)
     #     row.sim = merge(row.sim, (Tf = nothing,))
     # end
     merge(row.sim, (path=row["path"],), NamedTuple(row.sim.config))

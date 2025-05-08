@@ -2,19 +2,19 @@ export solve_T
 
 function calc_QpppRFd(params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*base.ε0*base.εpp_d*tcp.B_d*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ϵ0*base.εpp_d*tcp.B_d*tvps.P_per_vial
 end
 function calc_QpppRFf(params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*base.ε0*base.εppf*tcp.B_f*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ϵ0*base.εppf*tcp.B_f*tvps.P_per_vial
 end
 function calc_QpppRFf(T, params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*base.ε0*base.εppf(T, tvps.f_RF)*tcp.B_f*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ϵ0*base.εppf(T, tvps.f_RF)*tcp.B_f*tvps.P_per_vial
 end
 function calc_QpppRFvw(params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*base.ε0*base.εpp_vw*tcp.B_vw*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ϵ0*base.εpp_vw*tcp.B_vw*tvps.P_per_vial
 end
 
 """
@@ -383,8 +383,8 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
 
     if all(has_ice) # If all ice present, use all DOF
 
-        prob = NonlinearProblem(resid!, Tf_g)
-        sol = solve(prob, NewtonRaphson(), abstol=3e-4/dom.nr) # Allowing some error (in K/s) makes things much, much faster.
+        prob1 = NonlinearProblem{true}(resid!, Tf_g)
+        sol1 = solve(prob1, NewtonRaphson(autodiff=AutoForwardDiff(chunksize=10)), abstol=3e-4/dom.nr) # Allowing some error (in K/s) makes things much, much faster.
         # prob = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
@@ -394,7 +394,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         #     sol = solve(prob_ss, DynamicSS(Rosenbrock23()), maxiters=100)
         #     @info "SS iterations" sol.retcode sol.stats sol.u
         # end
-        Tfs = sol.u
+        Tfs = sol1.u
     else # If ice doesn't cover full radial extent, trim out those DOF
         Tf_trim = Tf_g[has_ice]
         
@@ -410,13 +410,14 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             nothing
         end
 
-        prob = NonlinearProblem(resid_lessdof!, Tf_trim)
-        sol = solve(prob, NewtonRaphson(), abstol = 3e-4/dom.nr)
+        prob2 = NonlinearProblem{true}(resid_lessdof!, Tf_trim)
+        # A chunksize larger than 1 is almost certainly faster, but will not work if there is only 1 dof in the problem.
+        sol2 = solve(prob2, NewtonRaphson(autodiff=AutoForwardDiff(chunksize=3)), abstol = 3e-4/dom.nr)
         # prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
         Tfs = zeros(eltype(u.Tf), dom.nr)
-        Tfs[has_ice] = sol.u
+        Tfs[has_ice] = sol2.u
         extrap_Tf_noice!(Tfs, has_ice, dom)
     end
 

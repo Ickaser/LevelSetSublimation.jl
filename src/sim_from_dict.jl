@@ -12,6 +12,13 @@ function cond_end(u, t, integ)
     minimum(u.ϕ) + min(dom.dz, dom.dr)/4 
 end
 
+function cond_corner(u, t, integ) 
+    dom = integ.p[1]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ[end,1] + dom.dz/4 
+end
+
+
 """
     reinit_wrap(integ)
 
@@ -93,7 +100,7 @@ The following fields have default values and are therefore optional:
 - `simgridsize`, a tuple giving number of grid points to use for simulation. Defaults to `(51, 51)`.
 - `Tf0`, an initial ice temperature. Defaults to `Tsh(0)` if not provided  
 - `Tvw0`, an initial glass temperature. Defaults to `Tf0`.
-- `time_integ`: defaults to [`:exp_newton`](@ref); other options are [`:dae`](@ref) and [`:ode_implicit`](@ref).
+- `time_integ`: defaults to `Val(:exp_newton)`; other options are `Val(:dae)`, `Val(:dae_then_exp)` and `Val(:ode_implicit)`.
     Among these three, different problem formulations are used (explicit ODE with internal Newton solve, DAE, and implicit ODE).
 - `init_prof`, a `Symbol` indicating a starting profile (from [`make_ϕ0`](@ref)
 
@@ -102,7 +109,7 @@ tend to run faster and more closely reflect the problem structure,
 but they run into instabilities when the sublimation front peels away from the wall,
 whereas the explicit ODE formulation can jump over that point.
 """
-function sim_from_dict(config; tf=1e6, verbose=false)
+function sim_from_dict(config; tf=1e6, verbose=false, reltol=1e-3)
 
     # ------------------- Get simulation parameters
 
@@ -123,7 +130,7 @@ function sim_from_dict(config; tf=1e6, verbose=false)
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
 
-    sim = sim_from_u0(u0, 0.0, config; tf, verbose)
+    sim = sim_from_u0(u0, 0.0, config; tf, verbose, reltol)
     return @strdict sim
 end
 
@@ -132,7 +139,7 @@ end
 
 Wrapped by [`sim_from_dict`](@ref LevelSetSublimation.sim_from_dict); useful on its own if you want to start from partway through a simulation.
 """
-function sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
+function sim_from_u0(u0, t0, config; tf=1e6, verbose=false, reltol=1e-3)
     @unpack paramsd = config
     dom = Domain(config)
     # ----- Nondimensionalize everything
@@ -163,49 +170,54 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
         @info "Beginning solve" tstops
     end
 
-    time_integ = get(config, :time_integ, :exp_newton) # Default to using Newton internal solve 
+
+    time_integ = get(config, :time_integ, Val(:exp_newton)) # Default to using Newton internal solve 
     # --- Solve
-    if time_integ == :exp_newton 
+    if time_integ isa Val{:exp_newton}
         # Explict ODE timestepping, with Tf saving
         cb_store = SavingCallback(save_Tf, saved_Tf, save_everystep=true)
         prob = ODEProblem(dudt_heatmass!, u0, tspan, prob_pars)
         sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); tstops=tstops) # Adaptive timestepping: default
         # Interpolate saved Tf to get a function of time
         Tf_interp = interp_saved_Tf(saved_Tf)
-        sim = (sol=sol, dom=dom, config=config, Tf=Tf_interp)
-    elseif time_integ == :dae
+        sim = (;sol, dom, config, Tf=Tf_interp)
+    elseif time_integ isa Val{:dae}
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
         massmat = Diagonal(vcat(ones(length(u0.ϕ)), zeros(length(u0.Tf)), ones(length(u0.Tvw))))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
-        sol = solve(prob, FBDF(); callback=cbs, tstops=tstops)
-        sim = (sol=sol, dom=dom, config=config)
-    elseif time_integ == :dae_then_exp
+        sol = solve(prob, FBDF(); callback=cbs, tstops, reltol)
+        sim = (;sol, dom, config)
+    elseif time_integ isa Val{:dae_then_exp}
         # First, DAE
         massmat = Diagonal(vcat(ones(length(u0.ϕ)), zeros(length(u0.Tf)), ones(length(u0.Tvw))))
         func1 = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob1 = ODEProblem(func1, u0, tspan, prob_pars)
-        sol1 = solve(prob1, FBDF(); callback=cbs, tstops=tstops)
-        # Then, when that hits the corner, ODE
+        cb_corner = ContinuousCallback(cond_corner, terminate!)
+        sol1 = solve(prob1, FBDF(); callback=CallbackSet(cb_corner, cb_reinit), tstops, reltol)
+        # When that either reaches the corner or hits another instability, switch to explicit ODE
+        if verbose
+            @info "Switching to explicit ODE" sol1.t[end] sol1.u[end] cond_corner(sol1.u[end], sol1.t[end], sol1.prob)
+        end
         u1 = sol1.u[end]
         t1 = sol1.t[end]
         prob2 = ODEProblem(dudt_heatmass!, u1, (t1, tf), prob_pars)
         cb_store = SavingCallback(save_Tf, saved_Tf, save_everystep=true)
-        sol2 = solve(prob2, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); tstops=tstops) # Adaptive timestepping: default
+        sol2 = solve(prob2, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); tstops, reltol) # Adaptive timestepping: default
         # Interpolate saved Tf to get a function of time
         Tf_interp = interp_saved_Tf(saved_Tf)
         # Assemble
-        sim = (sol=CombinedSolution(sol1, sol2, Tf_interp), dom=dom, config=config)
-    elseif time_integ == :ode_implicit
+        sim = (;sol=CombinedSolution(sol1, sol2, Tf_interp), dom, config)
+    elseif time_integ isa Val{:ode_implicit}
         # Implicit ODE timestepping, so Tf is allowed to vary in time
         prob = ODEProblem(dudt_heatmass_implicit!, u0, tspan, prob_pars)
-        sol = solve(prob, Rodas4P(), callback=cbs; tstops=tstops)
-        sim = (sol=sol, dom=dom, config=config)
+        sol = solve(prob, Rodas4P(); callback=cbs, tstops, reltol)
+        sim = (sol, dom, config)
     else
         @warn "Unknown time_integ, defaulting to `:exp_newton` without saving Tf"
         prob = ODEProblem(dudt_heatmass!, u0, tspan, prob_pars)
-        sol = solve(prob, SSPRK43(), callback=cbs; tstops=tstops) # Adaptive timestepping: default
-        sim = (sol=sol, dom=dom, config=config)
+        sol = solve(prob, SSPRK43(); callback=cbs, tstops, reltol) # Adaptive timestepping: default
+        sim = (;sol, dom, config)
     end
     return sim
 end

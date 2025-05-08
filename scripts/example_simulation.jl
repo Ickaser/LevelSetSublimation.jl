@@ -28,7 +28,7 @@ hd = (dom.zmax .- dom.zgrid)*u"m"
 dRpdh = @. A1/(1 + A2*hd)^2 # This is a constant for A2=0
 # If l is a constant everywhere, it can be passed as a single value rather than array.
 # Here we vary the pore structure, so it as an array of values
-l = [sqrt(base_props.R*Tguess/base_props.Mw) / dRp for r in dom.rgrid, dRp in dRpdh] # Varying in height
+l = [sqrt(u"R"*Tguess/base_props.Mw) / dRp for r in dom.rgrid, dRp in dRpdh] # Varying in height
 
 c_solid = 0.05u"g/mL"
 ρ_solution = 1.0u"g/mL"
@@ -71,7 +71,7 @@ paramsd = (base_props, tcp, tvp)
 # This is one way of constructing the dictionary, if your variable 
 # names match the required dictionary keys
 config = @dict paramsd vialsize fillvol simgridsize
-config[:time_integ] = :dae_then_exp
+config[:time_integ] = Val(:dae_then_exp)
 
 alt_simgridsize = (41, 31)
 # Or we can do the following, if variables have other names
@@ -80,7 +80,7 @@ config = Dict{Symbol, Any}(
     :vialsize => vialsize,
     :fillvol => fillvol,
     :simgridsize => alt_simgridsize,
-    :time_integ => :dae_then_exp
+    :time_integ => Val(:dae_then_exp)
 )
 
 # -----------------------------
