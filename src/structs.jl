@@ -6,6 +6,7 @@ Stores information on the grid and domain size for simulation.
 **Constructors:**  
 ```julia
 Domain(config::Dict) 
+Domain(config::NamedTuple) 
 Domain(nr, nz, rmax, zmax) 
 Domain(nr, nz, rmax, zmax, bwfrac)
 Domain(nr, nz, rmin, rmax, zmin, zmax)
@@ -27,7 +28,7 @@ while `rmin`, `rmax`, `zmin`, and `zmax` are assumed to be floats
 - `bwr` - `=ceil(Int, bwfrac*nr)` integer width of band around interface in  which level set is treated
 - `ntot` - total number of grid points = `nr*nz`
 """
-struct Domain{I,F}
+struct Domain{I,F, vF<:AbstractVector{F}}
     nr::I
     nz::I
     rmin::F
@@ -35,8 +36,8 @@ struct Domain{I,F}
     zmin::F
     zmax::F
     bwfrac::F
-    rgrid::AbstractVector{F}
-    zgrid::AbstractVector{F}
+    rgrid::vF
+    zgrid::vF
     dr::F
     dz::F
     dr1::F
