@@ -67,7 +67,16 @@ Base.size(d::Domain) = (d.nr, d.nz)
 function Domain(config::Dict)
     @unpack vialsize, fillvol = config
     simgridsize = get(config, :simgridsize, (51,51))
+    Domain(@ntuple simgridsize vialsize fillvol)
+end
 
+function Domain(config::NamedTuple)
+    @unpack vialsize, fillvol = config
+    if haskey(config, :simgridsize)
+        simgridsize = config.simgridsize
+    else
+        simgridsize = (51, 51)
+    end
     r_vial = get_vial_radii(vialsize)[1]
     Ap = π * r_vial^2
     z_fill = fillvol/Ap *ρ_wat/ρ_ice 
