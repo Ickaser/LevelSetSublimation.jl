@@ -32,10 +32,10 @@ l = sqrt(base_props.R*Tguess/base_props.Mw) / A1
 # Heat transfer
 kd = LSS.k_sucrose * (1-ϵ)
 m_v = LyoPronto.get_vial_mass(vialsize)
-A_rad = π*LyoPronto.get_vial_radii(vialsize)[2]^2
+A_v = π*LyoPronto.get_vial_radii(vialsize)[2]^2
 # Microwave
 B_d = 0.0u"Ω/m^2"
-tcprops = TimeConstantProperties(ϵ, l_bulk, κ, Rp0, kd, Kvwf, m_v, A_rad, B_d, Bf, Bvw)
+tcprops = TimeConstantProperties(ϵ, l_bulk, κ, Rp0, kd, Kvwf, m_v, A_v, B_d, Bf, Bvw)
 
 # Properties which may change in time
 f_RF = RampedVariable(8.0u"GHz")

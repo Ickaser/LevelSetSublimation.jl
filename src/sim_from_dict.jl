@@ -1,6 +1,17 @@
-export sim_from_dict, sim_heatonly, sim_and_postprocess
+export sim_from_dict, sim_heatonly, sim_hybrid
 
 # Callback functions ---------------
+"""
+    cond_end(u, t, integ) 
+
+Changes from positive to negative when the minimum value of ϕ is  
+within `min(dom.dz, dom.dr)/4`, which is when drying is essentially complete.
+"""
+function cond_end(u, t, integ) 
+    dom = integ.p[1]
+    minimum(u[iϕ(dom)]) + min(dom.dz, dom.dr)/4 
+end
+
 """
     reinit_wrap(integ; verbose=false)
 
@@ -10,8 +21,9 @@ Uses a tolerance of 0.02 for error in norm of gradient (which should be 1)
  in the region B (band around the interface).
 If `verbose=true`, logs the error in signed distance function before and after reinit, as well as current dried fraction
 """
-function reinit_wrap(integ; verbose=false)
+function reinit_wrap(integ)
     dom = integ.p[1]
+    verbose = integ.p[3]
     ϕ = @views reshape(integ.u[iϕ(dom)], size(dom))
     verbose && (pre_err = sdf_err_L∞(ϕ, dom, region=:B))
     reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=50, tol=0.02, err_reg=:B) 
@@ -34,23 +46,35 @@ function needs_reinit(u, t, integ)
     return err > tol
 end
 
-function store_Tf!(integ)
-    Tf = @view integ.u[iTf(integ.p[1])]
+function save_Tf(u, t, integ) 
+    Tf_g = Tf_guess(u[iTf(integ.p[1])], t, integ.p[4])
     if integ.p[3]
         @info "callback" integ.t
-        @time Tf_sol = pseudosteady_Tf(integ.u, integ.p[1], integ.p[2](integ.t), integ.p[4])
+        @time Tf_sol = pseudosteady_Tf(u, integ.p[1], integ.p[2](t), Tf_g)
     else
-        Tf_sol = pseudosteady_Tf(integ.u, integ.p[1], integ.p[2](integ.t), integ.p[4])
+        Tf_sol = pseudosteady_Tf(u, integ.p[1], integ.p[2](t), Tf_g)
     end
-    Tf .= Tf_sol
+    return Tf_sol
+end
+
+function Tf_guess(fallback, t, saved_Tf::SavedValues)
+    if length(saved_Tf.saveval) > 1
+        ti = length(saved_Tf.saveval) # If currently inside the callback, saved_Tf.t is one longer than saveval
+        Tf_g = LinearInterpolation(saved_Tf.saveval[ti-1:ti], saved_Tf.t[ti-1:ti], extrapolation=ExtrapolationType.Linear)(t)
+    elseif length(saved_Tf.saveval) == 1
+        Tf_g = saved_Tf.saveval[1]
+    else
+        Tf_g = fallback
+    end
+    return Tf_g
 end
 
 # Simulation functions -----------
 
 """
-    sim_from_dict(fullconfig; tf=1e5, verbose=false)
+    sim_from_dict(config; tf=1e5, verbose=false)
 
-Given a simulation configuration `fullconfig`, run a simulation.
+Given a simulation configuration `config`, run a simulation.
 
 Maximum simulation time (not CPU time, but simulation time) is specified by `tf`, which is in seconds; 1e5 is 270 hours. (No matter how much ice is left at that point, simulation will end.)
 `verbose=true` will put out some info messages about simulation progress, i.e. at each reinitialization.
@@ -60,7 +84,7 @@ inside this function, they will be converted to SI marks then have units strippe
 The results will be in SI units, so times in seconds, temperature in Kelvin, pressure in Pa, etc.
 Employ Unitful to do unit conversions after simulation if necessary.
 
-`fullconfig` must have the following fields:
+`config` must have the following fields:
 - `fillvol`, fill volume with Unitful units (e.g. `3u"mL"`)
 - `vialsize`, a string (e.g. `"2R"`) giving vial size
 - `paramsd`, a `Tuple{PhysicalProperties, TimeConstantProperties, TimeVaryingProperties}` 
@@ -69,7 +93,7 @@ The following fields have default values and are therefore optional:
 - `simgridsize`, a tuple giving number of grid points to use for simulation. Defaults to `(51, 51)`.
 - `Tf0`, an initial ice temperature. Defaults to `Tsh(0)` if not provided  
 - `Tvw0`, an initial glass temperature. Defaults to `Tf0`.
-- `dudt_func`: defaults to [`dudt_heatmass!`](@ref); other options are [`dudt_heatmass_dae!`](@ref) and [`dudt_heatmass_implicit!`](@ref).
+- `time_integ`: defaults to [`:exp_newton`](@ref); other options are [`:dae`](@ref) and [`:ode_implicit`](@ref).
     Among these three, different problem formulations are used (explicit ODE with internal Newton solve, DAE, and implicit ODE).
 - `init_prof`, a `Symbol` indicating a starting profile (from [`make_ϕ0`](@ref)
 
@@ -78,67 +102,55 @@ tend to run faster and more closely reflect the problem structure,
 but they run into instabilities when the sublimation front peels away from the wall,
 whereas the explicit ODE formulation can jump over that point.
 """
-function sim_from_dict(fullconfig; tf=1e5, verbose=false)
+function sim_from_dict(config; tf=1e6, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack paramsd = fullconfig
+    @unpack paramsd = config
     # Default values for non-essential parameters
-    init_prof = get(fullconfig, :init_prof, :flat) # Default to same ice & glass temperature if glass initial not given
-    Tf0 = get(fullconfig, :Tf0, paramsd[3].Tsh(0u"s")) # Default to same ice & glass temperature if glass initial not given
-    Tvw0 = get(fullconfig, :Tvw0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    init_prof = get(config, :init_prof, :flat) # Default to same ice & glass temperature if glass initial not given
+    Tf0 = get(config, :Tf0, paramsd[3].Tsh(0u"s")) # Default to same ice & glass temperature if glass initial not given
+    Tvw0 = get(config, :Tvw0, Tf0) # Default to same ice & glass temperature if glass initial not given
 
     # --------- Set up simulation domain, including grid size (defaults to 51x51)
 
-    dom = Domain(fullconfig)
-    # If no vial thickness defined, get it from vial size
+    dom = Domain(config)
     u0 = make_u0_ndim(init_prof, Tf0, Tvw0, dom)
 
     ϕ0 = @views reshape(u0[iϕ(dom)], size(dom))
-    if verbose
-        @info "Initializing ϕ"
-    end
+    verbose && @info "Initializing ϕ"
     # Make sure that the starting profile is very well-initialized
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
 
-    sim_from_u0(u0, 0.0, fullconfig; tf=tf, verbose=verbose)
+    sim = sim_from_u0(u0, 0.0, config; tf=tf, verbose=verbose)
+    return @strdict sim
 end
 
 """
-    sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
+    sim_from_u0(u0, t0, config; tf=1e5, verbose=false)
 
 Wrapped by [`sim_from_dict`](@ref LevelSetSublimation.sim_from_dict); useful on its own if you want to start from partway through a simulation.
 """
-function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
-
-    @unpack paramsd = fullconfig
-    dom = Domain(fullconfig)
-
+function sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
+    @unpack paramsd = config
+    dom = Domain(config)
     # ----- Nondimensionalize everything
-    params_vary = params_nondim_setup(paramsd) # Covers the various physical parameters 
-
-    # Cached array for using last pressure and Tf states as guess
-    Tf0 = u0[iTf(dom)][1]
-    Tf_last = fill(Tf0, dom.nr)
+    params_vary = params_nondim_setup(paramsd)
 
 
-    dudt_func = get(fullconfig, :dudt_func, dudt_heatmass!) # Default to heat and mass transfer-based evolution
-    # ---- Set up ODEProblem
-    prob_pars = (dom, params_vary, verbose, Tf_last)
+    # Tf saving, if not using DAE or implicit solve
+    saved_Tf = SavedValues(typeof(tf), typeof(u0))
+    prob_pars = (dom, params_vary, verbose, saved_Tf)
     tspan = (t0, tf)
-    prob = ODEProblem(dudt_func, u0, tspan, prob_pars)
 
     # --- Set up reinitialization callback
-
     # After each time step, check if reinit is needed and carry out if necessary
-    cb_reinit = DiscreteCallback(needs_reinit, x->reinit_wrap(x, verbose=verbose))
+    cb_reinit = DiscreteCallback(needs_reinit, reinit_wrap)
 
     # --- Set up simulation end callback
-
     # When the minimum value of ϕ is 0, front has disappeared
-    cond_end(u, t, integ) = minimum(u) + min(dom.dz, dom.dr)/4 
-    # ContinuousCallback gets thrown when `cond` evaluates to 0
+    # ContinuousCallback gets called when `cond` evaluates to 0
     # `terminate!` ends the solve there
     cb_end = ContinuousCallback(cond_end, terminate!)
 
@@ -150,35 +162,52 @@ function sim_from_u0(u0, t0, fullconfig; tf=1e5, verbose=false)
         @info "Beginning solve"
     end
 
-    # --- Solve
-    if dudt_func == dudt_heatmass!
-        # sol = solve(prob, SSPRK33(), dt=60, callback=cbs; ) # Fixed timestepping: 1 minute
-        # sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+    tstops = get_tstops(params_vary)
+    @info "tstops" tstops params_vary
 
-        cb_store = DiscreteCallback((a,b,c)->true, store_Tf!, save_positions=(false,true))
-        # @info "fixed"
-        # sol = solve(prob, SSPRK33(), dt=60, callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Fixed timestepping: 1 minute
-        sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_reinit, cb_end, cb_store); ) # Adaptive timestepping: default
-    elseif dudt_func == dudt_heatmass_dae!
+    time_integ = get(config, :time_integ, :exp_newton) # Default to using Newton internal solve 
+    # --- Solve
+    if time_integ == :exp_newton 
+        # Explict ODE timestepping, with Tf saving
+        cb_store = SavingCallback(save_Tf, saved_Tf, save_everystep=true)
+        prob = ODEProblem(dudt_heatmass!, u0, tspan, prob_pars)
+        sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); tstops=tstops) # Adaptive timestepping: default
+        # Interpolate saved Tf to get a function of time
+        Tf_interp = interp_saved_Tf(saved_Tf)
+        sim = (sol=sol, dom=dom, config=config, Tf=Tf_interp)
+    elseif time_integ == :dae
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
-        massmat = Diagonal(vcat(ones(dom.nr*dom.nz), zeros(dom.nr), [1]))
+        massmat = Diagonal(vcat(ones(length(iϕ(dom))), zeros(length(iTf(dom))), ones(length(iTvw(dom)))))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
-        sol = solve(prob, FBDF(); callback=cbs)
-    elseif dudt_func == dudt_heatmass_implicit!
-        sol = solve(prob, Rodas4P(), callback=cbs; ) # Adaptive timestepping: default
+        sol = solve(prob, FBDF(); callback=cbs, tstops=tstops)
+        sim = (sol=sol, dom=dom, config=config)
+    elseif time_integ == :dae_then_exp
+        # First, DAE
+        massmat = Diagonal(vcat(ones(length(iϕ(dom))), zeros(length(iTf(dom))), ones(length(iTvw(dom)))))
+        func1 = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
+        prob1 = ODEProblem(func1, u0, tspan, prob_pars)
+        sol1 = solve(prob1, FBDF(); callback=cbs, tstops=tstops)
+        # Then, when that hits the corner, ODE
+        u1 = sol1.u[end]
+        t1 = sol1.t[end]
+        prob2 = ODEProblem(dudt_heatmass!, u1, (t1, tf), prob_pars)
+        cb_store = SavingCallback(save_Tf, saved_Tf, save_everystep=true)
+        sol2 = solve(prob2, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); tstops=tstops) # Adaptive timestepping: default
+        # Interpolate saved Tf to get a function of time
+        Tf_interp = interp_saved_Tf(saved_Tf)
+        # Assemble
+        sim = (sol=CombinedSolution(sol1, sol2, Tf_interp), dom=dom, config=config)
+    elseif time_integ == :ode_implicit
+        # Implicit ODE timestepping, so Tf is allowed to vary in time
+        prob = ODEProblem(dudt_heatmass_implicit!, u0, tspan, prob_pars)
+        sol = solve(prob, Rodas4P(), callback=cbs; tstops=tstops)
+        sim = (sol=sol, dom=dom, config=config)
     else
-        sol = solve(prob, SSPRK43(), callback=cbs; ) # Adaptive timestepping: default
+        @warn "Unknown time_integ, defaulting to `:exp_newton` without saving Tf"
+        prob = ODEProblem(dudt_heatmass!, u0, tspan, prob_pars)
+        sol = solve(prob, SSPRK43(), callback=cbs; tstops=tstops) # Adaptive timestepping: default
+        sim = (sol=sol, dom=dom, config=config)
     end
-    return @strdict sol dom
+    return sim
 end
-
-function sim_and_postprocess(config; kwargs...)
-    @time res = sim_from_dict(config; kwargs...)
-    rpos = [0,   0  , 0, 0.5, 1]
-    zpos = [0.5, 0.25, 0, 0  , 0]
-    @time Tf_sol = virtual_thermocouple(rpos, zpos, res, config)
-    return @strdict res Tf_sol config
-end
-
-

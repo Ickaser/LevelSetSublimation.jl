@@ -208,9 +208,9 @@ function compute_Qice_nodry(u, T, dom::Domain, params)
 end
 
 """
-    sim_heatonly(fullconfig; tf=1e5, verbose=false)
+    sim_heatonly(config; tf=1e5, verbose=false)
 
-Given a simulation configuration `fullconfig`, run a simulation.
+Given a simulation configuration `config`, run a simulation.
 
 This simulation is stripped-down: no mass transfer, no variation in ice & glass temperature
 
@@ -220,15 +220,15 @@ Maximum simulation time is specified by `tf`.
 **CURRENTLY OUT OF DATE** with parameter input structures.
 
 """
-function sim_heatonly(fullconfig; tf=1e5, verbose=false)
+function sim_heatonly(config; tf=1e5, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = fullconfig
+    @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = config
 
     # Default values for non-essential parameters
-    Tvw0 = get(fullconfig, :Tvw0, Tf0) # Default to same ice & glass temperature if glass initial not given
-    simgridsize = get(fullconfig, :simgridsize, (51,51))
+    Tvw0 = get(config, :Tvw0, Tf0) # Default to same ice & glass temperature if glass initial not given
+    simgridsize = get(config, :simgridsize, (51,51))
 
     # --------- Set up simulation domain
     r_vial = get_vial_radii(vialsize)[1]

@@ -3,7 +3,7 @@ include(scriptsdir("petr_exp_config.jl"))
 
 b = eval_b(243.15u"K", LSS.calc_psub(243.15u"K"), config[:cparams])
 
-αf = LSS.kf / LSS.ρ_ice / LSS.Cp_ice
+αf = LSS.kf / LSS.ρ_ice / LSS.cp_ice
 
 αd = (LSS.k_sucrose*(1-LSS.ϵ_typical)) / (LSS.ρ_sucrose*(1-LSS.ϵ_typical)) / LSS.Cp_sucrose
 
@@ -27,7 +27,7 @@ Fo_m = uconvert(NoUnits, t_sub/t_m)
 m_p = 3u"g"
 m_vw = 8u"g"
 
-H_sens = (m_p*LSS.Cp_ice + m_vw*LSS.cp_vw) *ΔT
+H_sens = (m_p*LSS.cp_ice + m_vw*LSS.cp_vw) *ΔT
 H_sub = LSS.ΔH * m_p
 
 cakemass = (1-LSS.ϵ_typical)*LSS.ρ_sucrose*LSS.Cp_sucrose

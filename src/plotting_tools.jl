@@ -4,6 +4,7 @@ export LevelSet
 export summaryplot, resultsanim,  gen_sumplot, gen_anim
 export summaryT
 export plotframe, finalframe 
+export blankplothrC
 
 """
     heat(field, dom::Domain)
@@ -156,15 +157,15 @@ function plot_frontvel(ϕ, T, dom::Domain, params)
 end
 
 """
-    plotframe(t::Float64, simresults::Dict, simconfig::Dict; maxT=nothing, heatvar=:T)
+    plotframe(t::Float64, sim; maxT=nothing, heatvar=:T)
 
 Unpack simulation results and plot the state at time `t`.
 
 `heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
-function plotframe(t::Float64, simresults::Dict, simconfig::Dict; heatvar=:T, Tf0=nothing, clims=nothing)
-    @unpack sol, dom = simresults
+function plotframe(t, sim; heatvar=:T, clims=nothing)
+    @unpack sol, dom = sim
 
     if heatvar == :ϕ 
         ϕ = reshape(sol(t, idxs=iϕ(dom)), size(dom))
@@ -173,23 +174,16 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; heatvar=:T, Tf
         # cmap = :algae
         cmap = :linear_green_5_95_c69_n256
         cont_c = :black
-        Tf = fill(0.0, dom.nr)
     elseif heatvar == :T 
-        if isnothing(Tf0)
-            Tf0 = fill(245.0, dom.nr)
-        end
-        u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
+        u, Tf, T, p = calc_uTfTp_res(t, sim)
         ϕ = reshape(u[iϕ(dom)], size(dom))
         T .-= 273.15
         Tvw = u[iTvw(dom)] - 273.15
-        Tsh = ustrip(u"°C", simconfig[:paramsd][3].Tsh(t*u"s"))
+        Tsh = ustrip(u"°C", sim.config[:paramsd][3].Tsh(t*u"s"))
         pl = plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=clims)
         return pl, T, Tf
     elseif heatvar == :p
-        if isnothing(Tf0)
-            Tf0 = fill(245.0, dom.nr)
-        end
-        u, Tf, T, p = calc_uTfTp_res(t, simresults, simconfig; Tf0=Tf0)
+        u, Tf, T, p = calc_uTfTp_res(t, sim)
         ϕ = reshape(u[iϕ(dom)], size(dom))
         # T = solve_T(u, dom, params)
         # p = solve_p(u, T, dom, params, p0)
@@ -218,10 +212,10 @@ function plotframe(t::Float64, simresults::Dict, simconfig::Dict; heatvar=:T, Tf
     if heatvar == :ϕ
         Plots.contour!(dom.rgrid, dom.zgrid, ϕ', color=:black)
     end
-    plot!(xlabel="t = $tr hr")
+    plot!(xlabel=L"t = %($tr) hr")
     plot!(colorbar_title=clab)
     plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
-    plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
+    plot!(y_ticks = ([0, dom.zmax], ["0", L"h_\mathrm{f0}"]),  )
     # plot!(x_ticks=[-dom.rmax, 0, dom.rmax], xlabel="radius")
     return pl, heatvar_vals, Tf
 end
@@ -274,7 +268,7 @@ function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
     plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
     # Vial outline
     plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
-    plot!(xlabel="t = $tr hr")
+    plot!(xlabel=L"t = %$tr \mathrm{hr}")
 #     plot!(colorbar_title=clab)
     plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
     plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
@@ -282,25 +276,25 @@ function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
     return pl
 end
 
-function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
-    @unpack sol, dom = simresults
+function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
+    @unpack sol, dom = sim
 
     tf = sol.t[end]
     nplots = prod(layout)
     frames = range(tf*tstart, tf*tend, length=nplots)
 
     Ts = map(frames) do f
-        u, Tf, T, p = calc_uTfTp_res(f, simresults, simconfig)
+        u, Tf, T, p = calc_uTfTp_res(f, sim)
         T .- 273.15
     end
     ϕs = map(frames) do f
-        reshape(simresults["sol"](f, idxs = 1:dom.nr*dom.nz), dom.nr, dom.nz)
+        reshape(sim.sol(f, idxs = iϕ(dom)), dom.nr, dom.nz)
     end
     Tvws = map(frames) do f
-        simresults["sol"](f, idxs = dom.nr*(dom.nz+1)+1) - 273.15
+        sim.sol(f, idxs = dom.nr*(dom.nz+1)+1) - 273.15
     end
     Tshs = map(frames) do f
-        Tsh = ustrip(u"°C", simconfig[:paramsd][3].Tsh(f*u"s"))
+        Tsh = ustrip(u"°C", sim.config[:paramsd][3].Tsh(f*u"s"))
     end
 
     if clims === nothing
@@ -349,7 +343,7 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
         plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
         # Vial outline
         plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
-        plot!(xlabel="t = $tr hr")
+        plot!(xlabel=L"t = %$tr \mathrm{hr}")
     #     plot!(colorbar_title=clab)
         plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
         plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
@@ -365,21 +359,21 @@ function summaryT(simresults::Dict, simconfig::Dict; layout=(3,2), clims=nothing
     plot!(size=plsize)
 end
 
-function finalframe(simresults, simconfig; kwargs...)
-    t = simresults["sol"].t[end]
-    plotframe(t, simresults, simconfig; kwargs...)[1]
+function finalframe(sim; kwargs...)
+    t = sim.sol.t[end]
+    plotframe(t, sim; kwargs...)[1]
 end
 
 """
-    summaryplot(simresults::Dict, simconfig; layout=(3,2), heatvar=:T)
+    summaryplot(sim; layout=(3,2), heatvar=:T)
 
 Return a 2x3 plot of simulation results from start to finish.
 
-`simresults` should have a field `"sol"` , which is passed to `get_ϕ(sol, t, dom::Domain)` .  
+`sim` should have a field `"sol"` , which is passed to `get_ϕ(sol, t, dom::Domain)` .  
 `heatvar` determines what is plotted as a heatmap in the results (`:T` or `:ϕ`, currently.)
 """
-function summaryplot(simresults::Dict, simconfig; layout=(3,2), tstart=0, tend=0.95, heatvar=:T)
-    @unpack sol, dom = simresults
+function summaryplot(sim; layout=(3,2), tstart=0, tend=0.95, heatvar=:T)
+    @unpack sol, dom = sim
 
     tf = sol.t[end]
 
@@ -392,11 +386,11 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), tstart=0, tend=0
 
     # T_nm1 = solve_T(sol(frames[end-1]), dom, cparams)
     # maxT = maximum(T_nm1)
-    heatvals = fill(0.0, size(simresults["dom"]))
+    heatvals = fill(0.0, size(sim.dom))
 
     for f in frames
-        # p = plotframe(f, simresults, simconfig, maxT=maxT, heatvar=heatvar)
-        pl, heatvals = plotframe(f, simresults, simconfig, heatvar=heatvar)
+        # p = plotframe(f, sim, maxT=maxT, heatvar=heatvar)
+        pl, heatvals = plotframe(f, sim, heatvar=heatvar)
         ext_heat = extrema(heatvals)
         if f == 0
             min_heat, max_heat = ext_heat
@@ -412,15 +406,15 @@ function summaryplot(simresults::Dict, simconfig; layout=(3,2), tstart=0, tend=0
 end
 
 """
-    resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T)
+    resultsanim(sim, casename; seconds_length=5, heatvar=:T)
 
-Generate a .gif of the given simresults, with filename `casename_heatvar_evol.gif`.
+Generate a .gif of the given sim, with filename `casename_heatvar_evol.gif`.
 
 Pass either `:p` or `:T` as `heatvar`. Passing `ϕ` will probably cause filename problems
 
 """
-function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=:T, clims=nothing)
-    @unpack sol, dom = simresults
+function resultsanim(sim, casename; seconds_length=5, heatvar=:T, clims=nothing)
+    @unpack sol, dom = sim
 
     tf = sol.t[end]
 
@@ -431,43 +425,83 @@ function resultsanim(simresults, simconfig, casename; seconds_length=5, heatvar=
     Tf_g = fill(245.0, dom.nr)
     # end
     anim = @animate for ti ∈ frames
-        pl, heatvals, Tf_g = plotframe(ti, simresults, simconfig, heatvar=heatvar, Tf0=Tf_g, clims=clims)
+        pl, heatvals, Tf_g = plotframe(ti, sim, heatvar=heatvar, Tf0=Tf_g, clims=clims)
         # heat_p_min = heat_ex[1] - 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # heat_p_max = heat_ex[2] + 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # plot!(p, clims=(heat_p_min, heat_p_max))
     end
 
     # fps = ceil(Int, nt/2)  # nt/x makes x-second long animation
-    fname = "$(casename)_$(heatvar)_$(hash(simconfig))_evol.mp4"
+    fname = "$(casename)_$(heatvar)_$(hash(sim.config))_evol.mp4"
     mp4(anim, plotsdir(fname), fps=fps)
 end
 
+blankplothrC(;kwargs...) = plot(u"hr", u"°C", ylabel = "Temperature", xlabel = "Time", unitformat=:square; kwargs...)
 
 @userplot TPlotModel
 @recipe function f(tpm::TPlotModel)
     time, Ts = tpm.args
     step = size(time, 1) ÷ 10
-    n = size(Ts, 1)
+    n = size(Ts, 2)
     pal = palette(:Oranges_4, rev=true) 
-    # pal = [RGB{Float64}(0.031,0.318,0.612), 
-    #        RGB{Float64}(0.192,0.51,0.741), 
-    #        RGB{Float64}(0.42,0.682,0.839), 
-    #        RGB{Float64}(0.741,0.843,0.906)]
     
     for i in axes(Ts, 2)
         T = Ts[:,i]
         @series begin
             seriestype := :samplemarkers
-            step := step
+            step --> step
             offset := step÷n *(i-1) + 1
-            markersize --> 7
             seriescolor --> pal[i]
-            if T == :dummy
-                return [Inf], [Inf]
-            else
-                return time, T
-            end
+            return time, T
         end
+    end
+end
+
+@userplot VT_Plot
+@recipe function f(vtp::VT_Plot)
+    sim, locs = vtp.args
+    time = sim.sol.t*u"s"
+    Tfs = virtual_thermocouple(locs, sim)*u"K"
+    Tvw = sim.sol.(sim.sol.t, idxs=iTvw(sim.dom))*u"K"
+    @series begin
+        TPlotModel((time, Tfs))
+    end
+    @series begin
+        TPlotModVW((time, Tvw))
+    end
+end
+
+@userplot PlaceThermocouples
+@recipe function f(pt::PlaceThermocouples)
+    dom, locs = pt.args
+    locr = [loc[1] for loc in locs]
+    locz = [loc[2] for loc in locs]
+    @series begin
+        seriestype := :scatter
+        label --> ""
+        dom.rmax.*locr, dom.zmax.*locz
+    end
+end
+
+@userplot LabelThermocouples
+@recipe function f(lt::LabelThermocouples)
+    dom, locs, labels = lt.args
+    if isnothing(labels)
+        @info "check" labels
+        texts = [text(L"$T_\mathrm{f%$i}$", size=10) for i in 1:length(locs)]
+    else
+        texts = labels
+    end
+    locr = [loc[1] for loc in locs]
+    locz = [loc[2] for loc in locs]
+    @series begin
+        @info "check" texts
+        seriestype := :scatter
+        markeralpha := 0
+        primary := false
+        text
+        series_annotations := texts
+        return dom.rmax.*locr, dom.zmax.*locz
     end
 end
 
@@ -479,9 +513,8 @@ end
     
     @series begin
         seriestype := :samplemarkers
-        step := step
+        step --> step
         markershape --> :dtriangle
-        markersize --> 7
         seriescolor --> color
         linestyle := :dash
         time, T

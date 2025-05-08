@@ -91,7 +91,7 @@ $(FIELDS)
     "Density of frozen material (taken as water ice)."
     ρf = ρ_ice 
     "Heat capacity of frozen material (taken as water ice)."
-    Cpf = Cp_ice
+    Cpf = cp_ice
     "Thermal conductivity of frozen material."
     kf = LevelSetSublimation.kf
     "Molecular weight of sublimating species (defaults to water)."
@@ -101,7 +101,7 @@ $(FIELDS)
     "Heat of sublimation of sublimating species (defaults to water); give as positive number."
     ΔH = LevelSetSublimation.ΔH
     "Dielectric loss coefficient of frozen layer (defaults to water ice)."
-    εpp_f = LevelSetSublimation.εpp_f
+    εppf = LyoPronto.εppf
     "Dielectric loss coefficient of dry layer (defaults to 0)."
     εpp_d = 0.0
 end
@@ -113,7 +113,7 @@ An instance of [`PhysicalProperties`](@ref) with default values.
 const base_props = PhysicalProperties()
 
 """
-    TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_rad, B_d, B_f, B_vw)
+    TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_v, B_d, B_f, B_vw)
 
 A struct for holding physical properties which are likely to change from case to case.
 
@@ -138,8 +138,8 @@ struct TimeConstantProperties
     Kvwf 
     "vial mass"
     m_v 
-    "radiative area for vial wall-shelf heat transfer"
-    A_rad 
+    "total vial-bottom area, used for heat transfer"
+    A_v 
     # Microwave
     "Ω/m^2, dry layer field strength coefficient"
     B_d 
@@ -209,27 +209,49 @@ function (tvp::TimeVaryingProperties)(t)
     )
     return snap
 end
-function (tup::Tuple{PhysicalProperties, TimeConstantProperties, TimeVaryingProperties})(t)
+
+const SimSetup = Tuple{PhysicalProperties, TimeConstantProperties, TimeVaryingProperties} 
+function (tup::SimSetup)(t)
     return (tup[1], tup[2], tup[3](t))
 end
 
 
+struct NondimensionalizedFunc{F, I, O}
+    f::F
+    in_un::I
+    out_un::O
+end
+(nf::NondimensionalizedFunc)(x...) = ustrip(nf.out_un, nf.f((x .* nf.in_un)...))
+
+LyoPronto.extract_ts(nd::NondimensionalizedFunc) = LyoPronto.extract_ts(nd.f, un=nd.in_un)
+function LyoPronto.get_tstops(tvp::TimeVaryingProperties)
+    @info "inside" tvp.P_per_vial
+    return get_tstops((tvp.f_RF, tvp.P_per_vial, tvp.Tsh, tvp.pch))
+end
+LyoPronto.get_tstops(tup::SimSetup) = LyoPronto.get_tstops(tup[3])
+
 function nondim_controlvar(tvp, varname)
     control_dim = getfield(tvp, varname)
     if varname == :Kshf
-        control_ndim = p->ustrip(PBD[varname], tvp.Kshf(p*u"Pa"))
-        return control_ndim
+        # control_ndim = p->ustrip(PBD[varname], tvp.Kshf(p*u"Pa"))
+        # return control_ndim
+        return NondimensionalizedFunc(tvp.Kshf, u"Pa", PBD[varname])
     end
     if dimension(control_dim(0u"s")) != dimension(PBD[varname])
         @error "Bad units on potentially time-varying variable." varname control_dim PBD[varname]
     end
     base_un = PBD[varname]
-    control_ndim = t->ustrip(base_un, control_dim(t*u"s"))
-    return control_ndim
+    # control_ndim = t->ustrip(base_un, control_dim(t*u"s"))
+    return NondimensionalizedFunc(control_dim, u"s", base_un)
 end
 
 function nondim_param(tcp, pk)
     p = getfield(tcp, pk)
+    if pk == :εppf
+        var_ndim = (T,f)->ustrip(PBD[pk], tcp.εppf(T*PBD[:Tsh], f*PBD[:f_RF]))
+        var_ndim = NondimensionalizedFunc(tcp.εppf, (PBD[:Tsh], PBD[:f_RF]), PBD[pk])
+        return var_ndim
+    end
     if (length(p) > 1) 
         if any([dimension(PBD[pk])] .!= dimension(p))
             @error "Bad dimensions in passed parameter." pk getfield(tcp, pk) PBD[pk]   
@@ -277,8 +299,8 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     :kf => u"W/m/K",
     :ε0 => u"F/m",
     :εpp_d => NoUnits,
-    :εpp_f => NoUnits,
     :εpp_vw => NoUnits, 
+    :εppf => NoUnits,
 
     # Time constant properties
     :ϵ =>NoUnits, # 90% porosity
@@ -288,7 +310,7 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     :kd => u"W/m/K",
     :Kvwf => u"W/m^2/K",
     :m_v => u"kg", # vial mass
-    :A_rad =>u"m^2", # radiative area for vial wall-shelf heat transfer
+    :A_v =>u"m^2", # radiative area for vial wall-shelf heat transfer
     :B_d => u"Ω/m^2", # dry layer field strength
     :B_f =>u"Ω/m^2", # frozen layer field strength coefficient
     :B_vw =>u"Ω/m^2", # vial wall field strength coefficient
@@ -311,7 +333,7 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
 """
     make_M1_properties()
 
-Returns dicts of physical parameters for the mannitol experimental case which was used to originally develop and validate this model.
+Returns physical parameters for the mannitol experimental case which was used to originally develop and validate this model.
 
 Useful for testing.
 """
@@ -326,13 +348,13 @@ function make_M1_properties()
     kd = k_sucrose * (1-ϵ)
     Kvwf = 24.7 *u"W/K/m^2" 
     m_v = LyoPronto.get_vial_mass("6R")
-    A_rad = π*LyoPronto.get_vial_radii("6R")[2]^2
+    A_v = π*LyoPronto.get_vial_radii("6R")[2]^2
     # Microwave
     B_d = 0.0u"Ω/m^2"
     B_f = 2.8e8u"Ω/m^2"
     B_vw = 4.6e6u"Ω/m^2"
 
-    tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_rad, B_d, B_f, B_vw)
+    tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_v, B_d, B_f, B_vw)
 
     # ----- Properties which may change in time
     f_RF = RampedVariable(8.0u"GHz")

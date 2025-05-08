@@ -16,7 +16,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     dom = integ_pars[1]
     params_vary = integ_pars[2]
     verbose = integ_pars[3]
-    Tf_last = integ_pars[4]
+    saved_Tf = integ_pars[4]
 
     params = params_vary(t)
 
@@ -28,7 +28,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     Tvw = u[iTvw(dom)]
 
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
-    @unpack A_rad, m_v = params[2]
+    @unpack A_v, m_v = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if minimum(ϕ) > 0 # No ice left
@@ -42,12 +42,15 @@ function dudt_heatmass!(du, u, integ_pars, t)
         return nothing
     end
 
-    Tf_g = Tf_last
+    # Tf_g = Tf_last
     # Tf_g = u[iTf(dom)]
+    Tf_g = Tf_guess(u[iTf(dom)], t, saved_Tf)
     Tf = pseudosteady_Tf(u, dom, params, Tf_g)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
-    integ_pars[4] .= Tf
+
+    # Save the computed Tf here, as well as in the callback
+    # integ_pars[4] .= Tf
 
     vf, dϕdx_all = compute_frontvel_mass(u, Tf, T, p, dom, params)
     extrap_v_fastmarch!(vf, u, dom)
@@ -64,7 +67,8 @@ function dudt_heatmass!(du, u, integ_pars, t)
 
     # Compute time derivative for Tvw
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    A_p = π*dom.rmax^2
+    Q_shvw = (A_v-A_p) * params[3].Kshf * (params[3].Tsh - Tvw)
     dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
     if verbose && eltype(u) <: Float64
@@ -89,11 +93,11 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
 
     ϕ, Tf, Tvw = ϕ_T_from_u(u, dom)
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
-    @unpack A_rad, m_v = params[2]
+    @unpack A_v, m_v = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(Tf .< 0)
-        @info "Negative temperatures passed"
+        verbose && @info "Negative temperatures passed"
         du .= NaN
         return
     end
@@ -134,17 +138,14 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    # dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
-    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    A_p = π*dom.rmax^2
+    Q_shvw = (A_v-A_p) * params[3].Kshf * (params[3].Tsh - Tvw)
     dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
 
 
     if verbose &&  eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
-        # if dryfrac < 0.00034 && dryfrac > 0.00033
-            @info "check" p[1,:] p[:,end-2:end]
-        # end
         Δξ = compute_iceht_bottopcont(ϕ, dom)[1]
         @info "prog: t=$t, dryfrac=$dryfrac" extrema(dϕ) extrema(Tf) extrema(T) Tvw[1] params[3].Tsh extrema(Δξ) extrema(dTf)
     end
@@ -165,11 +166,11 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
 
     ϕ, Tf, Tvw = ϕ_T_from_u_view(u, dom)
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
-    @unpack A_rad, m_v = params[2]
+    @unpack A_v, m_v = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(Tf .< 0)
-        @info "Negative temperatures passed"
+        verbose && @info "Negative temperatures passed"
         du .= NaN
         return
     end
@@ -201,8 +202,8 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     dTfdt_radial!(dTf, u, Tf, T, p, dϕdx_all, dom, params)
 
     Q_vwf = compute_Qvwf(u, T, dom, params)
-    # dTvw .= (QRFvw - Q_vwf) / m_v/cp_vw
-    Q_shvw = A_rad * 0.9 * 5.670e-8 * (params[3].Tsh^4 - Tvw^4 )
+    A_p = π*dom.rmax^2
+    Q_shvw = (A_v-A_p) * params[3].Kshf * (params[3].Tsh - Tvw)
     dTvw .= (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
     for ind in CartesianIndices(ϕ)
@@ -322,9 +323,9 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
         locvol = (ro^2-ri^2) * dom.dz * π
         if ϕ[cell] > 0
             qloc, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(cell)..., dϕdx_all, dom, params)
-            # surf_area += compute_local_δ(cell, ϕ, dom)*locvol
         else # Cell is in ice, so need to extrapolate to get qloc
             # Identify possible neighbors across interface, take sum
+            # At most one side neighbor, in normal circumstances
             if side == :left
                 possible_nbs = [cell] .+ [CI(0, 1), CI(0, -1), CI(-1, 0)]
             elseif side == :right
@@ -336,17 +337,17 @@ function Q_surf_integration(side, integ_cells, ϕ, u, Tf, T, p, dϕdx_all, dom, 
             nbs = [nb for nb in possible_nbs if (checkbounds(Bool, ϕ, nb) && ϕ[nb]>0)]
             if length(nbs) == 0
                 @warn "um... no neighbors somehow?"
-            elseif length(nbs) == 1 # No vertical neighbor- just horizontal
+            elseif length(nbs) == 1 # One neighbor: just use its value
                 qloc = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nbs[1])..., dϕdx_all, dom, params)[1]
-            elseif length(nbs) == 2 # One vertical neighbor, one horizontal
+            elseif length(nbs) == 2 # At most one horizontal neighbor, so probably one vertical and one horizontal: take a dot product
                 qloc = mapreduce(+, nbs) do nb 
                     ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
-                    Tuple(nb)[2] == 0 ?  ql*dϕdr : ql*dϕdz
+                    Tuple(nb)[2] == Tuple(cell)[2] ?  ql*dϕdr : ql*dϕdz
                 end
-            elseif length(nbs) == 3 # Tvwo vertical neighbor
+            elseif length(nbs) == 3 # Three neighbors guarantees one horizontal and two vertical
                 qloc = mapreduce(+, nbs) do nb 
                     ql, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, Tuple(nb)..., dϕdx_all, dom, params)
-                    Tuple(nb)[2] == 0 ? ql*dϕdr : ql*dϕdz/2
+                    Tuple(nb)[2] == Tuple(cell[2]) ? ql*dϕdr : ql*dϕdz/2
                 end
             else
                 @warn "4 neighbors somehow in local surface integration"
@@ -372,7 +373,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     @unpack ρf, Cpf, kf, ΔH = params[1]
     @unpack Rp0, Kvwf = params[2]
     @unpack Tsh, pch, Kshf = params[3]
-    QRFf = calc_QpppRFf(params)
+    QRFf = calc_QpppRFf.(Tf, [params])
 
     Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)
 
@@ -411,23 +412,24 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     botarea = π*(ro^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
 
-                    K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    # K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    K_eff = Kshf
                     sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
                 end
 
-                sumfluxes += QRFf*vol # No A_l*kf*dTfdr becuase dTfdr=0
+                sumfluxes += QRFf[ir]*vol # No A_l*kf*dTfdr becuase dTfdr=0
                 # Write the energy balance differently for this case
                 dTfdt[ir] = sumfluxes/vol/ρf/Cpf
                 continue
             end
         elseif ir == dom.nr
             dTfdr = Kvwf/kf*(Tvw - Tf[ir])
-            if Δξ[ir] < dom.dz/2 # At small ice height, need a special case
+            # if Δξ[ir] < dom.dz/2 # At small ice height, need a special case
+            if Δξ[ir]/dom.dz < θ_THRESH # At small ice height, need a special case
                 iz = findlast(ϕ[ir,:] .<=0) + 1
                 q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
 
-                dξdr = -dϕdr/dϕdz
-                qtop = q*sqrt(dξdr^2 + 1)
+                qtop = q/dϕdz
 
                 # We get terms that go to zero, and can therefore solve a linear equaiton for Tf, other than q_top
                 # den = (Δξ[ir]/dom.dr/2*Kvwf + Kshf)
@@ -438,6 +440,7 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 # timescale = Δξ[ir]^2/kf*ρf*Cpf
                 timescale = dom.zmax^2/kf*ρf*Cpf
                 dTfdt[ir] = (rhs - Tf[ir])/timescale
+                # @info "Small ice at corner" iz ir Δξ[ir] timescale dTfdt[ir-3:ir] rhs Tf[ir]
                 continue
 
             end
@@ -445,8 +448,6 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
             if has_ice[dom.nr-1]
                 d2Tfdr2 = (-2Tf[dom.nr] + 2Tf[dom.nr-1] + 2*dom.dr*dTfdr)*dom.dr2 # Robin ghost cell
             else
-                # d2Tfdr2 = 0 
-                # @warn "Possible mistreatment: set d2Tf/dr2 to 0 at right boundary, in an unlikely case"
                 topz = min(findlast(ϕ[ir,:] .< 0) + 1, dom.nz)
                 botz = max(findfirst(ϕ[ir,:] .< 0)- 1, 1)
                 integ_cells = [CI(iir, iz) for iz in botz:topz, iir in ir-1:ir]
@@ -466,12 +467,13 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                     ri = dom.rgrid[ir] - θr*dom.dr
                     botarea = π*(ro^2-ri^2)
                     Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
-                    K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    # K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                    K_eff = Kshf
                     sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
                 end
 
                 A_l = dom.rgrid[ir] * Δξ[ir] *2π
-                sumfluxes += -A_l*kf*dTfdr + QRFf*vol
+                sumfluxes += -A_l*kf*dTfdr + QRFf[ir]*vol
                 # Write the energy balance differently for this case
                 dTfdt[ir] = sumfluxes/vol/ρf/Cpf
                 continue
@@ -503,13 +505,14 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 botarea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir-1]-Tf[ir])
 
-                K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                # K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                K_eff = Kshf
                 sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
             end
 
             A_l = (dom.rgrid[ir] + 0.5dom.dr) * (Δξ[ir+1] + Δξ[ir])/2 *2π
             dTfdr = (Tf[ir+1] - Tf[ir])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
-            sumfluxes +=  A_l*kf*dTfdr + QRFf*vol
+            sumfluxes +=  A_l*kf*dTfdr + QRFf[ir]*vol
             # Write the energy balance differently for this case
             dTfdt[ir] = sumfluxes/vol/ρf/Cpf
             continue
@@ -534,13 +537,14 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
                 botarea = π*(ro^2-ri^2)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
 
-                K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                # K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+                K_eff = Kshf
                 sumfluxes += botarea * K_eff*(Tsh - Tf_loc) # Shelf heat 
             end
 
             A_l = (dom.rgrid[ir] - 0.5dom.dr) * (Δξ[ir-1] + Δξ[ir])/2 *2π
             dTfdr = (Tf[ir] - Tf[ir-1])*dom.dr1 # We want derivative between grid points, so this is actually 2nd-order accurate
-            sumfluxes += -A_l*kf*dTfdr + QRFf*vol
+            sumfluxes += -A_l*kf*dTfdr + QRFf[ir]*vol
             # Write the energy balance differently for this case
             dTfdt[ir] = sumfluxes/vol/ρf/Cpf
             continue
@@ -551,66 +555,38 @@ function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
 
         # Treat top and bottom
         if top_contact[ir]
-            # # adiabatic boundary 
-            # top_bound_term = 0
             # direct sublimation boundary
             # top_bound_term = ΔH*(pch - calc_psub(Tf[ir]))/Rp0 * compute_local_H(CI(ir, dom.nz), ϕ, dom)*2
             top_bound_term = ΔH*(pch - calc_psub(Tf[ir]))/Rp0
-            if typeof(top_bound_term) <: AbstractFloat
-            end
         else
             iz = findlast(ϕ[ir,:] .<=0) + 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
             # top_bound_term = q - kf*dϕdr/dϕdz*dTfdr
-            # top_bound_term = q*sqrt( (dϕdr/ dϕdz)^2 + 1)
             dξdr = -dϕdr/dϕdz
-            top_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
-            # top_bound_term = q/dϕdz + kf*dξdr*dTfdr
-            # isnan(top_bound_term) && @info "top bound" q dϕdr dϕdz dTfdr
-            # top_bound_term = q*dϕdz
+            top_bound_term = q/dϕdz + kf*dξdr*dTfdr
         end
 
         if bot_contact[ir]
             # Shelf boundary
             # bot_bound_term = Kshf*(Tf[ir] - Tsh) * compute_local_H(CI(ir, 1), ϕ, dom)*2
-            if Δξ[ir] > dom.dz
-                K_eff = Kshf
-            else
-                K_eff = 1/(1/Kshf + Δξ[ir]/kf)
-            end
+            # if Δξ[ir] < dom.dz
+            #     K_eff = Kshf
+            # else
+            #     K_eff = 1/(1/Kshf + Δξ[ir]/kf)
+            # end
+            K_eff = Kshf
             bot_bound_term = K_eff*(Tf[ir] - Tsh) 
-            # isnan(bot_bound_term) && @info "NaN bottom" Tf[ir] T[ir,begin] Tsh
         else
             # Stefan boundary
             iz = findfirst(ϕ[ir,:] .<=0) - 1
             q, dϕdr, dϕdz = local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-            # bot_bound_term = q - kf*dϕdr/dϕdz*dTfdr
-            # bot_bound_term = q*sqrt( (dϕdr/ dϕdz)^2 + 1)
             dξdr = -dϕdr/dϕdz
-            bot_bound_term = q*sqrt(dξdr^2 + 1) + kf*dξdr*dTfdr
-            # bot_bound_term = q/dϕdz + kf*dξdr*dTfdr
-            # isnan(bot_bound_term) && @info "NaN bottom" q dϕdz dϕdr dTfdr
+            bot_bound_term = q/dϕdz + kf*dξdr*dTfdr
         end
 
-
-
         r1 = (ir == 1 ? 0 : 1/dom.rgrid[ir])
-        dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + QRFf + 
+        dTfdt[ir] = (kf*(r1*dTfdr + d2Tfdr2) + QRFf[ir] + 
             (top_bound_term - bot_bound_term)/Δξ[ir])/ρf/Cpf
-        # if ir ∈ [dom.nr-2, dom.nr-1, dom.nr] && Δξ[dom.nr] <= 5e-4
-        #     @info "right edge" ir kf*r1*dTfdr kf*d2Tfdr2 QRFf top_bound_term bot_bound_term Δξ[ir] dTfdt[ir] dξdr q
-        # end
-
-        # isnan(dTfdt[ir]) && @info "NaN in dTfdt" dTfdr d2Tfdr2 top_bound_term bot_bound_term Δξ[ir]
     end
-
     dTfdt[no_ice] .= 0 # Set to 0 elsewhere
-
-    # if any(isnan.(dTfdt))
-    #     @info "NaN in dTfdt" Tf dTfdt
-    # end
-    # if any(Tf .> 300) || any(Tf .< 100)
-    #     @info "weird Tf" Tf dTfdt
-    # end
-
 end
