@@ -268,7 +268,7 @@ function sim_heatonly(config; tf=1e5, verbose=false)
     # --- Set up reinitialization callback
 
     # After each time step, check if reinit is needed and carry out if necessary
-    cb_reinit = DiscreteCallback(needs_reinit, x->reinit_wrap(x, verbose=verbose))
+    cb_reinit = DiscreteCallback(needs_reinit, reinit_wrap(x))
 
     # --- Set up simulation end callback
 
