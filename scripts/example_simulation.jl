@@ -71,7 +71,7 @@ paramsd = (base_props, tcp, tvp)
 # This is one way of constructing the dictionary, if your variable 
 # names match the required dictionary keys
 config = @dict paramsd vialsize fillvol simgridsize
-config[:time_integ] = :dae_then_exp
+config[:time_integ] = Val(:dae_then_exp)
 
 alt_simgridsize = (41, 31)
 # Or we can do the following, if variables have other names
@@ -80,7 +80,7 @@ config = Dict{Symbol, Any}(
     :vialsize => vialsize,
     :fillvol => fillvol,
     :simgridsize => alt_simgridsize,
-    :time_integ => :dae_then_exp
+    :time_integ => Val(:dae_then_exp)
 )
 
 # -----------------------------

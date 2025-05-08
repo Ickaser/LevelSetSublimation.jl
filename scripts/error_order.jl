@@ -78,8 +78,8 @@ simgridsizes = [
 # @pack! config = paramsd, vialsize, fillvol, simgridsize
 config = @dict paramsd vialsize fillvol
 config[:simgridsize] = simgridsizes
-config[:time_integ] = :dae_then_exp
-# config[:time_integ] = :exp_newton
+config[:time_integ] = Val(:dae_then_exp)
+# config[:time_integ] = Val(:exp_newton)
 allconfigs = dict_list(config)
 
 
@@ -108,7 +108,7 @@ end
 using DataFrames
 allsims = collect_results(datadir("sims"), rinclude=[r"err"])
 simtab = Table(map(eachrow(allsims)) do row
-    # if row.sim.config[:time_integ] == :dae_then_exp
+    # if row.sim.config[:time_integ] == Val(:dae_then_exp)
     #     row.sim = merge(row.sim, (Tf = nothing,))
     # end
     merge(row.sim, (path=row["path"],), NamedTuple(row.sim.config))
