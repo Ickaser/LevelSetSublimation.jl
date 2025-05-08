@@ -20,7 +20,7 @@ function dudt_heatonly!(du, u, integ_pars, t)
     params = integ_pars[2](t)
     verbose = integ_pars[3]
     dϕ, dTf, dTvw = ϕ_T_from_u_view(du, dom)
-    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ = u.ϕ
     Tf = u[ifw(dom)]
 
     T = solve_T(u, Tf, dom, params)
@@ -62,8 +62,8 @@ Wraps a call on `dudt_heatonly!`, for convenience in debugging and elsewhere tha
 function dudt_heatonly(u, dom::Domain, params, t)
     integ_pars = (dom, params, true)
     du = similar(u)
-    du[iTf(dom)] .= 0
-    du[iTvw(dom)] .= 0
+    du.Tf .= 0
+    du.Tvw .= 0
     dudt_heatonly!(du, u, integ_pars, t)
     return du
 end
@@ -84,7 +84,7 @@ function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
 
     @unpack ΔH, ρf = params[1]
     @unpack kd, ϵ = params[2]
-    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ = u.ϕ
 
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
@@ -127,16 +127,11 @@ In addition, the sublimation flux is simply evaluated at the top cake surface.
 
 """
 function compute_Qice(u, T, p, dom::Domain, params)
-
     @unpack ΔH = params[1]
-    # ϕ, Tf, Tvw = reshape(u[iϕ(dom)], size(dom))
-
     Q_vwshvol, Q_vwf = compute_Qice_noflow(u, T, dom, params)
-
     # Sublimation rate
     md = compute_topmassflux(u, T, p, dom, params)
     Qsub = - md * ΔH
-
     return Q_vwshvol + Qsub, Q_vwf
 end
 
@@ -153,8 +148,8 @@ function compute_Qice_noflow(u, T, dom::Domain, params)
     QRFd = calc_QpppRFd(params)
     QRFf = calc_QpppRFd(params)
 
-    ϕ = reshape(u[iϕ(dom)], size(dom))
-    Tvw = u[iTvw(dom)]
+    ϕ = u.ϕ
+    Tvw = u.Tvw
 
     # Heat flux from shelf, at bottom of vial
     rweights = ones(Float64, dom.nr) 
@@ -187,8 +182,8 @@ function compute_Qice_nodry(u, T, dom::Domain, params)
     @unpack Kshf, Tsh = params[3]
     QRFf = calc_QpppRFd(params)
 
-    ϕ = reshape(u[iϕ(dom)], size(dom))
-    Tvw = u[iTvw(dom)]
+    ϕ = u.ϕ
+    Tvw = u.Tvw
 
     # Heat flux from shelf, at bottom of vial
     rweights = compute_icesh_area_weights(ϕ, dom)

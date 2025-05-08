@@ -372,90 +372,24 @@ function make_M1_properties()
     return base_props, tcprops, tvprops
 end
         
-
-# --------- Functions mapping state `u` to level set and temperatures
-
-# The source of truth for what indices are used for what variables!!!
-"""
-    iϕ(dom::Domain) = 1:dom.ntot
-
-This is the source of truth for what indices in the system state are used for `ϕ`.
-See also [`iTf`](@ref) and [`iTvw`](@ref).
-"""
-iϕ(dom::Domain) = 1:dom.ntot
-"""
-    iTf(dom::Domain) = dom.ntot+1:dom.not+nr
-
-This is the source of truth for what indices in the system state are used for `Tf`.
-See also [`iϕ`](@ref) and [`iTvw`](@ref).
-"""
-iTf(dom::Domain) = dom.ntot+1:dom.ntot+dom.nr
-"""
-    iTvw(dom::Domain) = dom.ntot+dom.nr+1 # returns a single index
-    iTvw(dom::Domain, dummyarg) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1 # returns a 1-length UnitRange
-
-This is the source of truth for what indices in the system state are used for `Tvw`.
-See also [`iϕ`](@ref) and [`iTf`](@ref).
-"""
-iTvw(dom::Domain) = dom.ntot+dom.nr+1
-iTvw(dom::Domain, dummyarg) = dom.ntot+dom.nr+1:dom.ntot+dom.nr+1
-"""
-    ulen(dom::Domain) = iTvw(dom)
-
-Returns the total length of the system state vector, which currently is the same as the index of `Tvw`.
-"""
-ulen(dom::Domain) = iTvw(dom)
-
-ϕ_from_u(u, dom) = reshape(u[iϕ(dom)], size(dom))
-# reshape(a::AbstractArray, dom::Domain) = reshape(a, size(dom))
-
-"""
-    ϕ_from_u_view(u, dom)
-
-Take the current system state `u` and return views corresponding to `ϕ`, `Tf`, and `Tvw`.
-Nothing too fancy--just to avoid rewriting the same logic everywhere
-"""
-function ϕ_T_from_u_view(u, dom)
-    ϕ = @views reshape(u[iϕ(dom)], size(dom))
-    Tf = @view u[iTf(dom)]
-    Tvw = @view u[iTvw(dom)]
-    return ϕ, Tf, Tvw
-end
-
-"""
-    ϕ_T_from_u(u, dom)
-
-Take the current system state `u` and break it into `ϕ`, `Tf`, and `Tvw`.
-Nothing too fancy--just to avoid rewriting the same logic everywhere
-"""
-function ϕ_T_from_u(u, dom)
-    ϕ = reshape(u[iϕ(dom)], size(dom))
-    Tf = u[iTf(dom)]
-    Tvw = u[iTvw(dom)]
-    return ϕ, Tf, Tvw
-end
-
 """
     make_u0_ndim(init_prof, Tf0, Tvw0, dom)
 
 Set up a vector of dynamic variables as initial state for simulation.
 
-Structure of vector `u`: set by [`iϕ`](@ref), [`iTf`](@ref), and [`iTvw`](@ref).
+Structure of vector `u`: `ComponenentArray` with fields `ϕ`, `Tf`, and `Tvw`.
+`ϕ` is a 2D array of the same size as the domain, `Tf` is a 1D array of size `dom.nr`, and 
+`Tvw` is a scalar.
 """
 function make_u0_ndim(init_prof, Tf0, Tvw0, dom)
     Tf0_nd = ustrip.(u"K", Tf0)
     Tvw0_nd = ustrip(u"K", Tvw0)
-
-    ϕ0_flat = reshape(make_ϕ0(init_prof, dom), :)
-    u0 = similar(ϕ0_flat, ulen(dom)) 
-    u0[iϕ(dom)] .= ϕ0_flat
-    u0[iTf(dom)] .= Tf0_nd 
-    u0[iTvw(dom)] = Tvw0_nd
+    ϕ0 = make_ϕ0(init_prof, dom)
+    u0 = ComponentArray(ϕ=ϕ0, Tf=fill(Tf0_nd, dom.nr), Tvw=Tvw0_nd)
     return u0
 end
 
 function make_u0_ndim(config::Dict)
-    # dom = Domain(config)
     Tf0_nd = ustrip.(u"K", get(config,:Tf0, config[:paramsd].Tsh(0u"s")))
     Tvw0_nd = ustrip(u"K", get(config, :Tvw0, Tf0_nd*u"K"))
     make_u0_ndim(config[:init_prof], Tf0_nd, Tvw0_nd, Domain(config))

@@ -86,8 +86,7 @@ function compare_lyopronto_res(ts, sim)
     mfd = uconvert.(u"kg/hr", md) / (π*(dom.rmax*u"m")^2)
     totvol = π*dom.rmax^2 * dom.zmax
     dryfrac = map(ts_ndim[cyc]) do ti
-        ϕ = reshape(sol(ti)[iϕ(dom)], size(dom))
-        1 - compute_icevol_H(ϕ, dom) / totvol
+        1 - compute_icevol_H(sol(ti).ϕ, dom) / totvol
     end
 
     return ts[cyc], Tf, mfd, dryfrac
@@ -125,14 +124,14 @@ function calc_Tf_res(t, sim)
     @unpack sol, dom = sim
     if sol isa CombinedSolution
         if t <= sol.tsplit
-            Tf = sol.sol1(t, idxs=iTf(dom))
+            Tf = sol.sol1(t).Tf
         else
             Tf = sol.Tf2(t)
         end
     elseif haskey(sim, :Tf)
         Tf = sim.Tf(t)
     else # Used a DAE or implicit solve
-        Tf = sol(t, idxs=iTf(dom))
+        Tf = sol(t).Tf
     end
 end
 
@@ -150,8 +149,8 @@ function calc_uTfTp_res(t, sim)
 end
 
 function calc_ϕ_res(t, sim)
-    @unpack sol, dom = sim
-    ϕ = reshape(sol(t, idxs=iϕ(dom)), size(dom))
+    @unpack sol = sim
+    ϕ = sol(t, idxs=[:ϕ])
     return ϕ
 end
 
@@ -204,8 +203,7 @@ end
 function get_SA(ts, res)
     @unpack sol, dom = res
     SA_t = map(ts) do ti
-        u = sol(ti)
-        ϕ = reshape(u[iϕ(dom)], size(dom))
+        ϕ = sol(ti).ϕ
         SA = compute_icesurf_δ(ϕ, dom)
     end
     return ts, SA_t

@@ -60,7 +60,7 @@ config = Dict{Symbol, Any}()
 dom = Domain(config)
 params, ncontrols = params_nondim_setup(cparams, controls)
 um = LSS.make_u0_ndim(config)
-ϕm = @views reshape(um[iϕ(dom)], size(dom))
+ϕm = @views um.ϕ
 ϕm .+= .8*dom.zmax - 1e-6 + 1e-8
 
 R = dom.rmax
@@ -81,7 +81,7 @@ pl1 = heat(abs.(p_num .- p_anl)./p_anl, dom)
 
 function gen_vertprof(er)
     um = LSS.make_u0_ndim(config)
-    ϕm = @views reshape(um[iϕ(dom)], size(dom))
+    ϕm = @views um.ϕ
     ϕm .+= .8dom.zmax + er - 0.99e-6#-2e-6
 
     R = dom.rmax

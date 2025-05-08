@@ -37,8 +37,8 @@ function solve_T(u, Tf, dom::Domain, params)
     @unpack Kvwf, kd = params[2]
     @unpack Kshf, Tsh = params[3]
     QRFd = calc_QpppRFd(params)
-    ϕ = reshape(u[iϕ(dom)], size(dom))
-    Tvw = u[iTvw(dom)]
+    ϕ = u.ϕ
+    Tvw = u.Tvw
 
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
@@ -357,11 +357,11 @@ function add_to_vcr!(vcr, dom, p_imx, shift, val)
 end
 
 function pseudosteady_Tf(u, dom, params)
-    Tfg = u[iTf(dom)]
+    Tfg = u.Tf
     pseudosteady_Tf(u, dom, params, Tfg)
 end
 function pseudosteady_Tf(u, dom, params, Tf_g)
-    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ = u.ϕ
     @unpack kf, ρf, Cpf = params[1]
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
@@ -415,7 +415,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         # prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
-        Tfs = zeros(eltype(u[iTf(dom)]), dom.nr)
+        Tfs = zeros(eltype(u.Tf), dom.nr)
         Tfs[has_ice] = sol.u
         extrap_Tf_noice!(Tfs, has_ice, dom)
     end
@@ -516,7 +516,7 @@ end
 
 function compute_Qvwf(u, T, dom::Domain, params)
     @unpack Kvwf = params[2]
-    Tvw = u[iTvw(dom)]
+    Tvw = u.Tvw
     # Heat flux from glass, at outer radius
     # zweights = compute_icegl_area_weights(ϕ, dom) # area for ice-glass
     zweights = fill(dom.dz, dom.nz)

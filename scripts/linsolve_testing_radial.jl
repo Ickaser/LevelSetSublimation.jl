@@ -115,7 +115,7 @@ config = Dict{Symbol, Any}()
 dom = Domain(config)
 params = params_nondim_setup(paramsd)
 um = LSS.make_u0_ndim(config)
-ϕm = @views reshape(um[iϕ(dom)], size(dom))
+ϕm = @views um.ϕ
 ϕm .+= .4*dom.rmax - 1e-6 + 1e-8
 
 R = dom.rmax
@@ -137,7 +137,7 @@ perturbs = perturbs .- step(perturbs)
 @time anl_sols = [gen_psol(Ri .- ei, R, L, Rp0, b, Δp) for ei in perturbs]
 num_sols = map(perturbs) do ei
     um = LSS.make_u0_ndim(config)
-    ϕm = @views reshape(um[iϕ(dom)], size(dom))
+    ϕm = @views um.ϕ
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     solve_p(um, Tfm, Tdm, dom, params)
 end
@@ -160,7 +160,7 @@ scatter(perturbs./dom.dr, [abs(ri[2][62].-ri[1][62])/ri[2][62] for ri in resp], 
 geomean(arr) = exp(sum(log.(arr))/length(arr))
 err_ddr = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
     um = LSS.make_u0_ndim(config)
-    ϕm = @views reshape(um[iϕ(dom)], size(dom))
+    ϕm = @views um.ϕ
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     ir = findfirst(ϕm[:,end] .> 0)
     # anl = a[2].(Ri-ei, dom.zgrid)
@@ -172,7 +172,7 @@ end
 
 anl_ddr = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
     um = LSS.make_u0_ndim(config)
-    ϕm = @views reshape(um[iϕ(dom)], size(dom))
+    ϕm = @views um.ϕ
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     ir = findfirst(ϕm[:,end] .> 0)
     anl = a[2].(dom.rgrid[ir], dom.zgrid)
@@ -184,7 +184,7 @@ end
 
 num_ddr = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
     um = LSS.make_u0_ndim(config)
-    ϕm = @views reshape(um[iϕ(dom)], size(dom))
+    ϕm = @views um.ϕ
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     ir = findfirst(ϕm[:,end] .> 0)
     num = [LSS.compute_pderiv(um, Tfm, Tdm, n, ir, iz, dom, params)[1] for iz in 1:dom.nz]
@@ -268,7 +268,7 @@ anl_dTdr = map(perturbs) do ei
 end
 num_dTdr = map(perturbs) do ei
     um = LSS.make_u0_ndim(config)
-    ϕm = @views reshape(um[iϕ(dom)], size(dom))
+    ϕm = @views um.ϕ
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     T = solve_T(um, Tfm, dom, params)
     ir = findfirst(ϕm[:,end] .> 0)
@@ -296,7 +296,7 @@ end
 
 function gen_topprof(er)
     um = LSS.make_u0_ndim(config)
-    ϕm = @views reshape(um[iϕ(dom)], size(dom))
+    ϕm = @views um.ϕ
     ϕm .+= .8dom.rmax + er - 0.99e-6#-2e-6
 
     R = dom.rmax
@@ -312,7 +312,7 @@ end
 
 function gen_topprof_T(er)
     um = LSS.make_u0_ndim(config)
-    ϕm = @views reshape(um[iϕ(dom)], size(dom))
+    ϕm = @views um.ϕ
     ϕm .+= .8dom.rmax + er - 0.99e-6#-2e-6
 
     Ri = LSS.get_subf_r(ϕm, dom)

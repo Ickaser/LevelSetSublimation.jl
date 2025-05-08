@@ -168,7 +168,7 @@ function plotframe(t, sim; heatvar=:T, clims=nothing)
     @unpack sol, dom = sim
 
     if heatvar == :ϕ 
-        ϕ = reshape(sol(t, idxs=iϕ(dom)), size(dom))
+        ϕ = sol(t).ϕ
         heatvar_vals = ϕ
         clab = "ϕ, m"
         # cmap = :algae
@@ -176,15 +176,15 @@ function plotframe(t, sim; heatvar=:T, clims=nothing)
         cont_c = :black
     elseif heatvar == :T 
         u, Tf, T, p = calc_uTfTp_res(t, sim)
-        ϕ = reshape(u[iϕ(dom)], size(dom))
+        ϕ = u.ϕ
         T .-= 273.15
-        Tvw = u[iTvw(dom)] - 273.15
+        Tvw = u.Tvw - 273.15
         Tsh = ustrip(u"°C", sim.config[:paramsd][3].Tsh(t*u"s"))
         pl = plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=clims)
         return pl, T, Tf
     elseif heatvar == :p
         u, Tf, T, p = calc_uTfTp_res(t, sim)
-        ϕ = reshape(u[iϕ(dom)], size(dom))
+        ϕ = u.ϕ
         # T = solve_T(u, dom, params)
         # p = solve_p(u, T, dom, params, p0)
         heatvar_vals = ustrip.(u"mTorr", p.*u"Pa")
@@ -288,13 +288,13 @@ function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
         T .- 273.15
     end
     ϕs = map(frames) do f
-        reshape(sim.sol(f, idxs = iϕ(dom)), dom.nr, dom.nz)
+        sim.sol(f).ϕ
     end
     Tvws = map(frames) do f
-        sim.sol(f, idxs = dom.nr*(dom.nz+1)+1) - 273.15
+        sim.sol(f).Tf - 273.15
     end
     Tshs = map(frames) do f
-        Tsh = ustrip(u"°C", sim.config[:paramsd][3].Tsh(f*u"s"))
+        ustrip(u"°C", sim.config[:paramsd][3].Tsh(f*u"s"))
     end
 
     if clims === nothing
@@ -462,7 +462,7 @@ end
     sim, locs = vtp.args
     time = sim.sol.t*u"s"
     Tfs = virtual_thermocouple(locs, sim)*u"K"
-    Tvw = sim.sol.(sim.sol.t, idxs=iTvw(sim.dom))*u"K"
+    Tvw = sim.sol.(sim.sol.t).Tvw*u"K"
     @series begin
         TPlotModel((time, Tfs))
     end

@@ -93,7 +93,7 @@ Compute an extrapolated velocity field in place. `v_front` should be nonzero onl
 Using fast marching, instead of the PDE-based approach, to get second order accuracy more easily.
 """
 function extrap_v_fastmarch!(v_front, u, dom::Domain)
-    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ = u.ϕ
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)
     Γ⁺ = [c for c in Γ if ϕ[c]>0]

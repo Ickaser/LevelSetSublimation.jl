@@ -14,8 +14,8 @@ function compute_Tderiv(u, Tf, T, ir::Int, iz::Int, dom::Domain, params)
     @unpack kd, Kvwf = params[2]
     @unpack Kshf, Tsh = params[3]
 
-    ϕ = reshape(u[iϕ(dom)], size(dom))
-    Tvw = u[iTvw(dom)]
+    ϕ = u.ϕ
+    Tvw = u.Tvw
     pT = T[ir, iz]
     ϕp = ϕ[ir, iz]
     
@@ -137,7 +137,7 @@ function compute_pderiv(u, Tf, T, p, ir::Int, iz::Int, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, nr, nz = dom
     @unpack Rp0 = params[2]
     @unpack pch = params[3]
-    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ = u.ϕ
     pp = p[ir, iz]
     ϕp = ϕ[ir, iz]
     
@@ -282,7 +282,7 @@ function compute_frontvel_mass(u, Tf, T, p, dom::Domain, params; debug=false)
 
     @unpack ΔH, ρf = params[1]
     @unpack kd, ϵ = params[2]
-    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ = u.ϕ
 
     Γf = identify_Γ(ϕ, dom)
     Γ = findall(Γf)

@@ -131,8 +131,8 @@ function compare_Tf(sim, Tb, t)
     return sqrt(sum(abs2, Ts-Tb)/length(Ts))
 end
 function compare_Tvw(sim, best, t)
-    Ts = sim.sol.(t, idxs=LSS.iTvw(sim.dom))
-    Tb = best.sol.(t, idxs=LSS.iTvw(best.dom))
+    Ts = sim.sol.(t).Tvw
+    Tb = best.sol.(t).Tvw
     return sqrt(sum(abs2, Ts-Tb)/length(Ts))
 end
 

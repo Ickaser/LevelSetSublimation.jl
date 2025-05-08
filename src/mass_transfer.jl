@@ -17,7 +17,7 @@ Usually if it doesn't converge, it is because temperatures are outside the expec
 
 """
 function solve_p(u, Tf, T, dom::Domain, params; kwargs...) 
-    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ = u.ϕ
     b = eval_b(T, params[3].pch, params)
     p0 = similar(Tf, size(dom)) 
     p0 .= solve_p_given_b(ϕ, b, Tf, dom, params)
@@ -28,7 +28,7 @@ function solve_p(u, Tf, T, dom::Domain, params; kwargs...)
     end
 end
 function solve_p(u, Tf, T, dom::Domain, params, p0; maxit=20, reltol=1e-6) 
-    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ = u.ϕ
 
     relerr::eltype(Tf) = 0.0
     p⁺ = similar(Tf, size(dom))
