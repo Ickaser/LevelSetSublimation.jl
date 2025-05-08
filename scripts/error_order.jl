@@ -31,7 +31,7 @@ c_solid = 0.05u"g/mL"
 Rp0 = 1.4u"cm^2*hr*Torr/g"
 A1 = 16u"cm*hr*Torr/g"
 Tguess = 260u"K"
-l = sqrt(base_props.R*Tguess/base_props.Mw) / A1
+l = sqrt(u"R"*Tguess/base_props.Mw) / A1
 # Heat transfer
 kd = LSS.k_sucrose * (1-ϵ)
 m_v = LyoPronto.get_vial_mass(vialsize)

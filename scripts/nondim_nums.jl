@@ -31,7 +31,7 @@ H_sens = (m_p*LSS.cp_ice + m_vw*LSS.cp_vw) *ΔT
 H_sub = LSS.ΔH * m_p
 
 cakemass = (1-LSS.ϵ_typical)*LSS.ρ_sucrose*LSS.Cp_sucrose
-ρvap = 1u"Torr"/LSS.R/233u"K"*LSS.Mw
+ρvap = 1u"Torr"/u"R"/233u"K"*LSS.Mw
 vapmass =  ρvap* LSS.Cp_vap
 
 Ste = uconvert(NoUnits, H_sens/H_sub)
