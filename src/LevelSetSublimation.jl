@@ -15,6 +15,7 @@ using SteadyStateDiffEq
 @reexport using PrettyTables
 @reexport using StatsPlots: @df
 using DataInterpolations: CubicSpline, LinearInterpolation, ExtrapolationType
+using ComponentArrays
 using Contour: contour, lines, coordinates
 using LinearAlgebra: norm, Diagonal
 using UnicodePlots: spy
