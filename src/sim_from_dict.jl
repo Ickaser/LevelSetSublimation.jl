@@ -12,6 +12,13 @@ function cond_end(u, t, integ)
     minimum(u[iϕ(dom)]) + min(dom.dz, dom.dr)/4 
 end
 
+function cond_corner(u, t, integ) 
+    dom = integ.p[1]
+    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ[end,1] + dom.dz/4 
+end
+
+
 """
     reinit_wrap(integ)
 
@@ -163,8 +170,6 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false, reltol=1e-3)
         @info "Beginning solve" tstops
     end
 
-    reltol = 1e-8
-    abstol = 1e-9
 
     time_integ = get(config, :time_integ, Val(:exp_newton)) # Default to using Newton internal solve 
     # --- Solve
@@ -188,8 +193,12 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false, reltol=1e-3)
         massmat = Diagonal(vcat(ones(length(iϕ(dom))), zeros(length(iTf(dom))), ones(length(iTvw(dom)))))
         func1 = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob1 = ODEProblem(func1, u0, tspan, prob_pars)
-        sol1 = solve(prob1, FBDF(); callback=cbs, tstops, reltol)
-        # Then, when that hits the corner, ODE
+        cb_corner = ContinuousCallback(cond_corner, terminate!)
+        sol1 = solve(prob1, FBDF(); callback=CallbackSet(cb_corner, cb_reinit), tstops, reltol)
+        # When that either reaches the corner or hits another instability, switch to explicit ODE
+        if verbose
+            @info "Switching to explicit ODE" sol1.t[end] sol1.u[end] cond_corner(sol1.u[end], sol1.t[end], sol1.prob)
+        end
         u1 = sol1.u[end]
         t1 = sol1.t[end]
         prob2 = ODEProblem(dudt_heatmass!, u1, (t1, tf), prob_pars)
