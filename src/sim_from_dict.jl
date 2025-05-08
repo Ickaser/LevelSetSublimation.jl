@@ -14,8 +14,7 @@ end
 
 function cond_corner(u, t, integ) 
     dom = integ.p[1]
-    ϕ = reshape(u[iϕ(dom)], size(dom))
-    ϕ[end,1] + dom.dz/4 
+    u.ϕ[end,1] + dom.dz/4 
 end
 
 
