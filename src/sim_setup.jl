@@ -225,7 +225,6 @@ end
 
 LyoPronto.extract_ts(nd::NondimensionalizedFunc) = LyoPronto.extract_ts(nd.f, un=nd.in_un)
 function LyoPronto.get_tstops(tvp::TimeVaryingProperties)
-    @info "inside" tvp.P_per_vial
     return get_tstops((tvp.f_RF, tvp.P_per_vial, tvp.Tsh, tvp.pch))
 end
 LyoPronto.get_tstops(tup::SimSetup) = LyoPronto.get_tstops(tup[3])

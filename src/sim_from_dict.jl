@@ -157,13 +157,11 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
     # ------- Put together callbacks 
     # cbs = CallbackSet(cb_reinit, cb_end, cb_meas)
     cbs = CallbackSet(cb_end, cb_reinit)
+    tstops = get_tstops(params_vary)
 
     if verbose
-        @info "Beginning solve"
+        @info "Beginning solve" tstops
     end
-
-    tstops = get_tstops(params_vary)
-    @info "tstops" tstops params_vary
 
     time_integ = get(config, :time_integ, :exp_newton) # Default to using Newton internal solve 
     # --- Solve
