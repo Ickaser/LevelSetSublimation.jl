@@ -101,7 +101,7 @@ $(FIELDS)
     "Heat of sublimation of sublimating species (defaults to water); give as positive number."
     ΔH = LevelSetSublimation.ΔH
     "Dielectric loss coefficient of frozen layer (defaults to water ice)."
-    εpp_f = LyoPronto.εpp_f
+    εppf = LyoPronto.εppf
     "Dielectric loss coefficient of dry layer (defaults to 0)."
     εpp_d = 0.0
 end
@@ -247,9 +247,9 @@ end
 
 function nondim_param(tcp, pk)
     p = getfield(tcp, pk)
-    if pk == :εpp_f
-        var_ndim = (T,f)->ustrip(PBD[pk], tcp.εpp_f(T*PBD[:Tsh], f*PBD[:f_RF]))
-        var_ndim = NondimensionalizedFunc(tcp.εpp_f, (PBD[:Tsh], PBD[:f_RF]), PBD[pk])
+    if pk == :εppf
+        var_ndim = (T,f)->ustrip(PBD[pk], tcp.εppf(T*PBD[:Tsh], f*PBD[:f_RF]))
+        var_ndim = NondimensionalizedFunc(tcp.εppf, (PBD[:Tsh], PBD[:f_RF]), PBD[pk])
         return var_ndim
     end
     if (length(p) > 1) 
@@ -300,7 +300,7 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     :ε0 => u"F/m",
     :εpp_d => NoUnits,
     :εpp_vw => NoUnits, 
-    :εpp_f => NoUnits,
+    :εppf => NoUnits,
 
     # Time constant properties
     :ϵ =>NoUnits, # 90% porosity

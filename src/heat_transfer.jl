@@ -6,11 +6,11 @@ function calc_QpppRFd(params)
 end
 function calc_QpppRFf(params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*base.ε0*base.εpp_f*tcp.B_f*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ε0*base.εppf*tcp.B_f*tvps.P_per_vial
 end
 function calc_QpppRFf(T, params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*base.ε0*base.εpp_f(T, tvps.f_RF)*tcp.B_f*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ε0*base.εppf(T, tvps.f_RF)*tcp.B_f*tvps.P_per_vial
 end
 function calc_QpppRFvw(params)
     base, tcp, tvps = params
