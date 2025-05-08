@@ -102,7 +102,7 @@ tend to run faster and more closely reflect the problem structure,
 but they run into instabilities when the sublimation front peels away from the wall,
 whereas the explicit ODE formulation can jump over that point.
 """
-function sim_from_dict(config; tf=1e6, verbose=false)
+function sim_from_dict(config; tf=1e6, verbose=false, reltol=1e-3)
 
     # ------------------- Get simulation parameters
 
@@ -123,7 +123,7 @@ function sim_from_dict(config; tf=1e6, verbose=false)
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
 
-    sim = sim_from_u0(u0, 0.0, config; tf, verbose)
+    sim = sim_from_u0(u0, 0.0, config; tf, verbose, reltol)
     return @strdict sim
 end
 
@@ -132,7 +132,7 @@ end
 
 Wrapped by [`sim_from_dict`](@ref LevelSetSublimation.sim_from_dict); useful on its own if you want to start from partway through a simulation.
 """
-function sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
+function sim_from_u0(u0, t0, config; tf=1e6, verbose=false, reltol=1e-3)
     @unpack paramsd = config
     dom = Domain(config)
     # ----- Nondimensionalize everything
