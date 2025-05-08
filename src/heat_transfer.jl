@@ -2,19 +2,19 @@ export solve_T
 
 function calc_QpppRFd(params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*(u"ε0"|>u"F/m")*base.εpp_d*tcp.B_d*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ϵ0*base.εpp_d*tcp.B_d*tvps.P_per_vial
 end
 function calc_QpppRFf(params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*(u"ε0"|>u"F/m")*base.εppf*tcp.B_f*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ϵ0*base.εppf*tcp.B_f*tvps.P_per_vial
 end
 function calc_QpppRFf(T, params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*(u"ε0"|>u"F/m")*base.εppf(T, tvps.f_RF)*tcp.B_f*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ϵ0*base.εppf(T, tvps.f_RF)*tcp.B_f*tvps.P_per_vial
 end
 function calc_QpppRFvw(params)
     base, tcp, tvps = params
-    return 2π*tvps.f_RF*(u"ε0"|>u"F/m")*base.εpp_vw*tcp.B_vw*tvps.P_per_vial
+    return 2π*tvps.f_RF*base.ϵ0*base.εpp_vw*tcp.B_vw*tvps.P_per_vial
 end
 
 """

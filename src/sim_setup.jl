@@ -77,7 +77,7 @@ you can call with just values that need to be changed, e.g.
 All properties stored here are:
 $(FIELDS)
 """
-@with_kw struct PhysicalProperties{T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11}
+@with_kw struct PhysicalProperties{T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13}
     "Density of vial wall (defaults to borosilicate glass)."
     ρ_vw::T1 = LevelSetSublimation.ρ_gl
     "Heat capacity of vial wall (defaults to borosilicate glass)."
@@ -100,6 +100,10 @@ $(FIELDS)
     εppf::T10 = LyoPronto.εppf
     "Dielectric loss coefficient of dry layer (defaults to 0)."
     εpp_d::T11 = 0.0
+    "Universal gas constant."
+    R::T12 = u"R"
+    "Vacuum permittivity."
+    ϵ0::T13 = u"ϵ0" |> u"F/m"
 end
 
 
@@ -285,6 +289,8 @@ const PBD = const PARAMS_BASE_DIMS = Dict{Symbol, Any}(
     # Base properties
     :cp_vw => u"J/kg/K",
     :ρ_vw=> u"kg/m^3",
+    :R => u"J/mol/K",
+    :ϵ0 => u"F/m",
     :Mw => u"kg/mol",
     :μ => u"Pa*s",
     :ΔH => u"J/kg",

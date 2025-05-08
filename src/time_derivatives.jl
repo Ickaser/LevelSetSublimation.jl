@@ -34,7 +34,7 @@ function dudt_heatmass!(du, u, integ_pars, t)
     if minimum(ϕ) > 0 # No ice left
         l_ave = 1/sum(1.0 ./params[2].l)/length(params[2].l)
         minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
-        b_ave = l_ave * sqrt(params[1].Mw/u"R"/minT)
+        b_ave = l_ave * sqrt(params[1].Mw/params[1].R/minT)
         flux = (calc_psub(minT) - params[3].pch)/dom.zmax*b_ave
         dϕ .= flux/params[1].ρf
         dTvw .= flux*params[1].ΔH*dom.rmax^2*π
@@ -105,7 +105,7 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     if minimum(ϕ) > 0 # No ice left
         l_ave = 1/sum(1/params[2].l)/length(params[2].l)
         minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
-        b_ave = l_ave * sqrt(params[1].Mw/u"R"/minT)
+        b_ave = l_ave * sqrt(params[1].Mw/params[1].R/minT)
         flux = (calc_psub(minT) - params[3].pch)/dom.zmax*b_ave
         dϕ .= flux/params[1].ρf
         # dϕ .= 0
@@ -178,7 +178,7 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
     if minimum(ϕ) > 0 # No ice left
         l_ave = 1/sum(1/params[2].l)/length(params[2].l)
         minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
-        b_ave = l_ave * sqrt(params[1].Mw/u"R"/minT)
+        b_ave = l_ave * sqrt(params[1].Mw/params[1].R/minT)
         flux = (calc_psub(minT) - params[3].pch)/dom.zmax*b_ave
         dϕ .= flux/params[1].ρf
         # dϕ .= 0
