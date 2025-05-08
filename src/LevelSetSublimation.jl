@@ -26,6 +26,7 @@ using NaNMath
 using PrecompileTools
 using DocStringExtensions
 using Parameters
+using ADTypes
 
 @reexport using LyoPronto
 import LyoPronto: calc_psub

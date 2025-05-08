@@ -383,8 +383,8 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
 
     if all(has_ice) # If all ice present, use all DOF
 
-        prob = NonlinearProblem(resid!, Tf_g)
-        sol = solve(prob, NewtonRaphson(), abstol=3e-4/dom.nr) # Allowing some error (in K/s) makes things much, much faster.
+        prob1 = NonlinearProblem{true}(resid!, Tf_g)
+        sol1 = solve(prob1, NewtonRaphson(autodiff=AutoForwardDiff(chunksize=10)), abstol=3e-4/dom.nr) # Allowing some error (in K/s) makes things much, much faster.
         # prob = SteadyStateProblem((du,u,unused,t)->resid!(du,u,unused), Tf_g)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
@@ -394,7 +394,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         #     sol = solve(prob_ss, DynamicSS(Rosenbrock23()), maxiters=100)
         #     @info "SS iterations" sol.retcode sol.stats sol.u
         # end
-        Tfs = sol.u
+        Tfs = sol1.u
     else # If ice doesn't cover full radial extent, trim out those DOF
         Tf_trim = Tf_g[has_ice]
         
@@ -410,13 +410,13 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
             nothing
         end
 
-        prob = NonlinearProblem(resid_lessdof!, Tf_trim)
-        sol = solve(prob, NewtonRaphson(), abstol = 3e-4/dom.nr)
+        prob2 = NonlinearProblem{true}(resid_lessdof!, Tf_trim)
+        sol2 = solve(prob2, NewtonRaphson(autodiff=AutoForwardDiff(chunksize=10)), abstol = 3e-4/dom.nr)
         # prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
         Tfs = zeros(eltype(u[iTf(dom)]), dom.nr)
-        Tfs[has_ice] = sol.u
+        Tfs[has_ice] = sol2.u
         extrap_Tf_noice!(Tfs, has_ice, dom)
     end
 
