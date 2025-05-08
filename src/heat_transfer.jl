@@ -411,7 +411,8 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
         end
 
         prob2 = NonlinearProblem{true}(resid_lessdof!, Tf_trim)
-        sol2 = solve(prob2, NewtonRaphson(autodiff=AutoForwardDiff(chunksize=10)), abstol = 3e-4/dom.nr)
+        # A chunksize larger than 1 is almost certainly faster, but will not work if there is only 1 dof in the problem.
+        sol2 = solve(prob2, NewtonRaphson(autodiff=AutoForwardDiff(chunksize=3)), abstol = 3e-4/dom.nr)
         # prob = SteadyStateProblem((du,u,unused,t)->resid_lessdof!(du,u,unused), Tf_trim)
         # sol = solve(prob, DynamicSS(Rosenbrock23()))
 
