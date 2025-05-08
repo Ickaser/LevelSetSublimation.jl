@@ -13,7 +13,7 @@ function cond_end(u, t, integ)
 end
 
 """
-    reinit_wrap(integ; verbose=false)
+    reinit_wrap(integ)
 
 Thin wrapper to reinitialize the state of the level set function.
 
@@ -123,12 +123,12 @@ function sim_from_dict(config; tf=1e6, verbose=false)
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
     reinitialize_ϕ_HCR!(ϕ0, dom, maxsteps=1000, tol=0.01, err_reg=:all) 
 
-    sim = sim_from_u0(u0, 0.0, config; tf=tf, verbose=verbose)
+    sim = sim_from_u0(u0, 0.0, config; tf, verbose)
     return @strdict sim
 end
 
 """
-    sim_from_u0(u0, t0, config; tf=1e5, verbose=false)
+    sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
 
 Wrapped by [`sim_from_dict`](@ref LevelSetSublimation.sim_from_dict); useful on its own if you want to start from partway through a simulation.
 """
