@@ -2,7 +2,7 @@ export calc_ϕ_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopront
 export get_subf_z, get_subf_r, get_ϕ, get_SA
 export get_eff_Rp
 export virtual_thermocouple
-
+"$(SIGNATURES)"
 function get_t_Tf(sim)
     @unpack sol, dom, config = sim
     t = sol.t * u"s"
@@ -13,6 +13,7 @@ function get_t_Tf(sim)
     return t, Tf
 end
 
+"$(SIGNATURES)"
 function get_t_Tf_subflux(sim)
     @unpack sol, dom = sim
     t, Tf = get_t_Tf(sim)
@@ -31,8 +32,10 @@ function get_t_Tf_subflux(sim)
 end
 
 
+"$(SIGNATURES)"
 calc_fillvol(dom) = π*dom.rmax^2*dom.zmax*u"m^3"
 
+"$(SIGNATURES)"
 function get_eff_Rp(sim)
     @unpack sol, dom = sim
     t, Tf = get_t_Tf(sim)
@@ -61,11 +64,13 @@ function get_eff_Rp(sim)
     return t, hd, Rp
 end
 
+"$(SIGNATURES)"
 function compare_lyopronto_res(sim)
     t = uconvert.(u"hr", sim.sol.t .* u"s")
     return compare_lyopronto_res(t, sim)
 end
 
+"$(SIGNATURES)"
 function compare_lyopronto_res(ts, sim)
     @unpack sol, dom, config = sim
     ts_ndim = ustrip.(u"s", ts)
@@ -93,12 +98,14 @@ function compare_lyopronto_res(ts, sim)
     return ts[cyc], Tf, mfd, dryfrac
 end
 
+"$(SIGNATURES)"
 function gen_sumplot(config, var=:T, casename="test")
     pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
     @time simres, simdatfile = produce_or_load(sim_from_dict, config,
             datadir("sims", casename); pol_kwargs...)
     summaryplot(simres, config, heatvar=var, layout=(4,1))
 end
+"$(SIGNATURES)"
 function gen_anim(config, var=:T, casename="test")
     pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
     @time simres, simdatfile = produce_or_load(sim_from_dict, config,
@@ -107,6 +114,7 @@ function gen_anim(config, var=:T, casename="test")
     return simres
 end
 
+"$(SIGNATURES)"
 function calc_params_at_t(t, config)
     @unpack paramsd = config
     params = params_nondim_setup(paramsd)
@@ -114,13 +122,18 @@ function calc_params_at_t(t, config)
 end
 
 """
-    interp_saved_Tf(saved_Tf)
+    $(SIGNATURES)
 
 Thin wrapper around CubicSpline for a set of SavedValues of Tf.
 Useful so that I use the same interpolation everywhere it shows up.
 """
 interp_saved_Tf(saved_Tf) = CubicSpline(saved_Tf.saveval, saved_Tf.t)
 
+"""
+    $(SIGNATURES)
+
+Get Tf at a given time point, regardless of simulation's time integration. 
+"""
 function calc_Tf_res(t, sim)
     @unpack sol, dom = sim
     if sol isa CombinedSolution
@@ -137,7 +150,7 @@ function calc_Tf_res(t, sim)
 end
 
 """
-    calc_uTfTp_res(t, sim; Tf0=nothing)
+    $(SIGNATURES)
 """
 function calc_uTfTp_res(t, sim)
     @unpack sol, dom, config = sim
@@ -155,6 +168,9 @@ function calc_ϕ_res(t, sim)
     return ϕ
 end
 
+"""
+    $(SIGNATURES)
+"""
 function virtual_thermocouple(sim::NamedTuple) 
     virtual_thermocouple([(0, 0)], sim)
 end
@@ -190,8 +206,7 @@ end
 virtual_thermocouple(sim::Dict) = virtual_thermocouple(sim["sim"])
 
 """
-    get_SA(res::Dict)
-    get_SA(ts, res::Dict)
+    $(SIGNATURES)
 
 Compute surface area over time for the given simulaiton results.
     
@@ -212,7 +227,7 @@ function get_SA(ts, res)
 end
 
 """
-    get_subf_z(ϕ, dom)
+    $(SIGNATURES)
 
 Compute the average 𝑧 position of the sublimation front.
 """
@@ -222,7 +237,7 @@ function get_subf_z(ϕ, dom)
     return ave_z
 end
 """
-    get_subf_r(ϕ, dom)
+    $(SIGNATURES)
 
 Compute the average 𝓇 position of the sublimation front.
 """
