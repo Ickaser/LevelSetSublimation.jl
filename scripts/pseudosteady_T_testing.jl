@@ -44,7 +44,7 @@ config = Dict{Symbol, Any}()
 dom = Domain(config)
 params, ncontrols = params_nondim_setup(cparams, controls)
 um = LSS.make_u0_ndim(config)
-ϕm = @views reshape(um[iϕ(dom)], size(dom))
+ϕm = @views um.ϕ
 ϕm .+= .4*dom.rmax - 1e-6 +1e-8
 ###
 R = dom.rmax
@@ -267,7 +267,7 @@ end
 
 @time sols_Tf_num = map(perturbs) do ei
     um = LSS.make_u0_ndim(config)
-    ϕm = @views reshape(um[iϕ(dom)], size(dom))
+    ϕm = @views um.ϕ
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
     Ri = get_subf_r(ϕm, dom)
     @info "startsol" Ri 

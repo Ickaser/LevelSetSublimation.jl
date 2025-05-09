@@ -9,13 +9,12 @@ within `min(dom.dz, dom.dr)/4`, which is when drying is essentially complete.
 """
 function cond_end(u, t, integ) 
     dom = integ.p[1]
-    minimum(u[iϕ(dom)]) + min(dom.dz, dom.dr)/4 
+    minimum(u.ϕ) + min(dom.dz, dom.dr)/4 
 end
 
 function cond_corner(u, t, integ) 
     dom = integ.p[1]
-    ϕ = reshape(u[iϕ(dom)], size(dom))
-    ϕ[end,1] + dom.dz/4 
+    u.ϕ[end,1] + dom.dz/4 
 end
 
 
@@ -31,7 +30,7 @@ If `verbose=true`, logs the error in signed distance function before and after r
 function reinit_wrap(integ)
     dom = integ.p[1]
     verbose = integ.p[3]
-    ϕ = @views reshape(integ.u[iϕ(dom)], size(dom))
+    ϕ = integ.u.ϕ
     verbose && (pre_err = sdf_err_L∞(ϕ, dom, region=:B))
     reinitialize_ϕ_HCR!(ϕ, dom, maxsteps=50, tol=0.02, err_reg=:B) 
     if verbose
@@ -44,7 +43,7 @@ end
 
 function needs_reinit(u, t, integ)
     dom = integ.p[1]
-    ϕ = reshape(u[iϕ(dom)], size(dom))
+    ϕ = u.ϕ
     # err = sdf_err_L1(ϕ, dom)
     B = identify_B(ϕ, dom)
     err = norm(𝒢_weno_all(ϕ, dom)[B].-1, Inf)
@@ -54,7 +53,7 @@ function needs_reinit(u, t, integ)
 end
 
 function save_Tf(u, t, integ) 
-    Tf_g = Tf_guess(u[iTf(integ.p[1])], t, integ.p[4])
+    Tf_g = Tf_guess(u.Tf, t, integ.p[4])
     if integ.p[3]
         @info "callback" integ.t
         @time Tf_sol = pseudosteady_Tf(u, integ.p[1], integ.p[2](t), Tf_g)
@@ -124,7 +123,7 @@ function sim_from_dict(config; tf=1e6, verbose=false, reltol=1e-3)
     dom = Domain(config)
     u0 = make_u0_ndim(init_prof, Tf0, Tvw0, dom)
 
-    ϕ0 = @views reshape(u0[iϕ(dom)], size(dom))
+    ϕ0 = u0.ϕ
     verbose && @info "Initializing ϕ"
     # Make sure that the starting profile is very well-initialized
     # The chosen tolerance is designed to the error almost always seen in norm of the gradient
@@ -183,14 +182,14 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false, reltol=1e-3)
         sim = (;sol, dom, config, Tf=Tf_interp)
     elseif time_integ isa Val{:dae}
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
-        massmat = Diagonal(vcat(ones(length(iϕ(dom))), zeros(length(iTf(dom))), ones(length(iTvw(dom)))))
+        massmat = Diagonal(vcat(ones(length(u0.ϕ)), zeros(length(u0.Tf)), ones(length(u0.Tvw))))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
         sol = solve(prob, FBDF(); callback=cbs, tstops, reltol)
         sim = (;sol, dom, config)
     elseif time_integ isa Val{:dae_then_exp}
         # First, DAE
-        massmat = Diagonal(vcat(ones(length(iϕ(dom))), zeros(length(iTf(dom))), ones(length(iTvw(dom)))))
+        massmat = Diagonal(vcat(ones(length(u0.ϕ)), zeros(length(u0.Tf)), ones(length(u0.Tvw))))
         func1 = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob1 = ODEProblem(func1, u0, tspan, prob_pars)
         cb_corner = ContinuousCallback(cond_corner, terminate!)

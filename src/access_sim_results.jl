@@ -1,4 +1,4 @@
-export calc_ϕ_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
+export calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
 export get_subf_z, get_subf_r, get_ϕ, get_SA
 export get_eff_Rp
 export virtual_thermocouple
@@ -45,7 +45,7 @@ function get_eff_Rp(sim)
     h_md_t = map(sol.t) do ti
         params = calc_params_at_t(ti, sim.config)
         uTfTp = calc_uTfTp_res(ti, sim)
-        ϕ = calc_ϕ_res(ti, sim)
+        ϕ = sim.sol(ti).ϕ
         Vf = compute_icevol_H(ϕ, dom)*u"m^3"
         hd = (1-Vf/fillvol)*hf0
         md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
@@ -91,8 +91,7 @@ function compare_lyopronto_res(ts, sim)
     mfd = uconvert.(u"kg/hr", md) / (π*(dom.rmax*u"m")^2)
     totvol = π*dom.rmax^2 * dom.zmax
     dryfrac = map(ts_ndim[cyc]) do ti
-        ϕ = reshape(sol(ti)[iϕ(dom)], size(dom))
-        1 - compute_icevol_H(ϕ, dom) / totvol
+        1 - compute_icevol_H(sol(ti).ϕ, dom) / totvol
     end
 
     return ts[cyc], Tf, mfd, dryfrac
@@ -138,14 +137,14 @@ function calc_Tf_res(t, sim)
     @unpack sol, dom = sim
     if sol isa CombinedSolution
         if t <= sol.tsplit
-            Tf = sol.sol1(t, idxs=iTf(dom))
+            Tf = sol.sol1(t).Tf
         else
             Tf = sol.Tf2(t)
         end
     elseif haskey(sim, :Tf)
         Tf = sim.Tf(t)
     else # Used a DAE or implicit solve
-        Tf = sol(t, idxs=iTf(dom))
+        Tf = sol(t).Tf
     end
 end
 
@@ -160,12 +159,6 @@ function calc_uTfTp_res(t, sim)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
     return u, Tf, T, p
-end
-
-function calc_ϕ_res(t, sim)
-    @unpack sol, dom = sim
-    ϕ = reshape(sol(t, idxs=iϕ(dom)), size(dom))
-    return ϕ
 end
 
 """
@@ -219,8 +212,7 @@ end
 function get_SA(ts, res)
     @unpack sol, dom = res
     SA_t = map(ts) do ti
-        u = sol(ti)
-        ϕ = reshape(u[iϕ(dom)], size(dom))
+        ϕ = sol(ti).ϕ
         SA = compute_icesurf_δ(ϕ, dom)
     end
     return ts, SA_t

@@ -39,8 +39,8 @@ function err_Tvw_Tf(Kvwf, QRFvw, QRFf ,fdat, gldat, config)
     @unpack sol, dom = res
 
     tf = sol.t[end]*u"s"
-    Tf_sim = sol(ustrip.(u"s", tdatf), idxs=iTf(dom)) .* u"K"
-    Tvw_sim = sol(ustrip.(u"s", tdatgl), idxs=iTvw(dom)) .* u"K"
+    Tf_sim = sol(ustrip.(u"s", tdatf)).Tvw .* u"K"
+    Tvw_sim = sol(ustrip.(u"s", tdatgl)).Tvw .* u"K"
 
     ds_gl = tdatgl .< tf
     ds_f = tdatf .< tf
