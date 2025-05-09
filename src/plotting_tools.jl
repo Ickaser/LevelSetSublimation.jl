@@ -72,7 +72,8 @@ In a mutating fashion, add a "cylindrical" heatmap of `T` to the current plot.
 ("Cylindrical" meaning reflected across x=0 axis.)
 """
 function plot_cylheat(T, dom::Domain; maxT=nothing, clims=nothing)
-    if maxT === nothing maxT = maximum(T)
+    if maxT === nothing 
+        maxT = maximum(T)
     end
     minT = minimum(T)
     if isnothing(clims)
