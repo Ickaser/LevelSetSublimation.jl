@@ -81,10 +81,11 @@ config[:simgridsize] = simgridsizes
 config[:time_integ] = Val(:dae_then_exp)
 # config[:time_integ] = Val(:exp_newton)
 allconfigs = dict_list(config)
+nconfigs = [NamedTuple((Symbol(key),value) for (key,value) in d) for d in allconfigs]
 
 
 # Run simulations
-timing = map(allconfigs) do config
+timing = map(nconfigs) do config
     @elapsed produce_or_load(sim_from_dict, config; filename=hash, verbose=true, tag=false, prefix=datadir("sims", "err"))
 end
 
