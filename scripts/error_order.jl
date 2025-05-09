@@ -106,6 +106,14 @@ end
 #  1651.0493648
 #  3891.9363282
 
+# For only the n=n grid sizes
+#   111.1484467
+#   124.0673761
+#   348.3150078
+#   645.7112252
+#  1407.6015413
+#  2713.8488763
+
 using DataFrames
 allsims = collect_results(datadir("sims"), rinclude=[r"err"])
 simtab = Table(map(eachrow(allsims)) do row
@@ -122,7 +130,7 @@ best.simgridsize
 
 locs = [(0.0, 0.0)]#, (0.8, 0.05), (0.2, 0.5)]
 t1 = range(0, 40000, length=80) # stop before ice detaches from wall
-t2 = range(42000, best.sol.t[end]*0.99, length=20) # pick up after
+t2 = range(41000, best.sol.t[end]*0.99, length=20) # pick up after
 Tbest1 = virtual_thermocouple(locs, t1, best)
 Tbest2 = virtual_thermocouple(locs, t2, best)
 # Tbestr = virtual_thermocouple(locs, t, rbest)
@@ -132,8 +140,8 @@ function compare_Tf(sim, Tb, t)
     return sqrt(sum(abs2, Ts-Tb)/length(Ts))
 end
 function compare_Tvw(sim, best, t)
-    Ts = sim.sol.(t, idxs=LSS.iTvw(sim.dom))
-    Tb = best.sol.(t, idxs=LSS.iTvw(best.dom))
+    Ts = [sim.sol(ti).Tvw for ti in t]
+    Tb = [best.sol(ti).Tvw for ti in t]
     return sqrt(sum(abs2, Ts-Tb)/length(Ts))
 end
 
