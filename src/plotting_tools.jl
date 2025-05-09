@@ -291,7 +291,7 @@ function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
         sim.sol(f).ϕ
     end
     Tvws = map(frames) do f
-        sim.sol(f).Tf - 273.15
+        sim.sol(f).Tvw - 273.15
     end
     Tshs = map(frames) do f
         ustrip(u"°C", sim.config[:paramsd][3].Tsh(f*u"s"))
@@ -462,7 +462,7 @@ end
     sim, locs = vtp.args
     time = sim.sol.t*u"s"
     Tfs = virtual_thermocouple(locs, sim)*u"K"
-    Tvw = sim.sol.(sim.sol.t).Tvw*u"K"
+    Tvw = [sim.sol(ti).Tvw for ti in sim.sol.t]*u"K"
     @series begin
         TPlotModel((time, Tfs))
     end

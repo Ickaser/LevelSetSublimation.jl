@@ -1,4 +1,4 @@
-export calc_ϕ_res, calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
+export calc_uTfTp_res, get_t_Tf, get_t_Tf_subflux, compare_lyopronto_res
 export get_subf_z, get_subf_r, get_ϕ, get_SA
 export get_eff_Rp
 export virtual_thermocouple
@@ -42,7 +42,7 @@ function get_eff_Rp(sim)
     h_md_t = map(sol.t) do ti
         params = calc_params_at_t(ti, sim.config)
         uTfTp = calc_uTfTp_res(ti, sim)
-        ϕ = calc_ϕ_res(ti, sim)
+        ϕ = sim.sol(ti).ϕ
         Vf = compute_icevol_H(ϕ, dom)*u"m^3"
         hd = (1-Vf/fillvol)*hf0
         md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
@@ -146,12 +146,6 @@ function calc_uTfTp_res(t, sim)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
     return u, Tf, T, p
-end
-
-function calc_ϕ_res(t, sim)
-    @unpack sol = sim
-    ϕ = sol(t, idxs=[:ϕ])
-    return ϕ
 end
 
 function virtual_thermocouple(sim::NamedTuple) 
