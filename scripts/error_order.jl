@@ -203,28 +203,28 @@ begin
 # plot!([10^1.4, 10^1.9], [10^0.31, 10^0.31], label="slope 0", ls=:dot, c=:gray)
 # plot!(xlabel=L"$n_z$, number of $z$ grid points", )#ylabel=L"L2 error in $T_\mathrm{f}$ [K]")
 
-plTf = @df filter(x->(x.err_Tf_rz1>0), errtab) scatter(:nr, :err_Tf_rz1, scale=:log10, label="pre-detachment")
-@df filter(x->(x.err_Tf_rz1>0), errtab) scatter!(:nr, :err_Tf_rz2, scale=:log10, marker=:square, label="post-detachment")
+plTf = @df filter(x->(x.err_Tf_rz1>0), errtab) scatter(:nr, :err_Tf_rz1, scale=:log10, label="pre-detach")
+@df filter(x->(x.err_Tf_rz1>0), errtab) scatter!(:nr, :err_Tf_rz2, scale=:log10, marker=:square, label="post-detach")
 # @df filter(x->(x.nr==31 && x.rzerr>0), errtab) scatter!(:nr, :rzerr, scale=:log10, label="nr=31")
 plot!([10^1.3, 10^1.8], [10^0.2, 10^-0.8], label=L"err$\propto n^{-2}$", ls=:dash, c=:gray)
 plot!([10^1.3, 10^1.8], [10^-0.9, 10^-1.9], label="", ls=:dash, c=:gray)
 # plot!([10^1.4, 10^1.9], [10^0.01, 10^0.01], label="slope 0", ls=:dot, c=:gray)
-plot!(xlabel=L"$n_r=n_z$, number of grid points each direction", ylabel=L"RMS error in $T_\mathrm{f}$ [K]")
+plot!(xlabel=L"grid points $n_r=n_z$", ylabel=L"RMS error in $T_\mathrm{f}$ [K]")
 
-plot!(legend=:bottomleft, bottom_margin=20Plots.px)
+plot!(legend=:topright, bottom_margin=20Plots.px)
 end
 savefig(plotsdir("M1_LSS_convergence_dae_Tf.svg"))
 savefig(plotsdir("M1_LSS_convergence_dae_Tf.pdf"))
 
 begin
-plTvw = @df filter(x->(x.err_Tvw_rz1>0), errtab) scatter(:nr, :err_Tvw_rz1, scale=:log10, label="pre-detachment")
-@df filter(x->(x.err_Tvw_rz1>0), errtab) scatter!(:nr, :err_Tvw_rz2, scale=:log10, marker=:square, label="post-detachment")
+plTvw = @df filter(x->(x.err_Tvw_rz1>0), errtab) scatter(:nr, :err_Tvw_rz1, scale=:log10, label="pre-detach")
+@df filter(x->(x.err_Tvw_rz1>0), errtab) scatter!(:nr, :err_Tvw_rz2, scale=:log10, marker=:square, label="post-detach")
 # @df filter(x->(x.nr==31 && x.rzerr>0), errtab) scatter!(:nr, :rzerr, scale=:log10, label="nr=31")
 plot!([10^1.3, 10^1.8], [10^0.22, 10^-0.78], label=L"err$\propto n^{-2}$", ls=:dash, c=:gray)
 plot!([10^1.3, 10^1.8], [10^-0.55, 10^-1.55], label="", ls=:dash, c=:gray)
 # plot!([10^1.3, 10^1.8], [10^-0.9, 10^-1.4], label=L"err$\propto n^{-1}$", ls=:dot, c=:gray)
-plot!(xlabel=L"$n_r=n_z$, number of grid points each direction", ylabel=L"RMS error in $T_\mathrm{vw}$ [K]")
-plot!(legend=:bottomleft, bottom_margin=20Plots.px)
+plot!(xlabel=L"grid points $n_r=n_z$", ylabel=L"RMS error in $T_\mathrm{vw}$ [K]")
+plot!(legend=:topright, bottom_margin=20Plots.px)
 end
 savefig(plotsdir("M1_LSS_convergence_dae_Tvw.svg"))
 savefig(plotsdir("M1_LSS_convergence_dae_Tvw.pdf"))
@@ -247,8 +247,8 @@ begin
 plt = @df filter(x->x.err_t_rz>0, errtab) scatter(:nz, :err_t_rz, scale=:log10, label=L"t_\mathrm{end}")
 @df filter(x->x.err_t_rz>0, errtab) scatter!(:nz, :err_td_rz, scale=:log10, marker=:square, label=L"t_\mathrm{detach}")
 # plot!([10^1.35, 10^1.85], [10^1.77, 10^1.77], label="slope 0", ls=:dot, c=:gray)
-plot!([10^1.3, 10^1.8], [10^-1.65, 10^-3.15], label=L"err$\propto n^{-3}$", ls=:dash, c=:gray)
-plot!(xlabel=L"$n_z=n_r$, number of grid points each direction", ylabel=L"relative error in $t$")
+plot!([10^1.3, 10^1.8], [10^-2.0, 10^-3.5], label=L"err$\propto n^{-3}$", ls=:dash, c=:gray)
+plot!(xlabel=L"grid points $n_z=n_r$", ylabel=L"relative error in $t$")
 plot!(legend=:bottom)
 
 # plot!(plr, left_margin=20Plots.px, )
@@ -257,3 +257,7 @@ plot!(bottom_margin=20Plots.px)
 end
 savefig(plotsdir("M1_LSS_convergence_dae_t.svg"))
 savefig(plotsdir("M1_LSS_convergence_dae_t.pdf"))
+
+plot(plTf, plTvw, plt, layout=(1,3), size=(1000, 400), left_margin=20Plots.px)
+savefig(plotsdir("M1_LSS_convergence_dae_all.svg"))
+savefig(plotsdir("M1_LSS_convergence_dae_all.pdf"))

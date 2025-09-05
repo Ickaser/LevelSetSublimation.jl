@@ -42,11 +42,12 @@ function get_eff_Rp(sim)
     hf0 = dom.zmax*u"m"
     Ap = π*dom.rmax^2*u"m^2"
     fillvol = Ap*hf0
-    h_md_t = map(sol.t) do ti
+    h_md_A_t = map(sol.t) do ti
         params = calc_params_at_t(ti, sim.config)
         uTfTp = calc_uTfTp_res(ti, sim)
         ϕ = sim.sol(ti).ϕ
         Vf = compute_icevol_H(ϕ, dom)*u"m^3"
+        Asub = compute_icesurf_δ(ϕ, dom)*u"m^2"
         hd = (1-Vf/fillvol)*hf0
         md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(md) == -1
@@ -54,14 +55,15 @@ function get_eff_Rp(sim)
             @info "md=$md" ti Tfi calc_psub(Tfi)
         end
         md = max(zero(md), md)
-        [hd, md]
+        [hd, md, Asub]
     end
-    hd = [u[1] for u in h_md_t]
-    md = [u[2] for u in h_md_t]
+    hd = [u[1] for u in h_md_A_t]
+    md = [u[2] for u in h_md_A_t]
+    Asub = [u[3] for u in h_md_A_t]
     psub = calc_psub.(Tf)
     pch = sim.config[:paramsd][3].pch.(sol.t*u"s")
     Rp = @. (psub - pch)*Ap/md
-    return t, hd, Rp
+    return t, hd, Rp, Asub
 end
 
 "$(SIGNATURES)"

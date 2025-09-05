@@ -507,17 +507,26 @@ end
 end
 
 @userplot TPlotModVW
-@recipe function f(tpmv::TPlotModVW)
+@recipe function f(tpmv::TPlotModVW; samplemarkers=false, nmarks=10)
     time, T = tpmv.args
-    step = size(time, 1) ÷ 10
+    step = size(time, 1) ÷ nmarks
     color = palette(:Oranges_4)[end]
     
     @series begin
-        seriestype := :samplemarkers
-        step --> step
-        markershape --> :dtriangle
-        seriescolor --> color
-        linestyle := :dash
-        time, T
+        if samplemarkers 
+            seriestype := :samplemarkers
+            seriescolor --> color
+            markershape --> :dtriangle
+            markercolor --> :white
+            markerstrokecolor --> color
+            markerstrokewidth --> 3
+            step --> step
+            linestyle := :dash
+            return time, T
+        else
+            seriestype := :line
+            seriescolor --> color
+            return time, T
+        end
     end
 end
