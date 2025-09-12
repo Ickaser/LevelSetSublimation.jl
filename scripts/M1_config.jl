@@ -98,8 +98,7 @@ sim = res["sim"]
 locs = [(0.0, 0.0), (0.8, 0.05), (0.2, 0.5)]
 vtmarks = [:diamond, :utriangle, :square, :circle]
 
-resetfontsizes()
-scalefontsizes(1.2)
+resetfontsizes(); scalefontsizes(1.2)
 begin
 pl_sum = summaryT(sim, tstart=0.10, tend=0.80, layout=(1,3))
 placethermocouples!(dom, locs, c=palette(:Oranges_4)[4:-1:2], markers=vtmarks, label="", markersize=8);
@@ -128,9 +127,24 @@ plot(pl_T, pl_sum, layout=@layout([a{0.6h}; b]), size=(700,500))
 savefig(plotsdir("M1_allLSS.svg"))
 savefig(plotsdir("M1_allLSS.pdf"))
 
-# savefig(plotsdir("M1_multiT_small.svg"))
-# savefig(plotsdir("M1_multiT_small.pdf"))
-
+begin
+resetfontsizes(); scalefontsizes(1.5)
+pl_sum = summaryT(sim, tstart=0.10, tend=0.80, layout=(1,3))
+placethermocouples!(dom, locs, c=palette(:Oranges_4)[4:-1:2], markers=vtmarks, label="", markersize=8);
+placethermocouples!(dom, [(0.95, 0.9)], msc=palette(:Oranges_4)[4:4], c=:white, markers=[:circle], label="", markersize=8, msw=4);
+plot!(size=(600, 200),  left_margin=-20Plots.px, right_margin=-5Plots.px)
+plot!(pl_sum[4], cbar_title="Temperature [°C]", left_margin=0Plots.px, right_margin=20Plots.px)
+labs = vcat(["LS "*i for i in ["bottom","corner","center"]], "LS vw")
+pl_T = blankplothrC(;)
+plot!(Tsh, c=:black, tmax=t_end, label="shelf")
+@df thmdat exptfplot!(:t, :T4, sampmarks=true, linealpha=0.2, nmarks=20, label="exp f")
+@df thmdat exptvwplot!(:t, :T3, nmarks=25, msw=3, label="exp vw")
+vt_plot!(sim, locs; labels=permutedims(labs), markers=permutedims(vtmarks), step=40, samplemarkers=true, linealpha=0.7)
+tendplot!(t_end, label="")
+plot!(legend=:outerbottomright, size=(700, 300), bottom_margin=15Plots.px, left_margin=15Plots.px)
+plot(pl_T, pl_sum, layout=@layout([a{0.6h}; b]), size=(700,500))
+end
+savefig(plotsdir("M1_allLSS_poster.svg"))
 
 begin
 pl_vtloc, T = plotframe(10*60*60, sim)
