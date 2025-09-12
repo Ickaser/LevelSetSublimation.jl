@@ -35,7 +35,7 @@ Tguess = 260u"K"
 l_base = sqrt(u"R"*Tguess/base_props.Mw) / A1
 l = fill(l_base, simgridsize)
 # l .*= 2.0 .^range(-1, 1, length=simgridsize[1]) # Big pores at the outer radius
-l .*= range(0.5, 1.5, length=simgridsize[1]) # Big pores at the outer radius
+l .*= range(0.25, 1.5, length=simgridsize[1]) # Big pores at the outer radius
 # Heat transfer
 kd = LSS.k_sucrose * (1-ϵ)
 m_v = LyoPronto.get_vial_mass(vialsize)
@@ -48,7 +48,8 @@ tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_v, B_d, Bf, Bv
 f_RF = RampedVariable(8.0u"GHz")
 pch = RampedVariable(100.0u"mTorr")
 Tsh = RampedVariable(uconvert.(u"K", [-40.0, 10]*u"°C"), 1u"K/minute")
-P_per_vial = RampedVariable(10u"W"/17 * 0.54)
+# P_per_vial = RampedVariable(10u"W"/17 * 0.54)
+P_per_vial = RampedVariable(0.0u"W")
 # Heat transfer coefficient as function of pressure
 KC = 2.75e-4u"cal/s/K/cm^2"
 KP = 8.93e-4u"cal/s/K/cm^2/Torr"
@@ -97,15 +98,16 @@ sim = res["sim"]
 # savefig(plotsdir("M1_LSS_summary.svg"))
 # savefig(plotsdir("M1_LSS_summary.pdf"))
 
-locs = [(0.0, 0.0), (0.8, 0.05), (0.2, 0.5)]
-vtmarks = [:diamond, :utriangle, :square, :circle]
+locs = [(0.0, 0.02), (0.6, 0.05)]#, (0.2, 0.5)]
+vtmarks = [:circle, :utriangle, :circle]
+# vtmarks = [:diamond, :utriangle, :square, :circle]
 
 resetfontsizes()
 scalefontsizes(1.2)
 begin
-pl_sum = summaryT(sim, tstart=0.10, tend=0.80, layout=(2,3))
-# placethermocouples!(dom, locs, c=palette(:Oranges_4)[4:-1:2], markers=vtmarks, label="", markersize=8);
-# placethermocouples!(dom, [(0.95, 0.9)], msc=palette(:Oranges_4)[4:4], c=:white, markers=[:circle], label="", markersize=8, msw=4);
+pl_sum = summaryT(sim, tstart=0.10, tend=0.9007, layout=(1,3))
+placethermocouples!(dom, locs, c=palette(:Oranges_4)[4:-1:2], markers=vtmarks, label="", markersize=8);
+placethermocouples!(dom, [(0.95, 0.9)], msc=palette(:Oranges_4)[4:4], c=:white, markers=[:circle], label="", markersize=8, msw=4);
 plot!(size=(600, 400), left_margin=-5Plots.px, right_margin=0Plots.px)
 plot!(pl_sum[4], cbar_title="\nTemperature [°C]", right_margin=20Plots.px)
 end
@@ -114,9 +116,10 @@ savefig(plotsdir("porevar_LSS_summVT.pdf"))
 
 # resetfontsizes()
 begin
-labs = vcat([L"$T$, model "*i for i in ["bottom","corner","center"]], L"$T_\mathrm{vw}$, model")
-pl_T = blankplothrC(;xlabel=L"t", )
-plot!(Tsh, c=:black, tmax=14u"hr", label=L"T_\mathrm{sh}")
+# labs = vcat([L"$T$, model "*i for i in ["bottom","corner","center"]], L"$T_\mathrm{vw}$, model")
+labs = vcat([L"$T$, model "*i for i in ["bottom","offset"]], L"$T_\mathrm{vw}$, model")
+pl_T = blankplothrC( )
+plot!(Tsh, c=:black, tmax=25u"hr", label=L"T_\mathrm{sh}")
 # @df thmdat exptfplot!(:t, :T4, nmarks=20)
 # @df thmdat exptvwplot!(:t, :T3, nmarks=20, msw=3, thickness_scaling=1.0)
 vt_plot!(sim, locs; labels=permutedims(labs), markers=permutedims(vtmarks), step=40, samplemarkers=true, linealpha=0.8)
@@ -154,7 +157,7 @@ relerr = (Rp_eff .- Rp_orig)./Rp_orig
 begin
 pl1 = plot(u"cm", u"cm^2*Torr*hr/g", ylabel="R_p", unitformat=latexsquareunitlabel)
 plot!(xlabel=nothing, xticks=(0:0.5:1.5, []), bottom_margin=-20Plots.px)
-plot!(hd_eff, Rp_eff, seriestype=:samplemarkers, marker=:circle, label="LS with curvature", ylims=(0, 40))
+plot!(hd_eff, Rp_eff, seriestype=:samplemarkers, marker=:circle, label=L"LS with $l(r,z)$", ylims=(0, 40))
 plot!(hd_eff, Rp_orig, c=:black, label="Baseline value")
 pl2 = plot(u"cm", NoUnits, ylabel="Relative\nDifference", xlabel=LaTeXString("h_d"), unitformat=latexsquareunitlabel)
 hline!([0], label="", c=:black, lw=1)
