@@ -1,0 +1,9 @@
+[deps]
+DrWatson = "634d3b9d-ee7a-5ddf-bec9-22491ea816e1"
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
+LevelSetSublimation = "93c9dee1-5b16-4b35-bfc1-a042def24bdf"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
+
+[sources]
+LevelSetSublimation = {path = ".."}
