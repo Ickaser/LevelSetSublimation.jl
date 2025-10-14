@@ -100,8 +100,8 @@ The following fields have default values and are therefore optional:
 - `Tf0`, an initial ice temperature. Defaults to `Tsh(0)` if not provided  
 - `Tvw0`, an initial glass temperature. Defaults to `Tf0`.
 - `time_integ`: defaults to `Val(:exp_newton)`; other options are `Val(:dae)`, `Val(:dae_then_exp)` and `Val(:ode_implicit)`.
-    Among these three, different problem formulations are used (explicit ODE with internal Newton solve, DAE, and implicit ODE).
-- `init_prof`, a `Symbol` indicating a starting profile (from [`make_ϕ0`](@ref)
+    Among these three, slightly different problem formulations are used (explicit ODE with internal Newton solve, DAE, and implicit ODE).
+- `init_prof`, a `Symbol` indicating a starting profile (from [`make_ϕ0`](@ref))
 
 The three problem formulations have different advantages; in my testing, the DAE formulation and implicit formulation
 tend to run faster and more closely reflect the problem structure,

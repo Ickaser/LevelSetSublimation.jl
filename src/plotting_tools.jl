@@ -426,7 +426,7 @@ function resultsanim(sim, casename; seconds_length=5, heatvar=:T, clims=nothing)
     Tf_g = fill(245.0, dom.nr)
     # end
     anim = @animate for ti ∈ frames
-        pl, heatvals, Tf_g = plotframe(ti, sim, heatvar=heatvar, Tf0=Tf_g, clims=clims)
+        pl, heatvals, Tf_g = plotframe(ti, sim, heatvar=heatvar, clims=clims)
         # heat_p_min = heat_ex[1] - 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # heat_p_max = heat_ex[2] + 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # plot!(p, clims=(heat_p_min, heat_p_max))

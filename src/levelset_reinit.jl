@@ -439,16 +439,16 @@ end
 """
     LD{T}
 
-    A "little difference", to make Godunov's scheme in [𝒢_weno](@ref) easier to read.
-For a = LD(x::T), 
-- a.p = max(x, 0)
-- a.m = min(x, 0)
+A "little difference", to make Godunov's scheme in [𝒢_weno](@ref) easier to read.
+For `a = LD(x::T)`, 
+- `a.p = max(x, 0.0)`
+- `a.m = min(x, 0.0)`
 """
 struct LD{T} # LD short for Little Difference
     p::T
     m::T
 end
-LD(x) = LD(max(x, 0), min(x, 0))
+LD(x) = LD(max(x, 0.0), min(x, 0.0))
 """
     𝒢_1st(ϕ, i, j, dom::Domain) 
     
