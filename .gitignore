@@ -18,8 +18,10 @@ _research
 
 /scripts/run_from_dict.jl
 
-# No need to track docs manifest
-/docs/Manifest.toml
+# Don't track Manifest files, treat this as a package
+Manifest.toml
+docs/Manifest.toml
+test/Manifest.toml
 
 ################################################################################
 #                                    Julia                                     #
