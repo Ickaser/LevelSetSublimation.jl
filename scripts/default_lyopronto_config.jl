@@ -1,7 +1,6 @@
 # @quickactivate :LevelSetSublimation
 const LSS = LevelSetSublimation
-using UnitfulLatexify, Latexify
-pythonplot()
+using Latexify
 
 # -------------------- Read in LyoPronto data
 

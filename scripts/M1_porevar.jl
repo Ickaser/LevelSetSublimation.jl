@@ -1,6 +1,5 @@
 @quickactivate :LevelSetSublimation
 const LSS = LevelSetSublimation
-using UnitfulLatexify
 
 # plot defaults
 default(:linewidth, 3)
