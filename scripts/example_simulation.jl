@@ -66,15 +66,9 @@ tvp = TimeVaryingProperties(f_RF, P_per_vial, Tsh, pch, Kshf)
 paramsd = (base_props, tcp, tvp)
 
 # ---------------------------------
-# Pack everything into a dictionary for simulating or saving
-# The dictionary keys need to be exact, which is
-# This is one way of constructing the dictionary, if your variable 
-# names match the required dictionary keys
-config = @dict paramsd vialsize fillvol simgridsize
-config[:time_integ] = Val(:dae_then_exp)
-
+# Pack everything into a dictionary or NamedTuple for simulating or saving
 alt_simgridsize = (41, 31)
-# Or we can do the following, if variables have other names
+# Writing everything out is necessary if variable names don't match expected inputs
 config = Dict{Symbol, Any}(
     :paramsd => paramsd,
     :vialsize => vialsize,
@@ -82,6 +76,9 @@ config = Dict{Symbol, Any}(
     :simgridsize => alt_simgridsize,
     :time_integ => Val(:dae_then_exp)
 )
+# If your variable names exactly match the required names, you can directly pack a NamedTuple: 
+config = (;paramsd, vialsize, fillvol, simgridsize)
+config = merge(config, (time_integ=Val(:dae_then_exp),))
 
 # -----------------------------
 # Now, to run the simulation:
