@@ -1,6 +1,6 @@
 # @quickactivate :LevelSetSublimation
 const LSS = LevelSetSublimation
-using Latexify
+using Latexify, TypedTables
 
 # -------------------- Read in LyoPronto data
 

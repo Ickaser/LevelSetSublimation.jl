@@ -10,9 +10,7 @@ using SteadyStateDiffEq
 @reexport using Plots
 @reexport using Unitful
 @reexport using LaTeXStrings
-@reexport using CSV
-@reexport using TypedTables
-@reexport using PrettyTables
+using TypedTables
 @reexport using StatsPlots: @df
 using DataInterpolations: CubicSpline, LinearInterpolation, ExtrapolationType
 using ComponentArrays

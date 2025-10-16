@@ -1,6 +1,8 @@
 @quickactivate :LevelSetSublimation
 const LSS = LevelSetSublimation
 
+using TypedTables, DataFrames
+
 # plot defaults
 default(:linewidth, 3)
 default(:markersize, 5)
@@ -113,7 +115,6 @@ end
 #  1407.6015413
 #  2713.8488763
 
-using DataFrames
 allsims = collect_results(datadir("sims"), rinclude=[r"err"])
 simtab = Table(map(eachrow(allsims)) do row
     # if row.sim.config[:time_integ] == Val(:dae_then_exp)
