@@ -2,22 +2,7 @@
 const LSS = LevelSetSublimation
 using Latexify, TypedTables
 
-# -------------------- Read in LyoPronto data
 
-
-using CSV
-lpfname = datadir("lyopronto", "output_saved_230512_1714.csv")
-lpraw = CSV.read(lpfname, Table)
-function lyopronto_rename(row)
-    nt = (t = row.var"Time [hr]"*u"hr",
-        Tsub = row.var"Sublimation Temperature [C]"*u"°C", 
-        Tsh = row.var"Shelf Temperature [C]"*u"°C", 
-        md = row.var"Sublimation Flux [kg/hr/m^2]"*u"kg/hr/m^2",
-        dryfrac = row.var"Percent Dried"/100)
-    return nt
-end
-slice = floor.(Int, range(1, length(lpraw), length=100))
-lpdat = map(lyopronto_rename, lpraw[slice])
 
 # Set up simulation
 
@@ -55,6 +40,7 @@ Kshf = RpFormFit(KC*Afac, KP*Afac, KD)
 kd = LSS.k_sucrose * (1-ϵ)
 m_v = LyoPronto.get_vial_mass(vialsize)
 A_v = π*ro^2
+A_p = π*ri^2
 Kvwf = 0.0u"W/m^2/K"
 tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_v, B_d, B_f, B_vw)
 
@@ -67,10 +53,10 @@ tvprops = TimeVaryingProperties(f_RF, P_per_vial, Tsh, pch, Kshf)
 
 paramsd = base_props, tcprops, tvprops
 
-# Pack parameters into a Dict
-config = Dict{Symbol, Any}()
-@pack! config = paramsd, vialsize, fillvol, simgridsize
-config[:time_integ] = Val(:exp_newton)
+
+# Pack parameters together for LSS simulation
+config = (; paramsd, vialsize, fillvol, simgridsize)
+config = merge(config, (;time_integ = Val(:exp_newton)))
 
 # Run the simulation
 @time res, fname = produce_or_load(sim_from_dict, config; filename=hash, verbose=true, tag=true, prefix=datadir("sims", "lyopronto"));
@@ -81,16 +67,34 @@ config[:time_integ] = Val(:exp_newton)
 
 sim = res["sim"];
 sim.Tf.u[:,1]
-# Get simulation results at matching times
+
+# -------------------- Simulate traditional 1D model
+
+lp_params = LyoPronto.ParamObjPikal(
+    RpFormFit(Rp0, A0, 0.0u"cm^-1"), fillvol/A_p, c_solid, ρ_solution,
+    RpFormFit(KC, KP, KD), A_v, A_p,
+    pch, Tsh
+)
+lp_sim = solve(ODEProblem(lp_params), LyoPronto.odealg_chunk2)
+
+lpt = lp_sim.t .* u"hr"
+lpdryfrac = lp_sim[1,:]u"cm" ./ (fillvol/A_p) |> NoUnits
+lpT = lp_sim[2,:]u"K"
+lpm = [LyoPronto.calc_md_Q(ui, lp_params, ti)[1] for (ui, ti) in zip(lp_sim.u, lp_sim.t)]
+lpdat = Table((t=lpt, dryfrac=lpdryfrac, Tbot=lpT, md=lpm))
+
+# ------------- Get corresponding results from LevelSetSublimation simulation
 tsol, Tsol, msol, fsol = compare_lyopronto_res(lpdat.t, sim);
+
 # ------------- Comparison plots
 
 # uformatter(l, u) = string(l, raw", $\\left[", latexify(u)[2:end-1], raw"\\right]$")
-uf = latexsquareunitlabel
+set_default(labelformat = :square)
+uf = latexify
 
 begin
 pl1 = plot(u"hr", u"°C", unitformat=uf, ylabel="T_\\text{f}", xlabel="t")
-@df lpdat plot!(:t, :Tsub, label="LyoPronto", legend=:bottomright)
+@df lpdat plot!(:t, :Tbot, label="LyoPronto", legend=:bottomright)
 plot!(tsol, Tsol, label="LevelSetSublimation")
 plot!(Tsh, tmax=6u"hr", label=L"T_\text{sh}", c=:black)
 pl2 = plot(u"hr", u"kg/hr/m^2", unitformat=uf, ylabel="\\dot{m}''", xlabel="t")

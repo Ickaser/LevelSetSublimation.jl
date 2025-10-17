@@ -90,13 +90,12 @@ function compare_lyopronto_res(ts, sim)
         mdi = max(zero(mdi), mdi)
         md[i] = mdi
     end
-    mfd = uconvert.(u"kg/hr", md) / (π*(dom.rmax*u"m")^2)
     totvol = π*dom.rmax^2 * dom.zmax
     dryfrac = map(ts_ndim[cyc]) do ti
         1 - compute_icevol_H(sol(ti).ϕ, dom) / totvol
     end
 
-    return ts[cyc], Tf, mfd, dryfrac
+    return ts[cyc], Tf, md, dryfrac
 end
 
 "$(SIGNATURES)"
