@@ -12,7 +12,7 @@ using SteadyStateDiffEq
 @reexport using LaTeXStrings
 using TypedTables
 @reexport using StatsPlots: @df
-using DataInterpolations: CubicSpline, LinearInterpolation, ExtrapolationType
+using DataInterpolations: CubicSpline, LinearInterpolation, ExtrapolationType, ConstantInterpolation
 using ComponentArrays
 using Contour: contour, lines, coordinates
 using LinearAlgebra: norm, Diagonal

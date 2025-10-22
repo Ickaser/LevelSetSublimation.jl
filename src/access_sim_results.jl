@@ -124,10 +124,18 @@ end
 """
     $(SIGNATURES)
 
-Thin wrapper around CubicSpline for a set of SavedValues of Tf.
+Interpolate a set of SavedValues of Tf.
 Useful so that I use the same interpolation everywhere it shows up.
 """
-interp_saved_Tf(saved_Tf) = CubicSpline(saved_Tf.saveval, saved_Tf.t)
+function interp_saved_Tf(saved_Tf) 
+    if length(saved_Tf.t) <= 2  
+        return ConstantInterpolation(saved_Tf.saveval, saved_Tf.t, extrapolation=ExtrapolationType.Constant)
+    elseif any(diff(saved_Tf.t) == 0)
+        return LinearInterpolation(saved_Tf.saveval, saved_Tf.t)
+    else
+        return CubicSpline(saved_Tf.saveval, saved_Tf.t)
+    end
+end
 
 """
     $(SIGNATURES)
