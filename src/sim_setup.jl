@@ -100,9 +100,9 @@ $(FIELDS)
     εppf::T10 = LyoPronto.εppf
     "Dielectric loss coefficient of dry layer (defaults to 0)."
     εpp_d::T11 = 0.0
-    "Universal gas constant."
+    "Universal gas constant. Kept as a constant so that it gets nondimensionalized with the rest."
     R::T12 = u"R"
-    "Vacuum permittivity."
+    "Vacuum permittivity. Kept as a constant so that it gets nondimensionalized with the rest."
     ϵ0::T13 = u"ϵ0" |> u"F/m"
 end
 
@@ -112,7 +112,35 @@ An instance of [`PhysicalProperties`](@ref) with default values.
 """
 const base_props = PhysicalProperties()
 
-"""
+@concrete terse struct TimeConstantProperties
+    # Mass transfer
+    "dimensionless, the porosity or fraction of solid space taken up by ice."
+    ϵ
+    "length, a dusty gas model parameter (roughly the pore size)"
+    l
+    "area, a dusty gas model parameter (roughly the area of a pore neck)"
+    κ
+    "length/time, empirical mass transfer resistance at zero dry layer height"
+    Rp0
+    # Heat transfer
+    "dry layer thermal conductivity"
+    kd
+    "vial wall to frozen layer heat transfer coeff"
+    Kvwf
+    "vial mass"
+    m_v
+    "total vial-bottom area, used for heat transfer"
+    A_v
+    # Microwave
+    "Ω/m^2, dry layer field strength coefficient"
+    B_d
+    "Ω/m^2, frozen layer field strength coefficient"
+    B_f
+    "Ω/m^2, vial wall field strength coefficient"
+    B_vw
+end
+
+@doc """
     TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_v, B_d, B_f, B_vw)
 
 A struct for holding physical properties which are likely to change from case to case.
@@ -120,36 +148,22 @@ A struct for holding physical properties which are likely to change from case to
 No default constructor is provided by intention--all of these parameters should be at least considered before running a simulation.
 
 $(FIELDS)
-"""
-struct TimeConstantProperties{T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11}
-    # Mass transfer
-    "dimensionless, the porosity or fraction of solid space taken up by ice."
-    ϵ::T1
-    "length, a dusty gas model parameter (roughly the pore size)"
-    l::T2
-    "area, a dusty gas model parameter (roughly the area of a pore neck)"
-    κ::T3
-    "length/time, empirical mass transfer resistance at zero dry layer height"
-    Rp0::T4
-    # Heat transfer
-    "dry layer thermal conductivity"
-    kd::T5
-    "vial wall to frozen layer heat transfer coeff"
-    Kvwf::T6
-    "vial mass"
-    m_v::T7
-    "total vial-bottom area, used for heat transfer"
-    A_v::T8
-    # Microwave
-    "Ω/m^2, dry layer field strength coefficient"
-    B_d::T9
-    "Ω/m^2, frozen layer field strength coefficient"
-    B_f::T10
-    "Ω/m^2, vial wall field strength coefficient"
-    B_vw::T11
+""" TimeConstantProperties
+
+@concrete terse struct TimeVaryingProperties
+    "Microwave frequency"
+    f_RF
+    "Microwave power per vial"
+    P_per_vial
+    "Shelf temperature"
+    Tsh
+    "Chamber pressure"
+    pch
+    "Heat transfer coefficient as function of pressure"
+    Kshf
 end
 
-"""
+@doc """
     TimeVaryingProperties(f_RF, P_per_vial, Tsh, pch, Kshf)
 
 A struct for holding controlled parameters that may change over time.
@@ -163,21 +177,21 @@ Each should be passed as a callable, which returns the value of the parameter as
 See the `RampedVariable` and `RpFormFit` types from `LyoPronto`, which are intended to make this more convenient.
 
 $(FIELDS)
-"""
-struct TimeVaryingProperties{Tf, TP, TT, Tp, TK}
-    "Microwave frequency"
-    f_RF::Tf
-    "Microwave power per vial"
-    P_per_vial::TP
-    "Shelf temperature"
-    Tsh::TT
-    "Chamber pressure"
-    pch::Tp
-    "Heat transfer coefficient as function of pressure"
-    Kshf::TK
-end
+""" TimeVaryingProperties
 
-"""
+@concrete struct TimeVaryingPropertiesSnapshot
+    "Microwave frequency"
+    f_RF
+    "Microwave power per vial"
+    P_per_vial
+    "Shelf temperature"
+    Tsh
+    "Chamber pressure"
+    pch
+    "Heat transfer coefficient as function of pressure"
+    Kshf
+end
+@doc """
     TimeVaryingPropertiesSnapshot(f_RF, P_per_vial, Tsh, pch, Kshf)
 
 A struct for holding a snapshot of the controlled parameters that may change over time.
@@ -185,19 +199,7 @@ A struct for holding a snapshot of the controlled parameters that may change ove
 This is meant to be constructed by calling an instance of the [`TimeVaryingProperties`](@ref) type.
 
 $(FIELDS)
-"""
-struct TimeVaryingPropertiesSnapshot{Tf, TP, TT, Tp, TK}
-    "Microwave frequency"
-    f_RF::Tf
-    "Microwave power per vial"
-    P_per_vial::TP
-    "Shelf temperature"
-    Tsh::TT
-    "Chamber pressure"
-    pch::Tp
-    "Heat transfer coefficient as function of pressure"
-    Kshf::TK
-end
+""" TimeVaryingPropertiesSnapshot
 
 function (tvp::TimeVaryingProperties)(t)
     snap = TimeVaryingPropertiesSnapshot(
