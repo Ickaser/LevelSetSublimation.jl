@@ -56,31 +56,30 @@ paramsd = base_props, tcprops, tvprops
 
 # Pack parameters together for LSS simulation
 config = (; paramsd, vialsize, fillvol, simgridsize)
-config = merge(config, (;time_integ = Val(:exp_newton)))
+config = merge(config, (;time_integ = Val(:dae_then_exp)))
 
 # Run the simulation
-@time res, fname = produce_or_load(sim_from_dict, config; filename=hash, verbose=true, tag=true, prefix=datadir("sims", "lyopronto"));
+# @time res, fname = produce_or_load(sim_from_dict, config; filename=hash, verbose=true, tag=true, prefix=datadir("sims", "lyopronto"));
 
-# @time res = sim_from_dict(config; verbose=true)
-# fname = datadir("sims", "lyopronto_"*string(hash(config), base=10)*".jld2")
-# safesave(fname, res)
+@time res = sim_from_dict(config; verbose=true)
+fname = datadir("sims", "lyopronto_"*string(hash(config), base=10)*".jld2")
+safesave(fname, res)
 
 sim = res["sim"];
-sim.Tf.u[:,1]
 
 # -------------------- Simulate traditional 1D model
 
 lp_params = LyoPronto.ParamObjPikal(
-    RpFormFit(Rp0, A0, 0.0u"cm^-1"), fillvol/A_p, c_solid, ρ_solution,
+    RpFormFit(Rp0, A1, 0.0u"cm^-1"), fillvol/A_p, c_solid, ρ_solution,
     RpFormFit(KC, KP, KD), A_v, A_p,
     pch, Tsh
 )
 lp_sim = solve(ODEProblem(lp_params), LyoPronto.odealg_chunk2)
 
 lpt = lp_sim.t .* u"hr"
-lpdryfrac = lp_sim[1,:]u"cm" ./ (fillvol/A_p) |> NoUnits
+lpdryfrac = 1 .-(lp_sim[1,:]u"cm" ./ (fillvol/A_p)) .|> NoUnits
 lpT = lp_sim[2,:]u"K"
-lpm = [LyoPronto.calc_md_Q(ui, lp_params, ti)[1] for (ui, ti) in zip(lp_sim.u, lp_sim.t)]
+lpm = [-LyoPronto.calc_md_Q(ui, lp_params, ti)[1] for (ui, ti) in zip(lp_sim.u, lp_sim.t)]
 lpdat = Table((t=lpt, dryfrac=lpdryfrac, Tbot=lpT, md=lpm))
 
 # ------------- Get corresponding results from LevelSetSublimation simulation
@@ -93,11 +92,11 @@ set_default(labelformat = :square)
 uf = latexify
 
 begin
-pl1 = plot(u"hr", u"°C", unitformat=uf, ylabel="T_\\text{f}", xlabel="t")
-@df lpdat plot!(:t, :Tbot, label="LyoPronto", legend=:bottomright)
+pl1 = plot(u"hr", u"°C", unitformat=uf, ylabel="T_\\textrm{f}", xlabel="t")
+@df lpdat plot!(:t, :Tbot, label="LyoPronto", legend=:topright)
 plot!(tsol, Tsol, label="LevelSetSublimation")
-plot!(Tsh, tmax=6u"hr", label=L"T_\text{sh}", c=:black)
-pl2 = plot(u"hr", u"kg/hr/m^2", unitformat=uf, ylabel="\\dot{m}''", xlabel="t")
+plot!(Tsh, tmax=6u"hr", label=L"T_\textrm{sh}", c=:black)
+pl2 = plot(u"hr", u"kg/hr", unitformat=uf, ylabel="\\dot{m}''", xlabel="t")
 @df lpdat plot!(:t, :md, label="LyoPronto", unitformat=:square,legend=:bottomright)
 plot!(tsol, msol, label="LevelSetSublimation")
 pl3 = plot(u"hr", NoUnits, unitformat=uf, ylabel="drying progress", xlabel="t")

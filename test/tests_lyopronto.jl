@@ -53,7 +53,7 @@ end
     t_lp = lp_sim.t .* u"hr"
     dryfrac_lp = 1 .- lp_sim[1,:] ./ lp_sim[1,1] .|> NoUnits
     T_lp = lp_sim[2,:]u"K"
-    m_lp = [LyoPronto.calc_md_Q(ui, lp_sim.prob.p, ti)[1]|>u"kg/s" for (ui, ti) in zip(lp_sim.u, lp_sim.t)]
+    m_lp = [-LyoPronto.calc_md_Q(ui, lp_sim.prob.p, ti)[1]|>u"kg/s" for (ui, ti) in zip(lp_sim.u, lp_sim.t)]
 
     @info "Starting lyopronto comparison simulation. Might take 20 minutes"
     @time res = sim_from_dict(config)
