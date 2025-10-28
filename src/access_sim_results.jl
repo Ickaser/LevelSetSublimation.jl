@@ -77,6 +77,9 @@ function compare_lyopronto_res(ts, sim)
     @unpack sol, dom, config = sim
     ts_ndim = ustrip.(u"s", ts)
     cyc = ts_ndim .< sol.t[end]
+    if ~all(cyc)
+        @warn "Some requested times are beyond the end of the simulation. Trimming to fit."
+    end
     Tf = similar(ts_ndim[cyc])*u"K"
     md = similar(ts_ndim[cyc]).*u"kg/s"
     for (i, ti) in enumerate(ts_ndim[cyc])
