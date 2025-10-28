@@ -277,6 +277,11 @@ function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
     return pl
 end
 
+"""
+    $(SIGNATURES)
+
+Plot temperature fields at several time instants throughout the simulation.
+"""
 function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
     @unpack sol, dom = sim
 
