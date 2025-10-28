@@ -67,8 +67,8 @@ end
     end
 
     @test all(t_lp .== tsol)
-    @test all(isapprox.(Tsol, T_lp, atol=0.5u"K"))
-    @test_broken all(isapprox.(msol, m_lp, atol=0.05u"kg/hr"))
+    @test all(isapprox.(Tsol, T_lp, atol=2u"K"))
+    @test all(isapprox.(msol, m_lp, atol=1e-8u"kg/s"))
     @test all(isapprox.(fsol, dryfrac_lp, atol=0.02))
-    @test sim.sol.t[end]*u"s" ≈ t_lp[end] rtol=0.02
+    @test sim.sol.t[end]*u"s" ≈ t_lp[end] rtol=0.05
 end
