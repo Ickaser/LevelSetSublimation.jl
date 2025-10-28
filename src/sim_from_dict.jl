@@ -211,7 +211,7 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false, reltol=1e-3)
         # Implicit ODE timestepping, so Tf is allowed to vary in time
         prob = ODEProblem(dudt_heatmass_implicit!, u0, tspan, prob_pars)
         sol = solve(prob, Rodas4P(); callback=cbs, tstops, reltol)
-        sim = (sol, dom, config)
+        sim = (;sol, dom, config)
     else
         @warn "Unknown time_integ, defaulting to `:exp_newton` without saving Tf"
         prob = ODEProblem(dudt_heatmass!, u0, tspan, prob_pars)
