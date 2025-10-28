@@ -21,7 +21,7 @@ makedocs(
                 "Discretizations" => "disc.md",
             ],
             "References" => "refs.md",
-            "Everything for Good Measure" => "alldocs.md",
+            "All Docstrings" => "alldocs.md",
         ]
         ; plugins = [bib], 
         )
