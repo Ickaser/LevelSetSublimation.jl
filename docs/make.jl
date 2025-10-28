@@ -1,5 +1,4 @@
-using DrWatson
-@quickactivate :LevelSetSublimation
+using LevelSetSublimation
 using Documenter
 using DocumenterCitations
 
