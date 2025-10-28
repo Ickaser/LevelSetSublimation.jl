@@ -56,8 +56,8 @@ end
     m_lp = [-LyoPronto.calc_md_Q(ui, lp_sim.prob.p, ti)[1]|>u"kg/s" for (ui, ti) in zip(lp_sim.u, lp_sim.t)]
 
     @info "Starting lyopronto comparison simulation. Might take 20 minutes"
-    @time res = sim_from_dict(config)
-    tsol, Tsol, msol, fsol = compare_lyopronto_res(t_lp, res, config)
+    @time sim = sim_from_dict(config)
+    tsol, Tsol, msol, fsol = compare_lyopronto_res(t_lp, sim)
 
     @test sum(t_lp .== tsol) == 100
     @test sum(isapprox.(Tsol, T_lp, atol=0.5u"K")) == 100

@@ -2,7 +2,7 @@ using LevelSetSublimation
 using Documenter
 using DocumenterCitations
 
-bib = CitationBibliography(projectdir("bib", "Zotero_LevelSet.bib");
+bib = CitationBibliography(joinpath((@__DIR__), "bib", "Zotero_LevelSet.bib");
         style=:authoryear)
 
 makedocs(
