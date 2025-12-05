@@ -2,12 +2,12 @@ export heat, freshplot, markfront, markcells
 export plot_cylheat, arrows
 export LevelSet
 export summaryplot, resultsanim,  gen_sumplot, gen_anim
-export summaryT
+export summaryT, animateT
 export plotframe, finalframe 
 export blankplothrC
 
 """
-    heat(field, dom::Domain)
+    $(SIGNATURES)
 
 Return a heatmap of `field`, scaled to fit on `dom`.
 
@@ -165,7 +165,7 @@ Unpack simulation results and plot the state at time `t`.
 `heatvar = :T` or `=:ϕ` or `=:p` decides whether temperature, level set function, or pressure is plotted as colors.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
-function plotframe(t, sim; heatvar=:T, clims=nothing)
+function plotframe(t, sim; heatvar=:ϕ, clims=nothing)
     @unpack sol, dom = sim
 
     if heatvar == :ϕ 
@@ -182,7 +182,7 @@ function plotframe(t, sim; heatvar=:T, clims=nothing)
         Tvw = u.Tvw - 273.15
         Tsh = ustrip(u"°C", sim.config[:paramsd][3].Tsh(t*u"s"))
         pl = plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=clims)
-        return pl, T, Tf
+        return pl, T
     elseif heatvar == :p
         u, Tf, T, p = calc_uTfTp_res(t, sim)
         ϕ = u.ϕ
@@ -204,7 +204,7 @@ function plotframe(t, sim; heatvar=:T, clims=nothing)
         end
     end
 
-    tr = round(t/3600, digits=2)
+    tr = round(t/3600, digits=1)
     local pl = plot(aspect_ratio=:equal, xlim=(-dom.rmax,dom.rmax), ylim=(dom.zmin,dom.zmax))
     # plot_cylheat(heatvar_vals, dom; clims=clims)
     heatmap!(dom.rgrid, dom.zgrid, heatvar_vals', c=cmap, clims=clims)
@@ -213,15 +213,15 @@ function plotframe(t, sim; heatvar=:T, clims=nothing)
     if heatvar == :ϕ
         Plots.contour!(dom.rgrid, dom.zgrid, ϕ', color=:black)
     end
-    plot!(xlabel=L"t = %($tr) hr")
+    plot!(xlabel=L"t = %$(tr) hr")
     plot!(colorbar_title=clab)
     plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
     plot!(y_ticks = ([0, dom.zmax], ["0", L"h_\mathrm{f0}"]),  )
     # plot!(x_ticks=[-dom.rmax, 0, dom.rmax], xlabel="radius")
-    return pl, heatvar_vals, Tf
+    return pl, heatvar_vals
 end
 
-function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
+function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; hextend=1.10, vextend=1.07, clims=nothing, cbar=true)
     cmap = :linear_bmy_10_95_c78_n256
     cg = cgrad(cmap)
     if isnothing(clims)
@@ -232,8 +232,6 @@ function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
     end
     cpick = x->cg[(x-clims[1])/(clims[2]-clims[1])]
 
-    hextend = 1.05
-    vextend = 1.05
     lwall = Plots.Shape([(-dom.rmax*hextend, dom.zmax), 
              (-dom.rmax*hextend, 0),
              (-dom.rmax, 0),
@@ -253,7 +251,7 @@ function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
     else
         cont_c = :white
     end
-    tr = round(t/3600, digits=2)
+    tr = round(t/3600, digits=1)
 
     # Set up plot
     pl = plot(aspect_ratio = :equal, showaxis=false,
@@ -273,22 +271,12 @@ function plotframe_T(t, ϕ, T, Tvw, Tsh, dom; clims=nothing)
 #     plot!(colorbar_title=clab)
     plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
     plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
+    plot!(;cbar)
     # end
     return pl
 end
 
-"""
-    $(SIGNATURES)
-
-Plot temperature fields at several time instants throughout the simulation.
-"""
-function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
-    @unpack sol, dom = sim
-
-    tf = sol.t[end]
-    nplots = prod(layout)
-    frames = range(tf*tstart, tf*tend, length=nplots)
-
+function all_Tvars(sim, frames; clims=nothing)
     Ts = map(frames) do f
         u, Tf, T, p = calc_uTfTp_res(f, sim)
         T .- 273.15
@@ -303,66 +291,60 @@ function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
         ustrip(u"°C", sim.config[:paramsd][3].Tsh(f*u"s"))
     end
 
-    if clims === nothing
+    if isnothing(clims)
         cmax = max(maximum(maximum.(Ts)), maximum(Tvws), maximum(Tshs))
         cmin = min(minimum(minimum.(Ts)), minimum(Tvws), minimum(Tshs))
         clims = (cmin, cmax)
     end
+    return ϕs, Ts, Tvws, Tshs, clims
+end
+
+
+"""
+    $(SIGNATURES)
+
+Plot temperature fields at several time instants throughout the simulation.
+"""
+function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
+    @unpack sol, dom = sim
+
+    tf = sol.t[end]
+    nplots = prod(layout)
+    frames = range(tf*tstart, tf*tend, length=nplots)
+
+    ϕs, Ts, Tvws, Tshs, clims = all_Tvars(sim, frames; clims)
 
     # cmap = :plasma
     cmap = :linear_bmy_10_95_c78_n256
-    cg = cgrad(cmap)
-    cpick = x->cg[(x-clims[1])/(clims[2]-clims[1])]
 
-    lwall = Plots.Shape([(-dom.rmax-2.5dom.dr, dom.zmax), 
-             (-dom.rmax-2.5dom.dr, 0),
-             (-dom.rmax, 0),
-             (-dom.rmax, dom.zmax)])
-    rwall = Plots.Shape([( dom.rmax+2.5dom.dr, dom.zmax), 
-             ( dom.rmax+2.5dom.dr, 0),
-             ( dom.rmax, 0),
-             ( dom.rmax, dom.zmax)])
-    shelf = Plots.Shape([( dom.rmax+2.5dom.dr, 0), 
-             (-dom.rmax-2.5dom.dr, 0),
-             (-dom.rmax-2.5dom.dr, -2.5dom.dz),
-             ( dom.rmax+2.5dom.dr, -2.5dom.dz)])
-
-    plots = map(zip(frames, ϕs, Ts, Tvws, Tshs)) do (t, ϕ, T, Tvw, Tsh)
-        if (T[1] - clims[1])/(clims[2]-clims[1]) > 0.65 # Tf relatively high
-            cont_c = :black
-        else
-            cont_c = :white
-        end
-        tr = round(t/3600, digits=2)
-
-        # Set up plot
-        pl = plot(aspect_ratio = :equal, showaxis=false,
-             xlim=(-1, 1) .* (dom.rmax+2.5dom.dr) , ylim=(dom.zmin-1.5dom.dz, dom.zmax))
-        # plot temperatures
-        heatmap!(dom.rgrid, dom.zgrid, T', c=cmap, clims=clims, cbar=nothing)
-        heatmap!(dom.rgrid .- dom.rmax, dom.zgrid, T[end:-1:begin, :]', c=cmap, clims=clims, cbar=nothing) # plot reflected
-        # plot ice surface
-        plot!(LevelSet(ϕ, dom), c=cont_c)
-        # Plot shelf and wall Ts
-        plot!(lwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
-        plot!(rwall, c=cpick(Tvw) , lw=0, linealpha=0, label="")
-        plot!(shelf, c=cpick(Tsh), lw=0, linealpha=0, label="")
-        # Vial outline
-        plot!([-1, -1, 1, 1] .* (dom.rmax), [dom.zmax, 0.0, 0.0, dom.zmax], c=:black, label=:none)
-        plot!(xlabel=L"t = %$tr \mathrm{hr}")
-    #     plot!(colorbar_title=clab)
-        plot!(x_ticks = ([-dom.rmax, 0, dom.rmax], [L"-R", "0", L"R"]), )
-        plot!(y_ticks = ([0, dom.zmax], ["0", L"h_{f0}"]),  )
-    end
+    plots = map(x->plotframe_T(x..., dom; clims,cbar=false), zip(frames, ϕs, Ts, Tvws, Tshs))
     l = @layout [grid(layout...) a{0.03w}]
+    cmap = :linear_bmy_10_95_c78_n256 # Needs to be kept in pace with plotframe_T...
 
-    c2 = plot([Inf], [Inf], zcolor=[Inf], clims=clims,
+    c2 = plot([Inf], [Inf]; zcolor=[Inf], clims,
                  xlims=(1,1.1), label="", c=cmap, colorbar_title="Temperature [°C]", framestyle=:none)
-
     p_all = plot(plots..., c2, layout=l, link=:all)
 
     plsize = ((2*dom.rmax/dom.zmax)*200 * layout[2], 200*layout[1])
     plot!(size=plsize)
+end
+
+function animateT(sim; seconds_length=10, fps=30, clims=nothing, fname="animT_$(hash(sim.config)).mp4")
+    @unpack sol, dom = sim
+
+    tf = sol.t[end]
+    frames = range(0, tf, length=seconds_length*fps)
+
+    ϕs, Ts, Tvws, Tshs, clims = all_Tvars(sim, frames; clims)
+
+    # cmap = :plasma
+    cmap = :linear_bmy_10_95_c78_n256 # Needs to be kept in pace with plotframe_T...
+
+    anim = @animate for (ti, ϕ, T, Tvw, Tsh) in zip(frames, ϕs, Ts, Tvws, Tshs)
+        pl = plotframe_T(ti, ϕ, T, Tvw, Tsh, dom; clims=clims)
+    end
+
+    mp4(anim, plotsdir(fname); fps)
 end
 
 function finalframe(sim; kwargs...)
@@ -431,7 +413,7 @@ function resultsanim(sim, casename; seconds_length=5, heatvar=:T, clims=nothing)
     Tf_g = fill(245.0, dom.nr)
     # end
     anim = @animate for ti ∈ frames
-        pl, heatvals, Tf_g = plotframe(ti, sim, heatvar=heatvar, clims=clims)
+        pl, heatvals, = plotframe(ti, sim, heatvar=heatvar, clims=clims)
         # heat_p_min = heat_ex[1] - 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # heat_p_max = heat_ex[2] + 0.1*max(1e-3, heat_ex[2]-heat_ex[1])
         # plot!(p, clims=(heat_p_min, heat_p_max))

@@ -52,7 +52,7 @@ function get_eff_Rp(sim)
         md = compute_topmassflux(uTfTp..., dom, params) * u"kg/s"
         if sign(md) == -1
             Tfi = uTfTp[2]
-            @info "md=$md" ti Tfi calc_psub(Tfi)
+            @info "md=$md" ti Tfi calc_psub.(Tfi)
         end
         md = max(zero(md), md)
         [hd, md, Asub]
