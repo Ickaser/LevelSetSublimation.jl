@@ -28,7 +28,7 @@ using Parameters
 using ADTypes
 
 @reexport using LyoPronto
-import LyoPronto: calc_psub
+import LyoPronto: calc_psub, obj_expT
 export calc_psub
 
 const CI = CartesianIndex

@@ -133,6 +133,14 @@ function sim_from_dict(config; tf=1e6, verbose=false, reltol=1e-3)
     return @strdict sim
 end
 
+struct SimResults{S, D, C, T}
+    sol::S
+    dom::D
+    config::C
+    Tf::T
+end
+SimResults(sol, dom, config) = SimResults(sol, dom, config, nothing)
+
 """
     sim_from_u0(u0, t0, config; tf=1e6, verbose=false)
 
@@ -179,14 +187,14 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false, reltol=1e-3)
         sol = solve(prob, SSPRK43(), callback=CallbackSet(cb_end, cb_store, cb_reinit); tstops=tstops) # Adaptive timestepping: default
         # Interpolate saved Tf to get a function of time
         Tf_interp = interp_saved_Tf(saved_Tf)
-        sim = (;sol, dom, config, Tf=Tf_interp)
+        sim = SimResults(sol, dom, config, Tf_interp)
     elseif time_integ isa Val{:dae}
         # Use a constant-mass-matrix representation with DAE, where Tf is algebraic
         massmat = Diagonal(vcat(ones(length(u0.ϕ)), zeros(length(u0.Tf)), ones(length(u0.Tvw))))
         func = ODEFunction(dudt_heatmass_dae!, mass_matrix=massmat)
         prob = ODEProblem(func, u0, tspan, prob_pars)
         sol = solve(prob, FBDF(); callback=cbs, tstops, reltol)
-        sim = (;sol, dom, config)
+        sim = SimResults(sol, dom, config)
     elseif time_integ isa Val{:dae_then_exp}
         # First, DAE
         massmat = Diagonal(vcat(ones(length(u0.ϕ)), zeros(length(u0.Tf)), ones(length(u0.Tvw))))
@@ -206,17 +214,17 @@ function sim_from_u0(u0, t0, config; tf=1e6, verbose=false, reltol=1e-3)
         # Interpolate saved Tf to get a function of time
         Tf_interp = interp_saved_Tf(saved_Tf)
         # Assemble
-        sim = (;sol=CombinedSolution(sol1, sol2, Tf_interp), dom, config)
+        sim = SimResults(CombinedSolution(sol1, sol2, Tf_interp), dom, config)
     elseif time_integ isa Val{:ode_implicit}
         # Implicit ODE timestepping, so Tf is allowed to vary in time
         prob = ODEProblem(dudt_heatmass_implicit!, u0, tspan, prob_pars)
         sol = solve(prob, Rodas4P(); callback=cbs, tstops, reltol)
-        sim = (;sol, dom, config)
+        sim = SimResults(sol, dom, config)
     else
         @warn "Unknown time_integ, defaulting to `:exp_newton` without saving Tf"
         prob = ODEProblem(dudt_heatmass!, u0, tspan, prob_pars)
         sol = solve(prob, SSPRK43(); callback=cbs, tstops, reltol) # Adaptive timestepping: default
-        sim = (;sol, dom, config)
+        sim = SimResults(sol, dom, config)
     end
     return sim
 end

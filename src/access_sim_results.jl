@@ -101,6 +101,78 @@ function compare_lyopronto_res(ts, sim)
     return ts[cyc], Tf, md, dryfrac
 end
 
+function LyoPronto.obj_expT(sim::SimResults, pdfit::PrimaryDryFit;
+    tweight=1.0, verbose=false, Tvw_weight=1.0)
+    (;sol, dom, config) = sim
+    # if sol.retcode !== ReturnCode.Terminated || length(sol.u) <= 1
+    #     verbose && @warn "ODE solve did not reach end of drying. Either parameters are bad, or tspan is not large enough." sol.retcode sol.prob.p.hf0 sol[end]
+    #     return NaN
+    # end
+    solt = sol.t .* u"s"
+    tmd = solt[end]
+    nt = length(sol.t) - 1
+    i_solstart = searchsortedfirst(pdfit.t, solt[begin]) 
+    # Identify if the solution is pre-interpolated to the time points in pdfit.t
+
+    # Compute temperature objective for all frozen temperatures
+    ftrim = solt[begin] .< pdfit.t .< tmd
+    tf_trim = pdfit.t[ftrim]
+    
+    Tfmd = map(tf_trim) do t
+        calc_Tf_res(ustrip(u"s", t), sim)[1]*u"K"
+    end
+    # Sometimes the interpolation procedure of the solution produces wild temperatures, as in below absolute zero.
+    # This bit replaces any subzero values with the previous positive temperature, and notifies that it happened.
+    if any(Tfmd .< 0u"K")
+        subzero = findall(Vector(Tfmd .< 0u"K"))
+        Tfmd[subzero] .= Tfmd[subzero[1] - 1] 
+        verbose && @info "bad interpolation" subzero Tfmd[subzero]
+    end
+    Tfobj = 0.0u"K^2"
+    for (Tf, iend) in zip(pdfit.Tfs, pdfit.Tf_iend)
+        trim = min(iend, length(Tfmd))
+        Tfobj += sum(abs2, (Tf[i_solstart:trim] .- Tfmd[begin:trim-i_solstart+1]))/(trim-i_solstart+1)
+    end
+    if ismissing(pdfit.Tvws) # No vial wall temperatures
+        Tvwobj = 0.0u"K^2"
+    elseif ismissing(pdfit.Tvw_iend) # Only an endpoint temperature provided
+        Tvwend = pdfit.Tvws
+        Tvwobj = (sol[3, end]*u"K" - uconvert(u"K", Tvwend))^2
+    else # Regular case of fitting to at least one full temperature series
+        vwtrim = sol.t[begin]*u"hr" .< pdfit.t .< tmd
+        tvw_trim = pdfit.t[vwtrim]
+        Tvwmd = map(tvw_trim) do t# .- 273.15
+            sol(ustrip(u"s", t)).Tvw*u"K"
+        end
+        # Compute temperature objective for all vial wall temperatures
+        Tvwobj = 0.0u"K^2"
+        for (Tvw, iend) in zip(pdfit.Tvws, pdfit.Tvw_iend)
+            trim = min(iend, length(Tvwmd))
+            Tvwobj += sum(abs2, (Tvw[i_solstart:trim] .- Tvwmd[begin:trim-i_solstart+1]))/(trim-i_solstart+1)
+        end
+    end
+    tobj = if ismissing(pdfit.t_end) 
+        # No drying time provided
+        0.0u"hr^2"
+    elseif pdfit.t_end isa Tuple 
+        # See if is inside window and scale appropriately
+        mid_t = (pdfit.t_end[1] + pdfit.t_end[2]) / 2.0
+        if tmd < pdfit.t_end[1]
+            (mid_t - tmd)^2
+        elseif tmd > pdfit.t_end[2]
+            (mid_t - tmd)^2
+        else # Inside window, so no error
+            0.0u"hr^2"
+        end
+    else 
+        # Compare to a single drying time
+        (pdfit.t_end - tmd)^2
+    end
+    verbose && @info "loss call" tmd tobj Tfobj Tvwobj 
+    return ustrip(u"K^2", Tfobj + Tvw_weight*Tvwobj) + tweight*ustrip(u"hr^2", tobj)
+
+end
+
 "$(SIGNATURES)"
 function gen_sumplot(config, var=:T, casename="test")
     pol_kwargs = (filename=hash, prefix="simdat", verbose=false, tag=true)
@@ -149,14 +221,14 @@ function calc_Tf_res(t, sim)
     @unpack sol, dom = sim
     if sol isa CombinedSolution
         if t <= sol.tsplit
-            Tf = sol.sol1(t).Tf
+            return sol.sol1(t).Tf
         else
-            Tf = sol.Tf2(t)
+            sol.Tf2(t)
         end
-    elseif haskey(sim, :Tf)
-        Tf = sim.Tf(t)
+    elseif !isnothing(sim.Tf)
+        return sim.Tf(t)
     else # Used a DAE or implicit solve
-        Tf = sol(t).Tf
+        return sol(t).Tf
     end
 end
 
@@ -176,15 +248,15 @@ end
 """
     $(SIGNATURES)
 """
-function virtual_thermocouple(sim::NamedTuple) 
+function virtual_thermocouple(sim::SimResults) 
     virtual_thermocouple([(0, 0)], sim)
 end
-function virtual_thermocouple(locs, sim::NamedTuple)
+function virtual_thermocouple(locs, sim::SimResults)
     # Avoid the very last time--tends to be poorly-behaved
     # evalt = range(0.0, sim.sol.t[end]*0.99, length=100)
     virtual_thermocouple(locs, sim.sol.t, sim)
 end
-function virtual_thermocouple(locs, t, sim::NamedTuple)
+function virtual_thermocouple(locs, t, sim::SimResults)
     for loc in locs
         if length(loc) != 2
             @error "Each location should be a 2-tuple or similar."

@@ -494,7 +494,7 @@ end
 end
 
 @userplot TPlotModVW
-@recipe function f(tpmv::TPlotModVW; samplemarkers=false, nmarks=10)
+@recipe function f(tpmv::TPlotModVW; samplemarkers=true, nmarks=10)
     time, T = tpmv.args
     step = size(time, 1) ÷ nmarks
     color = palette(:Oranges_4)[end]
