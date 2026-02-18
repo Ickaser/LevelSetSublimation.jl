@@ -276,27 +276,25 @@ end
 Implementation of [Min & Gibou 2008, Table 1](@cite min_robust_2008).
 """
 function calc_H0(ϕ0, ϕ1, ϕ2, P0, P1, P2)
-    s0, s1, s2 = sign.([ϕ0, ϕ1, ϕ2])
+    s0, s1, s2 = sign.((ϕ0, ϕ1, ϕ2))
     if s0 == 1
         return area(P0, P1, P2)/3 - calc_H0(-ϕ0, -ϕ1, -ϕ2, P0, P1, P2)
     end
 
-    if s0 == s1 && s1 == s2
-        H0 = area(P0, P1, P2)/3
+    H0 = if s0 == s1 && s1 == s2
+        area(P0, P1, P2)/3
     elseif s0 == s1 && s0 != s2
         P02 = Pij(P0, P2, ϕ0, ϕ2)
         P12 = Pij(P1, P2, ϕ1, ϕ2)
-        H0 = area(P0, P1, P2)/3 - area(P02, P12, P2)/3 * ϕ2/(ϕ2-ϕ0)
+        area(P0, P1, P2)/3 - area(P02, P12, P2)/3 * ϕ2/(ϕ2-ϕ0)
     elseif s0 != s1 && s0 == s2
         P01 = Pij(P0, P1, ϕ0, ϕ1)
         P21 = Pij(P2, P1, ϕ2, ϕ1)
-        H0 = area(P0, P1, P2)/3 - area(P01, P21, P1)/3 * ϕ1/(ϕ1-ϕ0)
+        area(P0, P1, P2)/3 - area(P01, P21, P1)/3 * ϕ1/(ϕ1-ϕ0)
     elseif s0 != s1 && s0 != s2
         P01 = Pij(P0, P1, ϕ0, ϕ1)
         P02 = Pij(P0, P2, ϕ0, ϕ2)
-        H0 = area(P01, P02, P0)/3 * (1 + ϕ1/(ϕ1-ϕ0) + ϕ2/(ϕ2-ϕ0))
-    else
-        @warn "Uncaught case somehow"
+        area(P01, P02, P0)/3 * (1 + ϕ1/(ϕ1-ϕ0) + ϕ2/(ϕ2-ϕ0))
     end
     return H0
 end
@@ -308,25 +306,23 @@ Return the discrete Heaviside for level set `ϕ` at location `ij`.
 Implementation of the final expression for a discrete Heaviside in [Min & Gibou, 2008](@cite min_robust_2008).
 """
 function compute_local_H(ij::CartesianIndex, ϕ, dom)
-    Hij = 0
-    simplex_vec = []
+    simplex_vec = SVector{3, CartesianIndex{2}}[]
     if checkbounds(Bool, ϕ, ij + CI(1,1))
-        push!(simplex_vec, [ij] .+ [CI(0,0), CI(1,0), CI(1,1)])
-        push!(simplex_vec, [ij] .+ [CI(0,0), CI(0,1), CI(1,1)])
+        push!(simplex_vec, SA[ij+CI(0,0), ij+CI(1,0), ij+CI(1,1)])
+        push!(simplex_vec, SA[ij+CI(0,0), ij+CI(0,1), ij+CI(1,1)])
     end
     if checkbounds(Bool, ϕ, ij + CI(-1, -1))
-        push!(simplex_vec, [ij] .+ [CI(0,0), CI(-1,0), CI(-1,-1)])
-        push!(simplex_vec, [ij] .+ [CI(0,0), CI(0,-1), CI(-1,-1)])
+        push!(simplex_vec, SA[ij+CI(0,0), ij+CI(-1,0), ij+CI(-1,-1)])
+        push!(simplex_vec, SA[ij+CI(0,0), ij+CI(0,-1), ij+CI(-1,-1)])
     end
     if checkbounds(Bool, ϕ, ij + CI(1, -1))
-        push!(simplex_vec, [ij] .+ [CI(0,0), CI(1,0), CI(0,-1)])
+        push!(simplex_vec, SA[ij+CI(0,0), ij+CI(1,0), ij+CI(1,-1)])
     end
     if checkbounds(Bool, ϕ, ij + CI(-1, 1))
-        push!(simplex_vec, [ij] .+ [CI(0,0), CI(-1,0), CI(0,1)])
+        push!(simplex_vec, SA[ij+CI(0,0), ij+CI(-1,0), ij+CI(-1,1)])
     end
-    for simplex in simplex_vec
-        # @info "simplex" simplex calc_H0(ϕ[simplex]..., Pi.(simplex, [dom])...)*dom.dr1*dom.dz1
-        Hij += calc_H0(ϕ[simplex]..., Pi.(simplex, [dom])...)
+    Hij = mapreduce(+, simplex_vec, init=0.0) do simplex
+        calc_H0(ϕ[simplex]..., Pi.(simplex, SA[dom])...)
     end
     return Hij*dom.dr1*dom.dz1
 end

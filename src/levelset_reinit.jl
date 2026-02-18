@@ -543,8 +543,8 @@ function wenodiffs_local(u_m3, u_m2, u_m1, u_0, u_p1, u_p2, u_p3, dx)
 end
 
 function wenodiffs_row(u, dx)
-    dx1 = 1/dx
-    dx2 = dx1*dx1
+    dx112 = 1/dx/12
+    dx2 = dx^-2
 
     n = size(u, 1)
 
@@ -561,16 +561,17 @@ function wenodiffs_row(u, dx)
     u_ex[end-2:end] .= u[end] # Constant extrapolation, right
 
     i0 = (1:n) .+ 3
-    central_part = @. (u_ex[i0.-2] - 8u_ex[i0.-1] + 8u_ex[i0.+1] - u_ex[i0.+2]) * dx1/12
+    central_part = @. (u_ex[i0.-2] - 8u_ex[i0.-1] + 8u_ex[i0.+1] - u_ex[i0.+2]) * dx112
 
     cdiffs = dx2 * (u_ex[begin:end-2] .- 2u_ex[begin+1:end-1] .+ u_ex[begin+2:end])
 
     i0 = (1:n) .+ 2
-    left_Φ = weno_Φ.(cdiffs[i0.-2], cdiffs[i0.-1], cdiffs[i0], cdiffs[i0.+1])
-    right_Φ = weno_Φ.(cdiffs[i0.+2], cdiffs[i0.+1], cdiffs[i0], cdiffs[i0.-1])
-
-    du_l = central_part .- dx*left_Φ
-    du_r = central_part .+ dx*right_Φ
+    # left_Φ = weno_Φ.(cdiffs[i0.-2], cdiffs[i0.-1], cdiffs[i0], cdiffs[i0.+1])
+    # right_Φ = weno_Φ.(cdiffs[i0.+2], cdiffs[i0.+1], cdiffs[i0], cdiffs[i0.-1])
+    # du_l = central_part .- dx*left_Φ
+    # du_r = central_part .+ dx*right_Φ
+    du_l = central_part .- dx*weno_Φ.(cdiffs[i0.-2], cdiffs[i0.-1], cdiffs[i0], cdiffs[i0.+1])
+    du_r = central_part .+ dx*weno_Φ.(cdiffs[i0.+2], cdiffs[i0.+1], cdiffs[i0], cdiffs[i0.-1])
 
     return du_l, du_r
 end

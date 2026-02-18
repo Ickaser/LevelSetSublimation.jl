@@ -14,6 +14,7 @@ using TypedTables
 @reexport using StatsPlots: @df
 using DataInterpolations: CubicSpline, LinearInterpolation, ExtrapolationType, ConstantInterpolation
 using ComponentArrays
+using StaticArrays
 using ConcreteStructs
 using Contour: contour, lines, coordinates
 using LinearAlgebra: norm, Diagonal
