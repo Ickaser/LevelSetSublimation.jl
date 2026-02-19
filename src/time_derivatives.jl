@@ -1,6 +1,14 @@
 export dudt_heatmass, dudt_heatonly
 export dudt_heatmass!, dudt_heatmass_dae!, dudt_heatmass_implicit!
 
+function identify_dry(dom, ϕ)
+    empty!(dom.drylocs)
+    locs = findall(ϕ .> 0.0)
+    for (i, loc) in enumerate(locs)
+        dom.drylocs[loc] = i
+    end
+end
+
 """
     dudt_heatmass!(du, u, p, t)
 
@@ -25,6 +33,9 @@ function dudt_heatmass!(du, u, integ_pars, t)
     @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
     @unpack A_v, m_v = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
+
+    # Identify where solution is needed
+    identify_dry(dom, u.ϕ)
 
     if minimum(u.ϕ) > 0 # No ice left
         l_ave = 1/sum(1.0 ./params[2].l)/length(params[2].l)
@@ -93,6 +104,10 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
         return
     end
 
+    # Identify where solution is needed
+    identify_dry(dom, u.ϕ)
+
+
     if minimum(u.ϕ) > 0 # No ice left
         l_ave = 1/sum(1/params[2].l)/length(params[2].l)
         minT = minimum(solve_T(u, fill(NaN, dom.nr), dom, params))
@@ -104,7 +119,6 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
         verbose && @info "no ice" extrema(du.ϕ)
         return nothing
     end
-
 
     T = solve_T(u, u.Tf, dom, params)
     p = solve_p(u, u.Tf, T, dom, params)
@@ -133,8 +147,6 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
     Q_shvw = (A_v-A_p) * params[3].Kshf * (params[3].Tsh - u.Tvw)
     du.Tvw = (QRFvw - Q_vwf + Q_shvw) / m_v / cp_vw
 
-
-
     if verbose &&  eltype(u) <: Float64
         dryfrac = 1 - compute_icevol_H(u.ϕ, dom) / ( π* dom.rmax^2 *dom.zmax)
         Δξ = compute_iceht_bottopcont(u.ϕ, dom)[1]
@@ -162,6 +174,9 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
         du .= NaN
         return
     end
+
+    # Identify where solution is needed
+    identify_dry(dom, u.ϕ)
 
     if minimum(u.ϕ) > 0 # No ice left
         l_ave = 1/sum(1/params[2].l)/length(params[2].l)

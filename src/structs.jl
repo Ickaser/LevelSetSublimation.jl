@@ -47,6 +47,7 @@ struct Domain{I,F, vF<:AbstractVector{F}}
     bwr::I
     bwz::I
     ntot::I
+    drylocs::Dict{CartesianIndex{2}, I}
 end
 
 # Pretty printing
@@ -128,11 +129,13 @@ function Domain(nr::I, nz::I, rmin::F, rmax::F, zmin::F, zmax::F,
     bwr = ceil(Int, bwfrac*nr)
     bwz = ceil(Int, bwfrac*nz)
 
+    drylocs = Dict{CartesianIndex{2}, I}()
+
     return Domain(
     nr::I, nz::I, rmin::F, rmax::F, zmin::F, zmax::F, bwfrac::F,
     rgrid::AbstractVector{F}, zgrid::AbstractVector{F},
     dr::F, dz::F, dr1::F, dz1::F, dr2::F, dz2::F,
-    bwr::I, bwz::I, ntot::I
+    bwr::I, bwz::I, ntot::I, drylocs::Dict{CartesianIndex{2}, I}
     )
 end
 

@@ -98,43 +98,41 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 """
 function solve_p_given_b(ϕ, b, Tf, dom::Domain, params) 
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
-            rgrid, zgrid, nr, nz, ntot = dom
+            rgrid, zgrid, nr, nz, drylocs = dom
     @unpack Rp0 = params[2]
     @unpack pch = params[3]
 
+    nmax = length(drylocs)
 
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
     vals = similar(Tf, 0)
     vcr = (vals, cols, rows)
-    rhs = similar(Tf, ntot)
+    rhs = similar(Tf, nmax)
     rhs .= 0
 
-
     for iz in 1:nz, ir in 1:nr
-        # Row position in matrix: r is small iteration, z is outer iteration
-        imx = ir + (iz-1)*nr
 
         pϕ = ϕ[ir, iz]
         bp = b[ir, iz]
 
         # Check if in frozen domain; if so, fix pressure at arbitrary value
         if pϕ <= 0
-            add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-            rhs[imx] = calc_psub(Tf[ir])
             continue
         end
+
+        imx = drylocs[CI(ir, iz)]
 
         # Get local r values for use in Laplacian
         r = rgrid[ir]
         r1 = 1/r
         
         # Stencil values: initialize to 0
-        ec = 0
-        pc = 0
-        wc = 0
-        sc = 0
-        nc = 0
+        ec = 0.0
+        pc = 0.0
+        wc = 0.0
+        sc = 0.0
+        nc = 0.0
 
         # R direction boundaries
         if ir == 1
@@ -198,10 +196,12 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             wϕ = ϕ[ir-1, iz]
             if eϕ <= 0 && wϕ <= 0
                 # Pretend is in bulk, rather than treating with two ghost cells
-                ec +=  bp*(1.0dr2 + 0.5dr1*r1) + dbr*0.5dr1
+                # ec +=  bp*(1.0dr2 + 0.5dr1*r1) + dbr*0.5dr1
                 pc += -bp*(2.0dr2)
-                wc +=  bp*(1.0dr2 - 0.5dr1*r1) - dbr*0.5dr1
-                rhs[imx] += 0
+                # wc +=  bp*(1.0dr2 - 0.5dr1*r1) - dbr*0.5dr1
+                ecwc = (bp*(1.0dr2 + 0.5dr1*r1) + dbr*0.5dr1)*calc_psub(Tf[ir+1]) + 
+                       (bp*(1.0dr2 - 0.5dr1*r1) - dbr*0.5dr1)*calc_psub(Tf[ir-1])
+                rhs[imx] -= ecwc
 
             elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
@@ -307,10 +307,11 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
             dbz = (b[ir,iz+1]-b[ir, iz-1])*0.5*dz1
             if nϕ <= 0 && sϕ <= 0
                 # Pretend is in bulk, rather than two ghost cells
-                sc +=  bp*(1.0dz2) - dbz*0.5dz1
+                # sc +=  bp*(1.0dz2) - dbz*0.5dz1
                 pc += -bp*(2.0dz2) 
-                nc +=  bp*(1.0dz2) + dbz*0.5dz1
-                rhs[imx] += 0
+                # nc +=  bp*(1.0dz2) + dbz*0.5dz1
+                ncsc = calc_psub(Tf[ir])*(bp*(1.0dz2) + dbz*0.5dz1 + bp*(1.0dz2) - dbz*0.5dz1)
+                rhs[imx] -= ncsc
             elseif nϕ <= 0 # North ghost cell
                 θz = pϕ / (pϕ - nϕ)
                 if θz >= θ_THRESH
@@ -360,18 +361,26 @@ function solve_p_given_b(ϕ, b, Tf, dom::Domain, params)
 
 
         # Assign all computed stencil values into matrix
-        pc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 0), pc)
-        ec != 0 && add_to_vcr!(vcr, dom, imx, ( 1, 0), ec)
-        wc != 0 && add_to_vcr!(vcr, dom, imx, (-1, 0), wc)
-        nc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 1), nc)
-        sc != 0 && add_to_vcr!(vcr, dom, imx, ( 0,-1), sc)
+        pc != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI( 0, 0), pc)
+        ec != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI( 1, 0), ec)
+        wc != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI(-1, 0), wc)
+        nc != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI( 0, 1), nc)
+        sc != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI( 0,-1), sc)
 
     end
-    mat_lhs = sparse(rows, cols, vals, ntot, ntot)
+    mat_lhs = sparse(rows, cols, vals, nmax, nmax)
     prob = LinearProblem(mat_lhs, rhs)
     sol = solve(prob, SparspakFactorization()).u 
     # sol = mat_lhs \ rhs
-    psol = reshape(sol, nr, nz)
+    psubs = calc_psub.(Tf)
+    psol = map(CartesianIndices(size(dom))) do i
+        if ϕ[i] <= 0
+            psubs[Tuple(i)[1]]
+        else
+            sol[drylocs[i]]
+        end
+    end
+    return psol
 end
 
 """

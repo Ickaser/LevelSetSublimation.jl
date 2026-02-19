@@ -33,48 +33,48 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 """
 function solve_T(u, Tf, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
-            rgrid, zgrid, nr, nz, ntot = dom
+            rgrid, zgrid, nr, nz, drylocs = dom
     @unpack Kvwf, kd = params[2]
     @unpack Kshf, Tsh = params[3]
     QRFd = calc_QpppRFd(params)
     ϕ = u.ϕ
     Tvw = u.Tvw
 
+    nmax = length(drylocs)
+
     rows = Vector{Int}(undef, 0)
     cols = Vector{Int}(undef, 0)
     vals = similar(Tf, 0)
     vcr = (vals, cols, rows)
-    rhs = similar(Tf, ntot)
+    rhs = similar(Tf, nmax)
     rhs .= 0
-
 
     for iz in 1:nz, ir in 1:nr
         # Row position in matrix: r is small iteration, z is outer iteration
-        imx = ir + (iz-1)*nr
 
         pϕ = ϕ[ir, iz]
-        # Check if in frozen domain; if so, fix temperature
+        # Check if in frozen domain; if so, skip
         if pϕ <= 0
-            add_to_vcr!(vcr, dom, imx, (0, 0), 1)
-            rhs[imx] = Tf[ir]
             continue
         end
+
+        imx = drylocs[CI(ir, iz)]
 
         # Get local r values for use in Laplacian
         r = rgrid[ir]
         r1 = 1/r
 
         # Stencil values: initialize to 0
-        ec = 0
-        pc = 0
-        wc = 0
-        sc = 0
-        nc = 0
+        ec = 0.0
+        pc = 0.0
+        wc = 0.0
+        sc = 0.0
+        nc = 0.0
         
         # R direction boundaries
         if ir == 1
             # Symmetry BC
-            BC1 = 0
+            BC1 = 0.0
             eϕ = ϕ[ir+1, iz]
             # Check for Stefan front
             if eϕ < 0 # Front is within a cell of boundary
@@ -93,7 +93,7 @@ function solve_T(u, Tf, dom::Domain, params)
                 # p. 65, 66 of project notes
                 pc += -2kd*dr2
                 ec +=  2kd*dr2
-                rhs[imx] += 0 # r=0, so 1/r = NaN
+                rhs[imx] += 0.0 # r=0, so 1/r = NaN
             end
         elseif ir == nr
             # Robin BC: glass
@@ -126,10 +126,11 @@ function solve_T(u, Tf, dom::Domain, params)
             wϕ = ϕ[ir-1, iz]
             if eϕ <= 0 && wϕ <= 0
                 # Pretend in bulk, rather than treat two ghost cells. THis is a rare case
-                ec +=  kd*(1.0dr2 + 0.5dr1*r1)
+                # ec +=  kd*(1.0dr2 + 0.5dr1*r1)
                 pc += -kd*(2.0dr2)
-                wc +=  kd*(1.0dr2 - 0.5dr1*r1)
-                rhs[imx] += 0
+                # wc +=  kd*(1.0dr2 - 0.5dr1*r1)
+                ecwc = kd*(1.0dr2 + 0.5dr1*r1)*Tf[ir+1] + kd*(1.0dr2 - 0.5dr1*r1)*Tf[ir-1]
+                rhs[imx] -= ecwc
             elseif eϕ <= 0 # East ghost cell, across front
                 θr = pϕ / (pϕ - eϕ)
                 Tf_loc = Tf[ir] + θr*(Tf[ir+1]-Tf[ir])
@@ -265,10 +266,11 @@ function solve_T(u, Tf, dom::Domain, params)
             sϕ = ϕ[ir, iz-1]
             if nϕ <= 0 && sϕ <= 0
                 # Pretend in bulk, rather than treat two ghost cells. Rare case
-                sc +=  kd*1.0dz2
+                # sc +=  kd*1.0dz2
                 pc += -kd*2.0dz2
-                nc +=  kd*1.0dz2
-                rhs[imx] += 0
+                # nc +=  kd*1.0dz2
+                ncsc = 2*(kd*dz2*Tf[ir])
+                rhs[imx] -= ncsc
             elseif nϕ <= 0
                 # stefan_debug = true
                 θz = pϕ / (pϕ - nϕ)
@@ -326,31 +328,47 @@ function solve_T(u, Tf, dom::Domain, params)
 
 
         # Assign all computed stencil values into matrix
-        pc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 0), pc)
-        ec != 0 && add_to_vcr!(vcr, dom, imx, ( 1, 0), ec)
-        wc != 0 && add_to_vcr!(vcr, dom, imx, (-1, 0), wc)
-        nc != 0 && add_to_vcr!(vcr, dom, imx, ( 0, 1), nc)
-        sc != 0 && add_to_vcr!(vcr, dom, imx, ( 0,-1), sc)
+        pc != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI( 0, 0), pc)
+        ec != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI( 1, 0), ec)
+        wc != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI(-1, 0), wc)
+        nc != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI( 0, 1), nc)
+        sc != 0 && add_to_vcr_lessdof!(vcr, drylocs, CI(ir, iz), CI( 0,-1), sc)
         rhs[imx] += - QRFd 
 
 
     end
-    mat_lhs = sparse(rows, cols, vals, ntot, ntot)
+    mat_lhs = sparse(rows, cols, vals, nmax, nmax)
     prob = LinearProblem(mat_lhs, rhs)
     sol = solve(prob, SparspakFactorization()).u 
     # sol = solve(prob, UMFPACKFactorization()).u 
     # sol = mat_lhs \ rhs
-    T = reshape(sol, nr, nz)
+    T = map(CartesianIndices(size(dom))) do i
+        if ϕ[i] <= 0
+            Tf[Tuple(i)[1]]
+        else
+            sol[drylocs[i]]
+        end
+    end
 
-    # if minimum(T) <= 0
-    #     @info "negative temperatures" T
-    # end
     return T
 end
 
 function add_to_vcr!(vcr, dom, p_imx, shift, val)
     vals, cols, rows = vcr
     c_imx = p_imx + shift[1] + dom.nr*shift[2]
+    push!(vals, val)
+    push!(cols, c_imx)
+    push!(rows, p_imx)
+end
+
+function add_to_vcr_lessdof!(vcr, mapping, p, shift, val)
+    vals, cols, rows = vcr
+    p_imx = mapping[p]
+    if !haskey(mapping, p + shift)
+        @info "Frozen" p shift val
+    end
+    c_imx = mapping[p + shift]
+    
     push!(vals, val)
     push!(cols, c_imx)
     push!(rows, p_imx)
