@@ -117,6 +117,7 @@ params = params_nondim_setup(paramsd)
 um = LSS.make_u0_ndim(config)
 ϕm = @views um.ϕ
 ϕm .+= .4*dom.rmax - 1e-6 + 1e-8
+identify_dry(dom, ϕm)
 
 R = dom.rmax
 L = dom.zmax
@@ -139,6 +140,7 @@ num_sols = map(perturbs) do ei
     um = LSS.make_u0_ndim(config)
     ϕm = @views um.ϕ
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
+    identify_dry(dom, ϕm)
     solve_p(um, Tfm, Tdm, dom, params)
 end
 resp = map(zip(anl_sols, num_sols, perturbs)) do (a, n, ei)
@@ -236,6 +238,7 @@ Bi = paramsd[:Kvwf]*R*u"m"/paramsd[:kd]
 ΔT = Tvw0 - Tf0
 # C1 = Bi*ΔT/(1 + Bi*log(R/Ri))
 T_sol(r, Ri) = Bi*ΔT/(1 + Bi*log(R/Ri))*log(r/Ri) + Tf0
+LSS.identify_dry(dom, ϕm)
 
 T_num = solve_T(um, Tfm, dom, params) 
 T_anl = ustrip.(u"K", [(r < Ri ? Tf0 : T_sol(r, Ri))
@@ -270,6 +273,7 @@ num_dTdr = map(perturbs) do ei
     um = LSS.make_u0_ndim(config)
     ϕm = @views um.ϕ
     ϕm .+= .4*dom.rmax - 1e-6 + 1e-8 + ei
+    LSS.identify_dry(dom, ϕm)
     T = solve_T(um, Tfm, dom, params)
     ir = findfirst(ϕm[:,end] .> 0)
     LSS.compute_Tderiv(um, Tfm, T, ir, dom.nz÷2, dom, params)[1]
@@ -303,6 +307,7 @@ function gen_topprof(er)
     L = dom.zmax
     Ri = LSS.get_subf_r(ϕm, dom)
 
+    identify_dry(dom, ϕm)
     p_num = solve_p(um, Tfm, Tdm, dom, params)
     p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nr=150, Nz=1000)[1]
     p_anl = [LSS.calc_psub(ustrip(u"K", T0)) + (r < Ri ? 0 : p_sol1(r, z))
@@ -317,6 +322,7 @@ function gen_topprof_T(er)
 
     Ri = LSS.get_subf_r(ϕm, dom)
 
+    identify_dry(dom, ϕm)
     T_num = solve_T(um, Tfm, dom, params)
     T_anl = ustrip.(u"K", [(r < Ri ? Tf0 : T_sol(r, Ri))
                 for r in dom.rgrid, z in dom.zgrid])

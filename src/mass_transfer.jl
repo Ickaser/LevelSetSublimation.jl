@@ -1,4 +1,3 @@
-# export solve_T, solve_T_original
 export solve_p_given_b
 export solve_p, eval_b
 
@@ -10,6 +9,8 @@ Iteratively compute the pressure profile for system state `u`, `Tf`, and `T`.
 There is a weak nonlinearity in the system, since the mass transfer coefficient `b` depends partially on pressure.
 To treat this, use a guessed pressure `p0` (which, if not provided, is set everywhere to chamber pressure) to compute `b`,
 then perform a linear solve for `p` using `solve_p_given_b`. At this point, recompute `b`, then recompute `p`.
+
+This function should be called after `identify_dry(dom, u.ϕ)`, so that the linear solve is performed correctly in the dry domain.
 
 In preliminary testing, this usually converges within 5 or 10 iterations.
 Usually if it doesn't converge, it is because temperatures are outside the expected range, yielding crazy sublimation pressures.

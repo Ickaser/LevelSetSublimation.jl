@@ -240,6 +240,7 @@ function calc_uTfTp_res(t, sim)
     params = calc_params_at_t(t, config)
     u = sol(t)
     Tf = calc_Tf_res(t, sim)
+    identify_dry(dom, u.ϕ)
     T = solve_T(u, Tf, dom, params)
     p = solve_p(u, Tf, T, dom, params)
     return u, Tf, T, p
@@ -273,6 +274,7 @@ function virtual_thermocouple(locs, t, sim::SimResults)
     Tdat = map(t) do ti 
         params = calc_params_at_t(ti, config)
         u = sol(ti)
+        identify_dry(dom, u.ϕ)
         Tf = calc_Tf_res(ti, sim)
         T = solve_T(u, Tf, dom, params)
         Tloc = T[inds]

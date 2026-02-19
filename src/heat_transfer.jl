@@ -24,6 +24,8 @@ Compute 2D axisymmetric T profile, returning ghost cell values, for given state 
 
 Neumann boundary conditions on all rectangular boundaries; Dirichlet on zero-level set.
 
+This function should be called after `identify_dry(dom, u.ϕ)`, so that the linear solve is performed correctly in the dry domain.
+
 This implementation uses second-order finite differences, with linear extrapolation into Ω⁻.  
 Coefficients are all hard-coded here, unfortunately.
 (For more on extrapolation, see Gibou et al., 2002, "Second-Order-Accurate ... Poisson ... ")  
@@ -382,6 +384,7 @@ function pseudosteady_Tf(u, dom, params, Tf_g)
     ϕ = u.ϕ
     @unpack kf, ρf, Cpf = params[1]
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
+    identify_dry(dom, ϕ)
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
     if all(.~ has_ice) # If no ice present, skip nonlinear solve procedure
         return Tf_g

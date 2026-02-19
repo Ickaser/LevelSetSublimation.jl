@@ -70,7 +70,7 @@ hl = LSS.get_subf_z(ϕm, dom)
 # LSS.eval_b(Tdm, Tdm, params)
 
 
-
+identify_dry(dom, ϕm)
 p_num = solve_p(um, Tfm, Tdm, dom, params)
 # p_sol1 = gen_psol(Ri, R, L, Rp0, b, Δp; Nmax=250)
 p_sol(z, h) = -Δp/(b*Rp0 + L-h)*(z-h)
@@ -88,6 +88,7 @@ function gen_vertprof(er)
     L = dom.zmax
     hl = LSS.get_subf_z(ϕm, dom)
 
+    identify_dry(dom, ϕm)
     p_num = solve_p(um, Tfm, Tdm, dom, params)
     p_anl = [LSS.calc_psub(ustrip(u"K", T0)) + (z < hl ? 0 : p_sol(z, hl))
                 for r in dom.rgrid, z in dom.zgrid]
