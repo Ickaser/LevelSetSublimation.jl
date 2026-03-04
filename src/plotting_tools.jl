@@ -166,7 +166,7 @@ Unpack simulation results and plot the state at time `t`.
 If given, `maxT` sets an upper limit for the associated colorbar.
 """
 function plotframe(t, sim; heatvar=:ϕ, clims=nothing)
-    @unpack sol, dom = sim
+    (;sol, dom) = sim
 
     if heatvar == :ϕ 
         ϕ = sol(t).ϕ
@@ -306,7 +306,7 @@ end
 Plot temperature fields at several time instants throughout the simulation.
 """
 function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
-    @unpack sol, dom = sim
+    (;sol, dom) = sim
 
     tf = sol.t[end]
     nplots = prod(layout)
@@ -330,7 +330,7 @@ function summaryT(sim; layout=(3,2), clims=nothing, tstart=0.01, tend=0.99)
 end
 
 function animateT(sim; seconds_length=10, fps=30, clims=nothing, fname="animT_$(hash(sim.config)).mp4")
-    @unpack sol, dom = sim
+    (;sol, dom) = sim
 
     tf = sol.t[end]
     frames = range(0, tf, length=seconds_length*fps)
@@ -361,7 +361,7 @@ Return a 2x3 plot of simulation results from start to finish.
 `heatvar` determines what is plotted as a heatmap in the results (`:T` or `:ϕ`, currently.)
 """
 function summaryplot(sim; layout=(3,2), tstart=0, tend=0.95, heatvar=:T)
-    @unpack sol, dom = sim
+    (;sol, dom) = sim
 
     tf = sol.t[end]
 
@@ -402,7 +402,7 @@ Pass either `:p` or `:T` as `heatvar`. Passing `ϕ` will probably cause filename
 
 """
 function resultsanim(sim, casename; seconds_length=5, heatvar=:T, clims=nothing)
-    @unpack sol, dom = sim
+    (;sol, dom) = sim
 
     tf = sol.t[end]
 

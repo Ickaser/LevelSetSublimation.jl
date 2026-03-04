@@ -43,7 +43,7 @@ function make_ϕ0(ϕtype::Symbol, dom::Domain; ϵ=1e-4)
                 for r in dom.rgrid, z in dom.zgrid] .*sqrt(dom.rmax*dom.zmax) 
     elseif ϕtype == :ell_bub
         @warn "The more arcane starting shapes are not well-tested."
-        @unpack rmax, zmax = dom
+        (;rmax, zmax) = dom
         ϕ0 = [1.5* r^2 + 6*(z-0.5zmax)^2 - 1.0 
                 for r in dom.rgrid, z in dom.zgrid]
     elseif ϕtype == :tinycirc

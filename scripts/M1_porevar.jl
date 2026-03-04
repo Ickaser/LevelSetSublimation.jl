@@ -83,7 +83,7 @@ safesave(fname, res)
 # res = load(fname)["sim"]
 
 sim = res["sim"]
-@unpack dom = sim
+(;dom) = sim
 
 # --------------
 

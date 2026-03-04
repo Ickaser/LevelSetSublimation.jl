@@ -67,13 +67,13 @@ end
 Base.size(d::Domain) = (d.nr, d.nz)
 
 function Domain(config::Dict)
-    @unpack vialsize, fillvol = config
+    (;vialsize, fillvol) = config
     simgridsize = get(config, :simgridsize, (51,51))
     Domain(@ntuple simgridsize vialsize fillvol)
 end
 
 function Domain(config::NamedTuple)
-    @unpack vialsize, fillvol = config
+    (;vialsize, fillvol) = config
     if haskey(config, :simgridsize)
         simgridsize = config.simgridsize
     else

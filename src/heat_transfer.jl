@@ -36,8 +36,8 @@ Coefficients computed in `gfm_extrap.ipynb`, using Sympy.
 function solve_T(u, Tf, dom::Domain, params)
     @unpack dr, dz, dr1, dz1, dr2, dz2, 
             rgrid, zgrid, nr, nz, drylocs = dom
-    @unpack Kvwf, kd = params[2]
-    @unpack Kshf, Tsh = params[3]
+    (;Kvwf, kd) = params[2]
+    (;Kshf, Tsh) = params[3]
     QRFd = calc_QpppRFd(params)
     ϕ = u.ϕ
     Tvw = u.Tvw
@@ -382,7 +382,7 @@ function pseudosteady_Tf(u, dom, params)
 end
 function pseudosteady_Tf(u, dom, params, Tf_g)
     ϕ = u.ϕ
-    @unpack kf, ρf, Cpf = params[1]
+    (;kf, ρf, Cpf) = params[1]
     dϕdx_all = dϕdx_all_WENO(ϕ, dom)
     identify_dry(dom, ϕ)
     has_ice = (compute_iceht_bottopcont(ϕ, dom)[1] .> 0)
@@ -537,7 +537,7 @@ function extrap_Tf_noice!(Tf, has_ice, dom)
 end
 
 function compute_Qvwf(u, T, dom::Domain, params)
-    @unpack Kvwf = params[2]
+    (;Kvwf) = params[2]
     Tvw = u.Tvw
     # Heat flux from glass, at outer radius
     # zweights = compute_icegl_area_weights(ϕ, dom) # area for ice-glass

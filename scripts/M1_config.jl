@@ -80,7 +80,7 @@ fname = datadir("sims", "M1_8944706271621697748.jld2")
 res = load(fname)
 
 sim = res["sim"]
-@unpack dom = sim
+(;dom) = sim
 
 # --------------
 

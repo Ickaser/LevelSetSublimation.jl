@@ -82,8 +82,8 @@ Generate an empty velocity field and compute velocity on `Γ⁺` (i.e. cells on 
 """
 function compute_frontvel_heat(u, Tf, T, dom::Domain, params; debug=false)
 
-    @unpack ΔH, ρf = params[1]
-    @unpack kd, ϵ = params[2]
+    (;ΔH, ρf) = params[1]
+    (;kd, ϵ) = params[2]
     ϕ = u.ϕ
 
     Γf = identify_Γ(ϕ, dom)
@@ -127,7 +127,7 @@ In addition, the sublimation flux is simply evaluated at the top cake surface.
 
 """
 function compute_Qice(u, T, p, dom::Domain, params)
-    @unpack ΔH = params[1]
+    (;ΔH) = params[1]
     Q_vwshvol, Q_vwf = compute_Qice_noflow(u, T, dom, params)
     # Sublimation rate
     md = compute_topmassflux(u, T, p, dom, params)
@@ -143,8 +143,8 @@ Compute the total heat input into frozen & dried domains, assuming mass flow is 
 """
 function compute_Qice_noflow(u, T, dom::Domain, params)
 
-    @unpack Kvwf = params[2]
-    @unpack Kshf, Tsh = params[3]
+    (;Kvwf) = params[2]
+    (;Kshf, Tsh) = params[3]
     QRFd = calc_QpppRFd(params)
     QRFf = calc_QpppRFd(params)
 
@@ -178,8 +178,8 @@ Compute the total heat input into frozen domain from volumetric, shelf, and glas
 Contrast with `compute_Qice_noflow` and `compute_Qice`, which include heat to dried domain.
 """
 function compute_Qice_nodry(u, T, dom::Domain, params)
-    @unpack Kvwf = params[2]
-    @unpack Kshf, Tsh = params[3]
+    (;Kvwf) = params[2]
+    (;Kshf, Tsh) = params[3]
     QRFf = calc_QpppRFd(params)
 
     ϕ = u.ϕ
@@ -219,7 +219,7 @@ function sim_heatonly(config; tf=1e5, verbose=false)
 
     # ------------------- Get simulation parameters
 
-    @unpack cparams, init_prof, Tf0, controls, vialsize, fillvol = config
+    (;cparams, init_prof, Tf0, controls, vialsize, fillvol) = config
 
     # Default values for non-essential parameters
     Tvw0 = get(config, :Tvw0, Tf0) # Default to same ice & glass temperature if glass initial not given

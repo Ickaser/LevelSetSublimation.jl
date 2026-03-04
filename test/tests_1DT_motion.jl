@@ -1,10 +1,10 @@
 # Pulled in largely as-is from 1D_verification_heat.ipynb
 
 function case1_analyt_compare(simres, config)
-    @unpack sol, dom = simres
-    @unpack Kshf, ρf, ΔH, ϵ = config[:cparams]
-    @unpack Tsh = config[:controls]
-    @unpack Tf0 = config
+    (;sol, dom) = simres
+    (;Kshf, ρf, ΔH, ϵ) = config[:cparams]
+    (;Tsh) = config[:controls]
+    (;Tf0) = config
     Q_sh = Kshf*(Tsh(0)-Tf0)
     vz = ustrip(u"m/s", -Q_sh/ ρf/ΔH / ϵ)
 
@@ -16,8 +16,8 @@ function case1_analyt_compare(simres, config)
 end
 
 function case2_analyt_compare(simres, config)
-    @unpack sol, dom = simres
-    @unpack Kshf, ρf, ΔH, ϵ = config[:cparams]
+    (;sol, dom) = simres
+    (;Kshf, ρf, ΔH, ϵ) = config[:cparams]
     QRFf = config[:controls][:QRFf]
 
     ts = sol.t
@@ -28,8 +28,8 @@ function case2_analyt_compare(simres, config)
 end
 
 function case3_analyt_compare(simres, config)
-    @unpack sol, dom = simres
-    @unpack Kvwf, kd, ϵ, ρf, ΔH = config[:cparams]
+    (;sol, dom) = simres
+    (;Kvwf, kd, ϵ, ρf, ΔH) = config[:cparams]
     Tvw = config[:Tvw0]
     Tf = config[:Tf0]
 

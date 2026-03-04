@@ -112,7 +112,7 @@ function sim_from_dict(config; tf=1e6, verbose=false, reltol=1e-3)
 
     # ------------------- Get simulation parameters
 
-    @unpack paramsd = config
+    (;paramsd) = config
     # Default values for non-essential parameters
     init_prof = get(config, :init_prof, :flat) # Default to same ice & glass temperature if glass initial not given
     Tf0 = get(config, :Tf0, paramsd[3].Tsh(0u"s")) # Default to same ice & glass temperature if glass initial not given
@@ -147,7 +147,7 @@ SimResults(sol, dom, config) = SimResults(sol, dom, config, nothing)
 Wrapped by [`sim_from_dict`](@ref LevelSetSublimation.sim_from_dict); useful on its own if you want to start from partway through a simulation.
 """
 function sim_from_u0(u0, t0, config; tf=1e6, verbose=false, reltol=1e-3)
-    @unpack paramsd = config
+    (;paramsd) = config
     dom = Domain(config)
     # ----- Nondimensionalize everything
     params_vary = params_nondim_setup(paramsd)

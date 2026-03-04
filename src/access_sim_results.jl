@@ -4,7 +4,7 @@ export get_eff_Rp
 export virtual_thermocouple
 "$(SIGNATURES)"
 function get_t_Tf(sim)
-    @unpack sol, dom, config = sim
+    (;sol, dom, config) = sim
     t = sol.t * u"s"
     Tf = map(sol.t) do ti
         Tfr = calc_Tf_res(ti, sim)
@@ -15,7 +15,7 @@ end
 
 "$(SIGNATURES)"
 function get_t_Tf_subflux(sim)
-    @unpack sol, dom = sim
+    (;sol, dom) = sim
     t, Tf = get_t_Tf(sim)
     mdt = map(sol.t) do ti
         params = calc_params_at_t(ti, sim.config)
@@ -37,7 +37,7 @@ calc_fillvol(dom) = π*dom.rmax^2*dom.zmax*u"m^3"
 
 "$(SIGNATURES)"
 function get_eff_Rp(sim)
-    @unpack sol, dom = sim
+    (;sol, dom) = sim
     t, Tf = get_t_Tf(sim)
     hf0 = dom.zmax*u"m"
     Ap = π*dom.rmax^2*u"m^2"
@@ -74,7 +74,7 @@ end
 
 "$(SIGNATURES)"
 function compare_lyopronto_res(ts, sim)
-    @unpack sol, dom, config = sim
+    (;sol, dom, config) = sim
     ts_ndim = ustrip.(u"s", ts)
     cyc = ts_ndim .< sol.t[end]
     if ~all(cyc)
@@ -191,7 +191,7 @@ end
 
 "$(SIGNATURES)"
 function calc_params_at_t(t, config)
-    @unpack paramsd = config
+    (;paramsd) = config
     params = params_nondim_setup(paramsd)
     return (params[1], params[2], params[3](t))
 end
@@ -218,7 +218,7 @@ end
 Get Tf at a given time point, regardless of simulation's time integration. 
 """
 function calc_Tf_res(t, sim)
-    @unpack sol, dom = sim
+    (;sol, dom) = sim
     if sol isa CombinedSolution
         if t <= sol.tsplit
             return sol.sol1(t).Tf
@@ -236,7 +236,7 @@ end
     $(SIGNATURES)
 """
 function calc_uTfTp_res(t, sim)
-    @unpack sol, dom, config = sim
+    (;sol, dom, config) = sim
     params = calc_params_at_t(t, config)
     u = sol(t)
     Tf = calc_Tf_res(t, sim)
@@ -266,7 +266,7 @@ function virtual_thermocouple(locs, t, sim::SimResults)
             @error "Location, in r and z, should be given as number between 0 and 1 inclusive." loc
         end
     end
-    @unpack sol, dom, config = sim
+    (;sol, dom, config) = sim
 
     inds = map(locs) do (r,z)
         CI(round(Int, r*(dom.nr-1))+1, round(Int, z*(dom.nz-1))+1)
@@ -296,7 +296,7 @@ function get_SA(res)
     get_SA(ts, res)
 end
 function get_SA(ts, res)
-    @unpack sol, dom = res
+    (;sol, dom) = res
     SA_t = map(ts) do ti
         ϕ = sol(ti).ϕ
         SA = compute_icesurf_δ(ϕ, dom)

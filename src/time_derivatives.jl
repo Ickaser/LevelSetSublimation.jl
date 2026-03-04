@@ -30,8 +30,8 @@ function dudt_heatmass!(du, u, integ_pars, t)
 
     du.Tf .= 0 # Just in case some weird stuff got left there
 
-    @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
-    @unpack A_v, m_v = params[2]
+    (;ρf, Cpf, ρ_vw, cp_vw) = params[1]
+    (;A_v, m_v) = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     # Identify where solution is needed
@@ -94,8 +94,8 @@ function dudt_heatmass_dae!(du, u, integ_pars, t)
 
     params = params_vary(t)
 
-    @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
-    @unpack A_v, m_v = params[2]
+    (;ρf, Cpf, ρ_vw, cp_vw) = params[1]
+    (;A_v, m_v) = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(u.Tf .< 0)
@@ -165,8 +165,8 @@ function dudt_heatmass_implicit!(du, u, integ_pars, t)
 
     params = params_vary(t)
 
-    @unpack ρf, Cpf, ρ_vw, cp_vw = params[1]
-    @unpack A_v, m_v = params[2]
+    (;ρf, Cpf, ρ_vw, cp_vw) = params[1]
+    (;A_v, m_v) = params[2]
     QRFvw = calc_QpppRFvw(params) * m_v/ρ_vw
 
     if any(u.Tf .< 0)
@@ -296,8 +296,8 @@ end
 # For pseudosteady radial temperature
 
 function local_sub_heating_dϕdx(u, Tf, T, p, ir, iz, dϕdx_all, dom, params)
-    @unpack ΔH = params[1]
-    @unpack kd = params[2]
+    (;ΔH) = params[1]
+    (;kd) = params[2]
     b = eval_b_loc(T, p, ir, iz, params)
 
     dTdr, dTdz = compute_Tderiv(u, Tf, T, ir, iz, dom, params)
@@ -373,9 +373,9 @@ end
 function dTfdt_radial!(dTfdt, u, Tf, T, p, dϕdx_all, dom::Domain, params)
     ϕ = u.ϕ
     Tvw = u.Tvw
-    @unpack ρf, Cpf, kf, ΔH = params[1]
-    @unpack Rp0, Kvwf = params[2]
-    @unpack Tsh, pch, Kshf = params[3]
+    (;ρf, Cpf, kf, ΔH) = params[1]
+    (;Rp0, Kvwf) = params[2]
+    (;Tsh, pch, Kshf) = params[3]
     QRFf = calc_QpppRFf.(Tf, [params])
 
     Δξ, bot_contact, top_contact = compute_iceht_bottopcont(ϕ, dom)

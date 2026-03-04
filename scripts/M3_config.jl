@@ -75,7 +75,7 @@ config[:time_integ] = :dae_then_exp
 # res = load(fname)["sim"]
 
 sim = res["sim"]
-@unpack dom = sim
+(;dom) = sim
 
 # --------------
 
