@@ -1,9 +1,8 @@
+using LevelSetSublimation
 const LSS = LevelSetSublimation
 
 using SpecialFunctions
 using Roots
-using Unitful
-using Plots
 using FastGaussQuadrature
 
 

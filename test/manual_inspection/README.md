@@ -1,0 +1,1 @@
+These scripts were used in testing the inner solver behavior of LevelSetSublimation. They may not be fully up to date with the current interface, and haven't been added to the test suite simply because they aren't yet in a form amenable to pass-fail testing.
