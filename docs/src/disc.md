@@ -6,10 +6,15 @@ CurrentModule = LevelSetSublimation
 
 ## Heat and Mass Transfer Equations
 - [`solve_T`](@ref)
-    - Using 2nd order central differences, with linear extrapolation for ghost fluid cells.
+    - Using 2nd order central differences, with linear extrapolation for ghost fluid cells across the level set interface.
     - Manually constructs sparse matrix, then solves it.
     - Uses a 2nd-order discretization with linear extrapolation as defined in [gibouFourthOrderAccurate2005](@cite), section 2
+    - All the possible stencils for this discretization were generated in a Jupyter notebook, visible in this code's GitHub repo at `/docs/gfm_extrap.ipynb`. If links don't break, that can be viewed online [here](https://nbviewer.org/github/ickaser/LevelSetSublimation.jl/blob/main/docs/gfm_extrap.ipynb).
 - [`solve_p`](@ref)
+    - Since the mass conductivity in the equation for $p$ may itself depend on $p$, this function guesses values of $b$, solves for $p$, then iterates a few more times.
+- [`solve_p_given_b`](@ref)
+    - This does the actual linear solve for `solve_p`. Like `solve_T`, it uses a 2nd-order discretization as in [gibouFourthOrderAccurate2005](@cite), section 2. This becomes slightly more complicated though because the mass conductivity $b$ is not spatially constant.
+    - All the possible stencils for this discretization were generated in a Jupyter notebook, visible in this code's GitHub repo at `/docs/gfm_extrap_vark.ipynb`. If links don't break, that can be viewed online [here](https://nbviewer.org/github/ickaser/LevelSetSublimation.jl/blob/main/docs/gfm_extrap_vark.ipynb).
 ## Velocity Calculations
 - [`compute_frontvel_heat`](@ref)
     - Computes heat flux on Stefan interface
