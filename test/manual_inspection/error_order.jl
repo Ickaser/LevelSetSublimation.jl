@@ -1,5 +1,6 @@
 @quickactivate :LevelSetSublimation
 const LSS = LevelSetSublimation
+using StatsPlots: @df
 
 using TypedTables, DataFrames
 

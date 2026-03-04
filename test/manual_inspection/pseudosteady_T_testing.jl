@@ -1,6 +1,7 @@
 # using BoundaryValueDiffEq
 using SpecialFunctions
 using FastGaussQuadrature
+using Roots
 const LSS = LevelSetSublimation
 
 # ------------ Simulation conditions
@@ -87,7 +88,6 @@ manual_shoot(T0, Qpps) = solve(ode1, Tsit5(), p=pars, u0=[T0, 0])[2,end] - Qpps
 # bvp1 = TwoPointBVProblem(ice_T_ode!, ice_T_bc!, u0, rspan)
 # sol1 = solve(bvp1, Shooting(Tsit5()), p=pars)
 
-using Roots
 sol1 = find_zero(x->manual_shoot(x, 30), 250) 
 
 

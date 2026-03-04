@@ -77,7 +77,7 @@ you can call with just values that need to be changed, e.g.
 All properties stored here are:
 $(FIELDS)
 """
-@with_kw struct PhysicalProperties{T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13}
+@kwdef struct PhysicalProperties{T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13}
     "Density of vial wall (defaults to borosilicate glass)."
     ρ_vw::T1 = LevelSetSublimation.ρ_gl
     "Heat capacity of vial wall (defaults to borosilicate glass)."

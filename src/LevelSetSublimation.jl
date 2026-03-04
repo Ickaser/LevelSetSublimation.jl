@@ -1,17 +1,13 @@
 module LevelSetSublimation
 
 using DrWatson, Reexport
-@reexport using SparseArrays
-# @reexport using DiffEqCallbacks # Already have this coming from LyoPronto
-# @reexport using OrdinaryDiffEqRosenbrock # Already have this coming from LyoPronto
-@reexport using OrdinaryDiffEqSSPRK
-@reexport using OrdinaryDiffEqBDF
+using SparseArrays
+using OrdinaryDiffEqSSPRK
+using OrdinaryDiffEqBDF
 using SteadyStateDiffEq
-@reexport using Plots
-@reexport using Unitful
-@reexport using LaTeXStrings
+using Unitful
+using LaTeXStrings
 using TypedTables
-@reexport using StatsPlots: @df
 using DataInterpolations: CubicSpline, LinearInterpolation, ExtrapolationType, ConstantInterpolation
 using ComponentArrays
 using StaticArrays
@@ -24,12 +20,14 @@ using LinearSolve
 using Sparspak
 using NaNMath
 using DocStringExtensions
-using Parameters
-using ADTypes
+using ADTypes: AutoForwardDiff
 
 @reexport using LyoPronto
 import LyoPronto: calc_psub, obj_expT
 export calc_psub
+
+# Would like to drop this direct dep in future: use recipes, or make this an extension
+@reexport using Plots
 
 const CI = CartesianIndex
 

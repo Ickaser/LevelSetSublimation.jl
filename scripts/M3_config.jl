@@ -1,5 +1,6 @@
 @quickactivate :LevelSetSublimation
 const LSS = LevelSetSublimation
+using StatsPlots: @df
 
 # plot defaults
 default(:linewidth, 3)

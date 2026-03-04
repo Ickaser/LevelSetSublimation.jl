@@ -1,6 +1,6 @@
 # @quickactivate :LevelSetSublimation
 const LSS = LevelSetSublimation
-using Latexify, TypedTables
+using TypedTables
 
 
 
@@ -87,31 +87,33 @@ tsol, Tsol, msol, fsol = compare_lyopronto_res(lpdat.t, sim);
 
 # ------------- Comparison plots
 
-# uformatter(l, u) = string(l, raw", $\\left[", latexify(u)[2:end-1], raw"\\right]$")
-set_default(labelformat = :square)
-uf = latexify
+# using Plots, Latexify
+# using StatsPlots: @df
+# # uformatter(l, u) = string(l, raw", $\\left[", latexify(u)[2:end-1], raw"\\right]$")
+# set_default(labelformat = :square)
+# uf = latexify
 
-begin
-pl1 = plot(u"hr", u"°C", unitformat=uf, ylabel="T_\\textrm{f}", xlabel="t")
-@df lpdat plot!(:t, :Tbot, label="LyoPronto", legend=:topright)
-plot!(tsol, Tsol, label="LevelSetSublimation")
-plot!(Tsh, tmax=6u"hr", label=L"T_\textrm{sh}", c=:black)
-pl2 = plot(u"hr", u"kg/hr", unitformat=uf, ylabel="\\dot{m}''", xlabel="t")
-@df lpdat plot!(:t, :md, label="LyoPronto", unitformat=:square,legend=:bottomright)
-plot!(tsol, msol, label="LevelSetSublimation")
-pl3 = plot(u"hr", NoUnits, unitformat=uf, ylabel="drying progress", xlabel="t")
-@df lpdat plot!(:t, :dryfrac, label="LyoPronto", legend=:bottomright)
-plot!(tsol, fsol, label="LevelSetSublimation")
-plot(pl1, pl2, pl3)
-end
+# begin
+# pl1 = plot(u"hr", u"°C", unitformat=uf, ylabel="T_\\textrm{f}", xlabel="t")
+# @df lpdat plot!(:t, :Tbot, label="LyoPronto", legend=:topright)
+# plot!(tsol, Tsol, label="LevelSetSublimation")
+# plot!(Tsh, tmax=6u"hr", label=L"T_\textrm{sh}", c=:black)
+# pl2 = plot(u"hr", u"kg/hr", unitformat=uf, ylabel="\\dot{m}''", xlabel="t")
+# @df lpdat plot!(:t, :md, label="LyoPronto", unitformat=:square,legend=:bottomright)
+# plot!(tsol, msol, label="LevelSetSublimation")
+# pl3 = plot(u"hr", NoUnits, unitformat=uf, ylabel="drying progress", xlabel="t")
+# @df lpdat plot!(:t, :dryfrac, label="LyoPronto", legend=:bottomright)
+# plot!(tsol, fsol, label="LevelSetSublimation")
+# plot(pl1, pl2, pl3)
+# end
 
-# ------------- Plots for prelim
-plot!(pl1, size=(300, 250))
-savefig(plotsdir("lyopronto_T.svg"))
-savefig(plotsdir("lyopronto_T.pdf"))
-plot!(pl2, size=(300, 250))
-savefig(plotsdir("lyopronto_subflux.svg"))
-savefig(plotsdir("lyopronto_subflux.pdf"))
-plot!(pl3, size=(300, 250))
-savefig(plotsdir("lyopronto_dryfrac.svg"))
-savefig(plotsdir("lyopronto_dryfrac.pdf"))
+# # ------------- Plots for prelim
+# plot!(pl1, size=(300, 250))
+# savefig(plotsdir("lyopronto_T.svg"))
+# savefig(plotsdir("lyopronto_T.pdf"))
+# plot!(pl2, size=(300, 250))
+# savefig(plotsdir("lyopronto_subflux.svg"))
+# savefig(plotsdir("lyopronto_subflux.pdf"))
+# plot!(pl3, size=(300, 250))
+# savefig(plotsdir("lyopronto_dryfrac.svg"))
+# savefig(plotsdir("lyopronto_dryfrac.pdf"))
