@@ -1,5 +1,5 @@
 const LSS = LevelSetSublimation
-include(scriptsdir("petr_exp_config.jl"))
+props = make_M1_properties()
 
 b = eval_b(243.15u"K", LSS.calc_psub(243.15u"K"), config[:cparams])
 
