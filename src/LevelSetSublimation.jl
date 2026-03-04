@@ -23,7 +23,6 @@ using NonlinearSolve
 using LinearSolve
 using Sparspak
 using NaNMath
-using PrecompileTools
 using DocStringExtensions
 using Parameters
 using ADTypes
@@ -54,7 +53,5 @@ include("access_sim_results.jl")
 include("levelset_geometry.jl")
 
 include("without_mass_transfer.jl")
-
-# include("precompile.jl")
 
 end # module LevelSetSublimation
