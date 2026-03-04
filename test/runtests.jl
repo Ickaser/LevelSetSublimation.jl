@@ -51,6 +51,8 @@ end
 
 include("tests_lyopronto.jl")
 
+include("tests_M1.jl")
+
 @info "Getting into the empty test sets now"
 
 @testset "T solution: nothing here" begin

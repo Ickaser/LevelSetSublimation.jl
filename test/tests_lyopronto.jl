@@ -9,7 +9,7 @@ function lyoprontolike_setup()
     A1 = 16u"cm*hr*Torr/g"
     Tguess = 250u"K"
     Mw = 18.002u"g/mol" # Water vapor
-    l_bulk = upreferred(sqrt(u"R"*Tguess/Mw) / A1)
+    l_bulk = sqrt(u"R"*Tguess/Mw) / A1 |> u"m"
     ϵ = 0.95 
     κ = 0.0u"m^2" 
     kd = LyoPronto.k_sucrose * (1-ϵ)

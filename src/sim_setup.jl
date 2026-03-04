@@ -347,13 +347,13 @@ function make_M1_properties()
     Rp0 = 1.4u"cm^2*Torr*hr/g" # R0 from Rp: guess from thin-film thickness & pore size?
     # Heat transfer
     kd = k_sucrose * (1-ϵ)
-    Kvwf = 24.7 *u"W/K/m^2" 
+    Kvwf = 19.5 *u"W/K/m^2" 
     m_v = LyoPronto.get_vial_mass("6R")
     A_v = π*LyoPronto.get_vial_radii("6R")[2]^2
     # Microwave
     B_d = 0.0u"Ω/m^2"
-    B_f = 2.8e8u"Ω/m^2"
-    B_vw = 4.6e6u"Ω/m^2"
+    B_f = 1e9u"Ω/m^2"
+    B_vw = 1e7u"Ω/m^2"
 
     tcprops = TimeConstantProperties(ϵ, l, κ, Rp0, kd, Kvwf, m_v, A_v, B_d, B_f, B_vw)
 
